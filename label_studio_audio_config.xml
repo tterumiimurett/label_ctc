@@ -1,0 +1,16 @@
+<View>
+  <Header value="Stereo reference playback"/>
+  <Audio name="stereo" value="$audio" hotkey="space" height="96"/>
+
+  <Header value="Left / Right timestamp annotation"/>
+  <Labels name="channel" toName="audio_lr" choice="single">
+    <Label value="Left" background="#1f77b4"/>
+    <Label value="Right" background="#ff7f0e"/>
+  </Labels>
+  <Audio name="audio_lr" value="$audio" splitchannels="true" height="220" defaultzoom="50"/>
+
+  <View visibleWhen="region-selected">
+    <Header value="Transcript for selected segment"/>
+    <TextArea name="transcript" toName="audio_lr" perRegion="true" editable="true" rows="3" required="true"/>
+  </View>
+</View>
