@@ -8,3 +8,10 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Local OS/editor files
+.DS_Store
+
+# Runtime annotation data
+conversation_annotation_app/data/assignments.json
+conversation_annotation_app/data/submissions/*.json

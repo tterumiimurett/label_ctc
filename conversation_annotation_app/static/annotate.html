@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CTC / PP Conversation Annotation</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="https://unpkg.com/wavesurfer.js@7.10.1/dist/wavesurfer.min.js"></script>
+  <script src="https://unpkg.com/wavesurfer.js@7.10.1/dist/plugins/regions.min.js"></script>
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div>
+        <h1>CTC / PP Conversation Annotation</h1>
+        <div class="muted" id="worker-line">Loading participant session...</div>
+      </div>
+      <div class="progress" id="progress-line"></div>
+    </header>
+
+    <section class="card status" id="loading-card">
+      <h2>Loading assignment</h2>
+      <p id="loading-message">Requesting tasks from the server.</p>
+    </section>
+
+    <form id="annotation-form" hidden>
+      <section class="card">
+        <div class="task-header">
+          <div>
+            <h2 id="task-title">Task</h2>
+            <div class="muted" id="task-audio"></div>
+          </div>
+          <div class="task-nav">
+            <button id="prev-task" type="button">Previous</button>
+            <button id="next-task" type="button">Next</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>File-level labels</h2>
+        <div class="grid-two">
+          <fieldset>
+            <legend>Target status <span class="muted">(select at least one)</span></legend>
+            <div class="flag-row" id="target-status"></div>
+          </fieldset>
+          <fieldset>
+            <legend>Quality</legend>
+            <label>Audio quality
+              <select id="audio-quality"></select>
+            </label>
+            <label>Transcript quality
+              <select id="transcript-quality"></select>
+            </label>
+          </fieldset>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Stereo playback and timestamp annotation</h2>
+        <div class="controls">
+          <button id="play" type="button">Play / Pause</button>
+          <button id="play-selected" type="button">Play selected segment</button>
+          <label class="choice"><input id="loop-selected" type="checkbox" checked> Loop selected segment</label>
+          <span id="time-display">0.00s / 0.00s</span>
+          <label>Zoom
+            <input id="zoom" type="range" min="10" max="220" value="50">
+          </label>
+        </div>
+        <audio id="fallback-audio" controls preload="metadata"></audio>
+        <div id="wave-status" class="muted">Waveform status: waiting.</div>
+        <div class="channel-key">
+          <span class="left"><i class="dot left-dot"></i>Left</span>
+          <span class="right"><i class="dot right-dot"></i>Right</span>
+        </div>
+        <div id="waveform"></div>
+        <div class="controls lower">
+          <strong>Create segment:</strong>
+          <label class="choice"><input type="radio" name="new_channel" value="0" checked> Left</label>
+          <label class="choice"><input type="radio" name="new_channel" value="1"> Right</label>
+          <span class="muted">Choose a channel, then drag on the waveform. Drag or resize regions to correct timestamps.</span>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Selected segment annotation</h2>
+        <div class="layout">
+          <div id="segments-list"></div>
+          <div id="editor">
+            <div class="muted" id="empty-editor">Select a timestamp region to edit its annotation.</div>
+            <fieldset id="segment-fields" disabled hidden>
+              <div class="time-fields">
+                <label>Start (s)<input type="text" id="start-time" readonly></label>
+                <label>End (s)<input type="text" id="end-time" readonly></label>
+                <label>Channel
+                  <select id="channel">
+                    <option value="0">Left</option>
+                    <option value="1">Right</option>
+                  </select>
+                </label>
+              </div>
+              <label>Transcript <span class="muted">(required)</span>
+                <textarea id="transcript" rows="3"></textarea>
+              </label>
+              <fieldset>
+                <legend>Segment flags</legend>
+                <div class="flag-row" id="segment-flags"></div>
+              </fieldset>
+              <label>Optional segment note
+                <textarea id="note" rows="2"></textarea>
+              </label>
+              <button type="button" id="delete-segment" class="danger">Delete selected segment</button>
+            </fieldset>
+          </div>
+        </div>
+      </section>
+
+      <div id="errors" class="errors"></div>
+      <div class="submit-row">
+        <button id="submit" class="primary" type="submit">Submit and return to Prolific</button>
+        <button id="download-json" type="button">Download JSON</button>
+        <span id="save-status" class="muted"></span>
+      </div>
+
+      <details class="card output">
+        <summary>Preview submitted JSON</summary>
+        <pre id="json-output"></pre>
+      </details>
+    </form>
+  </main>
+  <script src="/static/app.js"></script>
+</body>
+</html>

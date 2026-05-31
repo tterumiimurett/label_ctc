@@ -1,0 +1,253 @@
+:root {
+  --ink: #1f2937;
+  --muted: #64748b;
+  --line: #dbe2ea;
+  --panel: #f8fafc;
+  --left: #1f77b4;
+  --right: #ff7f0e;
+  --accent: #0f766e;
+  --danger: #b91c1c;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  background: white;
+  color: var(--ink);
+  font: 14px/1.4 Arial, Helvetica, sans-serif;
+  margin: 0;
+}
+
+.shell {
+  margin: 0 auto;
+  max-width: 1120px;
+  padding: 18px;
+}
+
+.topbar,
+.task-header,
+.submit-row {
+  align-items: center;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+}
+
+h1 { font-size: 20px; margin: 0 0 4px; }
+h2 { font-size: 15px; margin: 0 0 12px; }
+
+.muted {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.progress {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  margin: 14px 0;
+  padding: 14px;
+}
+
+.status { background: var(--panel); }
+
+fieldset {
+  border: 0;
+  margin: 0 0 10px;
+  padding: 0;
+}
+
+legend,
+label {
+  display: block;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.choice {
+  align-items: center;
+  display: inline-flex;
+  font-weight: 400;
+  gap: 6px;
+  margin: 0;
+  white-space: nowrap;
+}
+
+.flag-row,
+.controls,
+.task-nav {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.controls { margin-bottom: 10px; }
+.controls.lower { margin: 12px 0 0; }
+
+.grid-two {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 360px);
+}
+
+button {
+  background: white;
+  border: 1px solid #94a3b8;
+  border-radius: 5px;
+  cursor: pointer;
+  padding: 6px 12px;
+}
+
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+  font-size: 15px;
+  padding: 9px 20px;
+}
+
+button.danger {
+  border-color: #fca5a5;
+  color: var(--danger);
+}
+
+button:disabled {
+  cursor: default;
+  opacity: .5;
+}
+
+input[type="text"],
+select,
+textarea {
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  display: block;
+  font: inherit;
+  margin-top: 4px;
+  padding: 7px;
+  width: 100%;
+}
+
+textarea { resize: vertical; }
+
+#fallback-audio {
+  display: block;
+  margin-bottom: 8px;
+  width: 100%;
+}
+
+#time-display {
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+  min-width: 130px;
+}
+
+#waveform {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  min-height: 222px;
+  overflow: hidden;
+}
+
+.channel-key {
+  display: flex;
+  font-weight: 700;
+  gap: 20px;
+  margin: 9px 0 5px;
+}
+
+.dot {
+  border-radius: 50%;
+  display: inline-block;
+  height: 10px;
+  margin-right: 5px;
+  width: 10px;
+}
+
+.left { color: var(--left); }
+.right { color: var(--right); }
+.left-dot { background: var(--left); }
+.right-dot { background: var(--right); }
+
+.layout {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(220px, 34%) 1fr;
+}
+
+#segments-list {
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  max-height: 340px;
+  overflow-y: auto;
+}
+
+.segment-button {
+  border: 0;
+  border-bottom: 1px solid #eef2f7;
+  border-radius: 0;
+  display: block;
+  padding: 8px 10px;
+  text-align: left;
+  width: 100%;
+}
+
+.segment-button.selected { background: #e2e8f0; }
+
+.segment-button .snippet {
+  color: var(--muted);
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.time-fields {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 1fr 1fr 100px;
+}
+
+.errors {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 5px;
+  color: var(--danger);
+  display: none;
+  margin: 12px 0;
+  padding: 9px;
+}
+
+.output summary {
+  color: var(--muted);
+  cursor: pointer;
+  margin-bottom: 8px;
+}
+
+pre {
+  background: #0f172a;
+  border-radius: 5px;
+  color: #e2e8f0;
+  font-size: 11px;
+  max-height: 280px;
+  overflow: auto;
+  padding: 10px;
+}
+
+@media (max-width: 760px) {
+  .topbar,
+  .task-header,
+  .submit-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .grid-two,
+  .layout,
+}
