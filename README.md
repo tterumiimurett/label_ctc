@@ -54,6 +54,34 @@ https://your-domain.com/annotate?PROLIFIC_PID={{%PROLIFIC_PID%}}&STUDY_ID={{%STU
 
 Do not send workers to `/api/assign` directly. `/api/assign` is the JSON endpoint that the browser page calls after `/annotate` loads.
 
+## How Prolific Fits In
+
+Prolific handles recruitment, payment, and completion tracking. This app handles task assignment, the annotation UI, and JSON storage.
+
+The integration has two edges:
+
+- Entry: Prolific sends workers to `/annotate` with `PROLIFIC_PID`, `STUDY_ID`, and `SESSION_ID`.
+- Exit: after `/api/submit` saves the JSON successfully, the browser redirects to `COMPLETION_URL`.
+
+Worker flow:
+
+1. A worker clicks the Prolific study link.
+2. Prolific opens `/annotate?...` with real participant/session IDs.
+3. The page calls `/api/assign` and receives one audio task by default.
+4. The worker labels the file-level CTC/PP status and edits the relevant timestamped segments.
+5. The page posts the annotation JSON to `/api/submit`.
+6. The server writes `conversation_annotation_app/data/submissions/SESSION_ID.json`.
+7. The browser redirects to the Prolific completion URL only after the save succeeds.
+
+URL roles:
+
+```text
+/annotate    Worker-facing annotation page
+/api/assign  Internal JSON task-assignment endpoint
+/api/submit  Internal JSON submission endpoint
+/healthz     Server health check
+```
+
 ## Saved Data
 
 Assignments are stored in:
