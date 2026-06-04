@@ -13,5 +13,11 @@ wheels/
 .DS_Store
 
 # Runtime annotation data
-conversation_annotation_app/data/assignments.json
-conversation_annotation_app/data/submissions/*.json
+prolific/conversation_annotation_app/data/assignments.json
+prolific/conversation_annotation_app/data/submissions/*.json
+
+# Generated annotation artifacts
+mturk/generated_mvp/
+label_studio/exports/
+label_studio/results/
+prolific/plan/*.html

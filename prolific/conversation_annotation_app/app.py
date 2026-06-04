@@ -20,11 +20,11 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from build_mturk_audio_mvp import build_payload  # noqa: E402
+from mturk.build_mturk_audio_mvp import build_payload  # noqa: E402
 
 
 DEFAULT_COMPLETION_URL = "https://app.prolific.com/submissions/complete"
@@ -352,7 +352,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--tasks",
         type=Path,
-        default=ROOT / "label_studio_tasks_test_predictions.json",
+        default=ROOT / "label_studio" / "data" / "tasks_test_predictions.json",
         help="Label Studio task JSON with predictions/annotations.",
     )
     parser.add_argument("--data-dir", type=Path, default=Path(__file__).with_name("data"))

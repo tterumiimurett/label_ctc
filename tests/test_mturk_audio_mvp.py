@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from build_mturk_audio_mvp import (
+from mturk.build_mturk_audio_mvp import (
     build_payload,
     generate,
     render_canvas_design_layout,

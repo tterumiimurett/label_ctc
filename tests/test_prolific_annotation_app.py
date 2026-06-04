@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from conversation_annotation_app.app import AnnotationStore, load_tasks, parse_args
+from prolific.conversation_annotation_app.app import AnnotationStore, load_tasks, parse_args
 
 
 class ConversationAnnotationAppTest(unittest.TestCase):

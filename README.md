@@ -1,112 +1,88 @@
 # CTC / PP Annotation Tools
 
-This repo contains two related annotation paths:
+This repo contains two annotation delivery paths plus shared Label Studio data tooling.
 
-- `build_mturk_audio_mvp.py` generates the existing single-task MTurk-style HTML preview.
-- `conversation_annotation_app/app.py` runs a Prolific-compatible pilot server with one `/annotate` page, `/api/assign` task assignment, and `/api/submit` JSON saving.
+## Repository Layout
 
-## Run The Prolific Pilot App
+```text
+prolific/      Prolific-compatible server, worker UI, runtime data dirs, and plan docs
+mturk/         MTurk HTMLQuestion/layout generator, vendored JS, and generated previews
+label_studio/  Label Studio config, input task data, exports, and summary utilities
+tests/         unittest coverage for both delivery paths
+```
 
-The pilot app uses only the Python standard library plus the existing repo code.
-After `git pull` on a server, start it with:
+## Prolific Pilot App
+
+The Prolific path uses one `/annotate` page, `/api/assign` task assignment, and `/api/submit` JSON saving. Start it with:
 
 ```bash
 COMPLETION_URL='https://app.prolific.com/submissions/complete?cc=YOUR_CODE' \
-scripts/run_annotation_app.sh
+prolific/run_annotation_app.sh
 ```
 
-The script listens on `0.0.0.0:8000` by default and reads `label_studio_tasks_test_predictions.json`.
-Override settings with environment variables:
+The script listens on `0.0.0.0:8000` by default and reads `label_studio/data/tasks_test_predictions.json`. Override settings with environment variables:
 
 ```bash
 HOST=0.0.0.0 \
 PORT=8000 \
-TASKS=label_studio_tasks_dev_predictions.json \
-DATA_DIR=conversation_annotation_app/data \
+TASKS=label_studio/data/tasks_dev_predictions.json \
+DATA_DIR=prolific/conversation_annotation_app/data \
 BUNDLE_SIZE=1 \
 REDUNDANCY=3 \
 COMPLETION_URL='https://app.prolific.com/submissions/complete?cc=YOUR_CODE' \
-scripts/run_annotation_app.sh
+prolific/run_annotation_app.sh
 ```
 
 Equivalent direct Python command:
 
 ```bash
-python conversation_annotation_app/app.py \
+python prolific/conversation_annotation_app/app.py \
   --host 0.0.0.0 \
   --port 8000 \
-  --tasks label_studio_tasks_test_predictions.json \
+  --tasks label_studio/data/tasks_test_predictions.json \
   --bundle-size 1 \
   --completion-url 'https://app.prolific.com/submissions/complete?cc=YOUR_CODE'
 ```
 
-Open the annotation page with Prolific URL parameters:
-
-```text
-http://127.0.0.1:8000/annotate?PROLIFIC_PID=PILOT_PID&STUDY_ID=PILOT_STUDY&SESSION_ID=PILOT_SESSION
-```
-
-For Prolific, set the study URL to:
+Set the Prolific study URL to:
 
 ```text
 https://your-domain.com/annotate?PROLIFIC_PID={{%PROLIFIC_PID%}}&STUDY_ID={{%STUDY_ID%}}&SESSION_ID={{%SESSION_ID%}}
 ```
 
-Do not send workers to `/api/assign` directly. `/api/assign` is the JSON endpoint that the browser page calls after `/annotate` loads.
+Runtime data is stored under `prolific/conversation_annotation_app/data/`: assignments in `assignments.json`, submissions in `submissions/SESSION_ID.json`.
 
-## How Prolific Fits In
+## MTurk Asset Generation
 
-Prolific handles recruitment, payment, and completion tracking. This app handles task assignment, the annotation UI, and JSON storage.
+The MTurk path generates a single-task preview, HTMLQuestion XML, Requester UI Design Layout, and JavaScript probe:
 
-The integration has two edges:
-
-- Entry: Prolific sends workers to `/annotate` with `PROLIFIC_PID`, `STUDY_ID`, and `SESSION_ID`.
-- Exit: after `/api/submit` saves the JSON successfully, the browser redirects to `COMPLETION_URL`.
-
-Worker flow:
-
-1. A worker clicks the Prolific study link.
-2. Prolific opens `/annotate?...` with real participant/session IDs.
-3. The page calls `/api/assign` and receives one audio task by default.
-4. The worker labels the file-level CTC/PP status and edits the relevant timestamped segments.
-5. The page posts the annotation JSON to `/api/submit`.
-6. The server writes `conversation_annotation_app/data/submissions/SESSION_ID.json`.
-7. The browser redirects to the Prolific completion URL only after the save succeeds.
-
-URL roles:
-
-```text
-/annotate    Worker-facing annotation page
-/api/assign  Internal JSON task-assignment endpoint
-/api/submit  Internal JSON submission endpoint
-/healthz     Server health check
+```bash
+python mturk/build_mturk_audio_mvp.py label_studio/data/tasks_test_predictions.json
 ```
 
-## Saved Data
+Generated files go to `mturk/generated_mvp/` by default. `mturk/vendor/` contains vendored WaveSurfer assets that are embedded into MTurk layouts so previews do not depend on CDN loading.
 
-Assignments are stored in:
+## Label Studio Utilities
 
-```text
-conversation_annotation_app/data/assignments.json
+Prepare Label Studio tasks from source CSV:
+
+```bash
+python label_studio/prepare_tasks.py \
+  label_studio/data/seamless_ctc_urls_split_ch_with_transcript_test.csv \
+  label_studio/data/tasks_test_predictions.json
 ```
 
-Submissions are stored as one JSON file per Prolific session:
+Summarize an export:
 
-```text
-conversation_annotation_app/data/submissions/SESSION_ID.json
+```bash
+python label_studio/summarize_ctc_status.py \
+  'label_studio/exports/labeled/labeled_export(1).json' \
+  --csv-out label_studio/results/ctc_status_summary_example.csv
 ```
-
-`--bundle-size 1` assigns one audio task per Prolific session. Increase it later for a multi-task pilot; if you do, every task in the bundle must have its own file-level label before submit.
-
-Each submission uses `conversation-annotation-v2` and includes:
-
-- `worker`: `PROLIFIC_PID`, `STUDY_ID`, `SESSION_ID`
-- `assignment`: bundle metadata
-- `tasks`: file-level CTC/PP labels, timestamped segments, transcripts, and UI metadata
 
 ## Local Checks
 
 ```bash
-python -m unittest -v
-python -m py_compile conversation_annotation_app/app.py
+python -m unittest discover -s tests -v
+python -m py_compile prolific/conversation_annotation_app/app.py
 ```

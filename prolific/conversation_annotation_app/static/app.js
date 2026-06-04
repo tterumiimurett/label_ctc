@@ -34,6 +34,11 @@
       .map((input) => input.value);
   }
 
+  function checkedValuesIn(container) {
+    return [...container.querySelectorAll('input[type="checkbox"]:checked')]
+      .map((input) => input.value);
+  }
+
   function taskState() {
     return state.taskState[state.index];
   }
@@ -52,12 +57,18 @@
   }
 
   function makeChecks(container, choices, name, checked) {
-    container.innerHTML = choices.map((choice) => `
-      <label class="choice">
-        <input type="checkbox" name="${name}" value="${escapeText(choice)}"
-          ${checked.includes(choice) ? 'checked' : ''}>
-        ${escapeText(choice)}
-      </label>`).join('');
+    container.replaceChildren();
+    choices.forEach((choice) => {
+      const label = document.createElement('label');
+      label.className = 'choice';
+      const input = document.createElement('input');
+      input.type = 'checkbox';
+      input.name = name;
+      input.value = choice;
+      input.checked = checked.includes(choice);
+      label.append(input, document.createTextNode(` ${choice}`));
+      container.append(label);
+    });
   }
 
   function makeOptions(select, choices, value) {
@@ -118,7 +129,7 @@
   }
 
   function renderTask(index) {
-    saveEditor();
+    persistCurrentTask();
     state.index = index;
     state.selectedId = null;
     destroyWave();
@@ -333,10 +344,16 @@
 
   function saveFileLevel(shouldSync = true) {
     const current = taskState();
-    current.fileLevel.target_status = checkedValues('target_status');
+    current.fileLevel.target_status = checkedValuesIn(byId('target-status'));
     current.fileLevel.audio_quality = byId('audio-quality').value;
     current.fileLevel.transcript_quality = byId('transcript-quality').value;
     if (shouldSync) syncOutput();
+  }
+
+  function persistCurrentTask() {
+    if (!state.assignment || !taskState()) return;
+    saveEditor(false);
+    saveFileLevel(false);
   }
 
   function taskPayload(current) {
@@ -345,7 +362,11 @@
       audio_url: current.task.task.audio_url,
       dataset: current.task.task.dataset,
       bundle_id: state.assignment.bundle_id,
-      file_level: current.fileLevel,
+      file_level: {
+        target_status: [...current.fileLevel.target_status],
+        audio_quality: current.fileLevel.audio_quality,
+        transcript_quality: current.fileLevel.transcript_quality,
+      },
       segments: [...current.segments.values()].map((segment) => ({
         segment_id: segment.id,
         channel: segment.channel,
@@ -364,8 +385,7 @@
   }
 
   function submissionPayload() {
-    saveEditor(false);
-    saveFileLevel(false);
+    persistCurrentTask();
     return {
       schema_version: 'conversation-annotation-v2',
       worker: state.worker,

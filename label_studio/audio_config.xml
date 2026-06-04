@@ -1,4 +1,10 @@
 <View>
+  <Header value="File-level flags"/>
+  <Choices name="ctc_status" toName="stereo" choice="single" required="true">
+    <Choice value="is_CTC"/>
+    <Choice value="not_CTC"/>
+  </Choices>
+
   <Header value="Stereo reference playback"/>
   <Audio name="stereo" value="$audio" hotkey="space" height="96"/>
 
@@ -12,5 +18,14 @@
   <View visibleWhen="region-selected">
     <Header value="Transcript for selected segment"/>
     <TextArea name="transcript" toName="audio_lr" perRegion="true" editable="true" rows="3" required="true"/>
+
+    <Header value="Segment-level flags"/>
+    <Choices name="segment_flags" toName="audio_lr" perRegion="true" choice="multiple">
+      <Choice value="incorrect_guess"/>
+      <Choice value="is_prompt"/>
+    </Choices>
+
+    <Header value="Optional segment note"/>
+    <TextArea name="segment_note" toName="audio_lr" perRegion="true" editable="true" rows="2"/>
   </View>
 </View>

@@ -139,7 +139,7 @@ def render_design_layout(html: str) -> str:
     content = content.replace(
         '    <input type="hidden" name="assignmentId" id="assignmentId" value="">\n', "", 1
     )
-    vendor_dir = Path(__file__).with_name("mturk_vendor")
+    vendor_dir = Path(__file__).with_name("vendor")
     wavesurfer = (vendor_dir / "wavesurfer.min.js").read_text(encoding="utf-8")
     regions = (vendor_dir / "regions.min.js").read_text(encoding="utf-8")
     wavesurfer = wavesurfer.replace("</script", "<\\/script")
@@ -260,7 +260,7 @@ def main() -> None:
     )
     parser.add_argument("input_json", type=Path)
     parser.add_argument("--task-index", type=int, default=0, help="Zero-based task index.")
-    parser.add_argument("--output-dir", type=Path, default=Path("mturk_mvp"))
+    parser.add_argument("--output-dir", type=Path, default=Path("mturk/generated_mvp"))
     args = parser.parse_args()
 
     html_path, xml_path, layout_path, probe_path = generate(
