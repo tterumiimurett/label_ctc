@@ -18,6 +18,5 @@ prolific/conversation_annotation_app/data/submissions/*.json
 
 # Generated annotation artifacts
 mturk/generated_mvp/
-label_studio/exports/
 label_studio/results/
 prolific/plan/*.html
