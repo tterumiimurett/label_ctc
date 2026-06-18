@@ -77,6 +77,56 @@
     ).join('');
   }
 
+  function numberValue(id) {
+    const value = byId(id).value.trim();
+    return value === '' ? null : round(Number(value));
+  }
+
+  function setValue(id, value) {
+    byId(id).value = value ?? '';
+  }
+
+  function setNumberValue(id, value) {
+    byId(id).value = value === null || value === undefined ? '' : String(value);
+  }
+
+  function initialPhenomenonType(task) {
+    const choices = task.ctc_status || [];
+    if (choices.includes('Pragmatic_Pairs')) return 'pragmatic_pair';
+    if (choices.some((choice) => ['is_CTC', 'Buzz_in', 'in_the_Middle'].includes(choice))) return 'ctc';
+    if (choices.includes('not_CTC')) return 'not_target';
+    return '';
+  }
+
+  function defaultPhenomenon(task) {
+    const choices = task.ctc_status || [];
+    return {
+      phenomenon_type: initialPhenomenonType(task),
+      note: '',
+      ctc: {
+        speaker_state: choices.includes('Buzz_in') ? 'not_stalled_projection' : '',
+        interruption_type: choices.includes('Buzz_in') ? 'buzz_in' : '',
+        interrupted_speaker: '',
+        interrupter_speaker: '',
+        utterance_start: null,
+        stall_time: null,
+        interruption_start: null,
+        interruption_end: null,
+        guess_accuracy: '',
+        interrupter_becomes_main_speaker: false,
+        guidance_followup: '',
+      },
+      pragmatic_pair: {
+        question_speaker: '',
+        response_speaker: '',
+        question_start: null,
+        question_end: null,
+        response_start: null,
+        response_end: null,
+      },
+    };
+  }
+
   async function init() {
     const query = params();
     const required = ['PROLIFIC_PID', 'STUDY_ID', 'SESSION_ID'];
@@ -116,6 +166,7 @@
         audio_quality: 'usable',
         transcript_quality: 'needs_minor_correction',
       },
+      phenomenon: defaultPhenomenon(task),
       segments: new Map(task.segments.map((segment) => [
         segment.id,
         {
@@ -147,6 +198,7 @@
     makeChecks(byId('segment-flags'), task.choices.segment_flags, 'segment_flags', []);
     makeOptions(byId('audio-quality'), task.choices.audio_quality, current.fileLevel.audio_quality);
     makeOptions(byId('transcript-quality'), task.choices.transcript_quality, current.fileLevel.transcript_quality);
+    renderPhenomenon();
     byId('fallback-audio').src = task.task.audio_url;
 
     renderList();
@@ -217,6 +269,65 @@
       region.setContent(`${channelLabel(segment.channel)} ${fmt(segment.start)}-${fmt(segment.end)}`);
     }
     renderList();
+    if (shouldSync) syncOutput();
+  }
+
+  function renderPhenomenon() {
+    const phenomenon = taskState().phenomenon;
+    setValue('phenomenon-type', phenomenon.phenomenon_type);
+    setValue('phenomenon-note', phenomenon.note);
+    setValue('ctc-speaker-state', phenomenon.ctc.speaker_state);
+    setValue('ctc-interruption-type', phenomenon.ctc.interruption_type);
+    setValue('ctc-interrupted-speaker', phenomenon.ctc.interrupted_speaker);
+    setValue('ctc-interrupter-speaker', phenomenon.ctc.interrupter_speaker);
+    setNumberValue('ctc-utterance-start', phenomenon.ctc.utterance_start);
+    setNumberValue('ctc-stall-time', phenomenon.ctc.stall_time);
+    setNumberValue('ctc-interruption-start', phenomenon.ctc.interruption_start);
+    setNumberValue('ctc-interruption-end', phenomenon.ctc.interruption_end);
+    setValue('ctc-guess-accuracy', phenomenon.ctc.guess_accuracy);
+    byId('ctc-speaker-shift').checked = phenomenon.ctc.interrupter_becomes_main_speaker;
+    setValue('ctc-guidance-followup', phenomenon.ctc.guidance_followup);
+    setValue('pp-question-speaker', phenomenon.pragmatic_pair.question_speaker);
+    setValue('pp-response-speaker', phenomenon.pragmatic_pair.response_speaker);
+    setNumberValue('pp-question-start', phenomenon.pragmatic_pair.question_start);
+    setNumberValue('pp-question-end', phenomenon.pragmatic_pair.question_end);
+    setNumberValue('pp-response-start', phenomenon.pragmatic_pair.response_start);
+    setNumberValue('pp-response-end', phenomenon.pragmatic_pair.response_end);
+    syncPhenomenonVisibility();
+  }
+
+  function syncPhenomenonVisibility() {
+    const type = byId('phenomenon-type').value;
+    byId('ctc-fields').hidden = type !== 'ctc';
+    byId('pp-fields').hidden = type !== 'pragmatic_pair';
+  }
+
+  function savePhenomenon(shouldSync = true) {
+    const phenomenon = taskState().phenomenon;
+    phenomenon.phenomenon_type = byId('phenomenon-type').value;
+    phenomenon.note = byId('phenomenon-note').value.trim();
+    phenomenon.ctc = {
+      speaker_state: byId('ctc-speaker-state').value,
+      interruption_type: byId('ctc-interruption-type').value,
+      interrupted_speaker: byId('ctc-interrupted-speaker').value,
+      interrupter_speaker: byId('ctc-interrupter-speaker').value,
+      utterance_start: numberValue('ctc-utterance-start'),
+      stall_time: numberValue('ctc-stall-time'),
+      interruption_start: numberValue('ctc-interruption-start'),
+      interruption_end: numberValue('ctc-interruption-end'),
+      guess_accuracy: byId('ctc-guess-accuracy').value,
+      interrupter_becomes_main_speaker: byId('ctc-speaker-shift').checked,
+      guidance_followup: byId('ctc-guidance-followup').value.trim(),
+    };
+    phenomenon.pragmatic_pair = {
+      question_speaker: byId('pp-question-speaker').value,
+      response_speaker: byId('pp-response-speaker').value,
+      question_start: numberValue('pp-question-start'),
+      question_end: numberValue('pp-question-end'),
+      response_start: numberValue('pp-response-start'),
+      response_end: numberValue('pp-response-end'),
+    };
+    syncPhenomenonVisibility();
     if (shouldSync) syncOutput();
   }
 
@@ -354,6 +465,7 @@
     if (!state.assignment || !taskState()) return;
     saveEditor(false);
     saveFileLevel(false);
+    savePhenomenon(false);
   }
 
   function taskPayload(current) {
@@ -366,6 +478,12 @@
         target_status: [...current.fileLevel.target_status],
         audio_quality: current.fileLevel.audio_quality,
         transcript_quality: current.fileLevel.transcript_quality,
+      },
+      phenomenon: {
+        phenomenon_type: current.phenomenon.phenomenon_type,
+        note: current.phenomenon.note,
+        ctc: {...current.phenomenon.ctc},
+        pragmatic_pair: {...current.phenomenon.pragmatic_pair},
       },
       segments: [...current.segments.values()].map((segment) => ({
         segment_id: segment.id,
@@ -408,18 +526,57 @@
     const errors = [];
     let firstInvalidTask = null;
     payload.tasks.forEach((task, taskIndex) => {
-      if (!task.file_level.target_status.length) {
-        errors.push(`Task ${taskIndex + 1}: select at least one target status in File-level labels.`);
+      const addTaskError = (message) => {
+        errors.push(message);
         if (firstInvalidTask === null) firstInvalidTask = taskIndex;
+      };
+      if (!task.file_level.target_status.length) {
+        addTaskError(`Task ${taskIndex + 1}: select at least one target status in File-level labels.`);
+      }
+      const phenomenon = task.phenomenon || {};
+      if (!phenomenon.phenomenon_type) {
+        addTaskError(`Task ${taskIndex + 1}: select a phenomenon type.`);
+      }
+      if (phenomenon.phenomenon_type === 'ctc') {
+        const ctc = phenomenon.ctc || {};
+        if (!ctc.speaker_state) addTaskError(`Task ${taskIndex + 1}: select the CTC speaker state.`);
+        if (!ctc.interruption_type) addTaskError(`Task ${taskIndex + 1}: select the CTC interruption type.`);
+        if (!ctc.interrupted_speaker || !ctc.interrupter_speaker) {
+          addTaskError(`Task ${taskIndex + 1}: select interrupted speaker and interrupter.`);
+        }
+        if (ctc.interruption_start === null) {
+          addTaskError(`Task ${taskIndex + 1}: enter the CTC interruption start time.`);
+        }
+        if (ctc.interruption_end !== null && ctc.interruption_start !== null && ctc.interruption_end <= ctc.interruption_start) {
+          addTaskError(`Task ${taskIndex + 1}: CTC interruption end must be after start.`);
+        }
+      }
+      if (phenomenon.phenomenon_type === 'pragmatic_pair') {
+        const pair = phenomenon.pragmatic_pair || {};
+        if (!pair.question_speaker || !pair.response_speaker) {
+          addTaskError(`Task ${taskIndex + 1}: select Pragmatic Pair question and response speakers.`);
+        }
+        [
+          ['question_start', pair.question_start],
+          ['question_end', pair.question_end],
+          ['response_start', pair.response_start],
+          ['response_end', pair.response_end],
+        ].forEach(([name, value]) => {
+          if (value === null) addTaskError(`Task ${taskIndex + 1}: enter Pragmatic Pair ${name.replace('_', ' ')}.`);
+        });
+        if (pair.question_start !== null && pair.question_end !== null && pair.question_end <= pair.question_start) {
+          addTaskError(`Task ${taskIndex + 1}: Pragmatic Pair question end must be after start.`);
+        }
+        if (pair.response_start !== null && pair.response_end !== null && pair.response_end <= pair.response_start) {
+          addTaskError(`Task ${taskIndex + 1}: Pragmatic Pair response end must be after start.`);
+        }
       }
       task.segments.forEach((segment, segmentIndex) => {
         if (!segment.transcript) {
-          errors.push(`Task ${taskIndex + 1}, segment ${segmentIndex + 1}: transcript is required.`);
-          if (firstInvalidTask === null) firstInvalidTask = taskIndex;
+          addTaskError(`Task ${taskIndex + 1}, segment ${segmentIndex + 1}: transcript is required.`);
         }
         if (segment.end <= segment.start) {
-          errors.push(`Task ${taskIndex + 1}, segment ${segmentIndex + 1}: start must be before end.`);
-          if (firstInvalidTask === null) firstInvalidTask = taskIndex;
+          addTaskError(`Task ${taskIndex + 1}, segment ${segmentIndex + 1}: start must be before end.`);
         }
       });
     });
@@ -474,6 +631,30 @@
   byId('target-status').addEventListener('change', saveFileLevel);
   byId('audio-quality').addEventListener('change', saveFileLevel);
   byId('transcript-quality').addEventListener('change', saveFileLevel);
+  [
+    'phenomenon-type',
+    'phenomenon-note',
+    'ctc-speaker-state',
+    'ctc-interruption-type',
+    'ctc-interrupted-speaker',
+    'ctc-interrupter-speaker',
+    'ctc-utterance-start',
+    'ctc-stall-time',
+    'ctc-interruption-start',
+    'ctc-interruption-end',
+    'ctc-guess-accuracy',
+    'ctc-speaker-shift',
+    'ctc-guidance-followup',
+    'pp-question-speaker',
+    'pp-response-speaker',
+    'pp-question-start',
+    'pp-question-end',
+    'pp-response-start',
+    'pp-response-end',
+  ].forEach((id) => {
+    byId(id).addEventListener('input', savePhenomenon);
+    byId(id).addEventListener('change', savePhenomenon);
+  });
   byId('transcript').addEventListener('input', saveEditor);
   byId('note').addEventListener('input', saveEditor);
   byId('channel').addEventListener('change', saveEditor);

@@ -123,6 +123,7 @@ button:disabled {
 }
 
 input[type="text"],
+input[type="number"],
 select,
 textarea {
   border: 1px solid #cbd5e1;
@@ -135,6 +136,25 @@ textarea {
 }
 
 textarea { resize: vertical; }
+
+.field-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.taxonomy-fields {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  margin-top: 12px;
+  padding: 12px;
+}
+
+.checkbox-field {
+  align-self: end;
+  min-height: 34px;
+}
 
 #fallback-audio {
   display: block;
@@ -250,4 +270,8 @@ pre {
 
   .grid-two,
   .layout,
+  .field-grid,
+  .time-fields {
+    grid-template-columns: 1fr;
+  }
 }

@@ -57,6 +57,127 @@
       </section>
 
       <section class="card">
+        <h2>Phenomenon annotation</h2>
+        <p class="muted">
+          First decide whether this clip contains CTC or Pragmatic Pairs. Ignore synthetic-data categories.
+          Use the waveform regions below to check and correct transcript/timestamps.
+        </p>
+        <div class="field-grid">
+          <label>Phenomenon type
+            <select id="phenomenon-type">
+              <option value="">Select...</option>
+              <option value="not_target">Not CTC / not Pragmatic Pair</option>
+              <option value="ctc">Collaborative Turn Completion / Buzz-in</option>
+              <option value="pragmatic_pair">Pragmatic Pair</option>
+              <option value="unclear">Unclear / needs review</option>
+            </select>
+          </label>
+          <label>Primary annotator note
+            <textarea id="phenomenon-note" rows="2" placeholder="Brief reason or uncertainty, if useful."></textarea>
+          </label>
+        </div>
+
+        <fieldset id="ctc-fields" class="taxonomy-fields" hidden>
+          <legend>CTC / Buzz-in details</legend>
+          <div class="field-grid">
+            <label>Speaker state
+              <select id="ctc-speaker-state">
+                <option value="">Select...</option>
+                <option value="stalled">Speaker is stuck / word retrieval problem</option>
+                <option value="not_stalled_projection">Speaker is not stuck; other speaker projects next words</option>
+                <option value="unclear">Unclear</option>
+              </select>
+            </label>
+            <label>Interruption type
+              <select id="ctc-interruption-type">
+                <option value="">Select...</option>
+                <option value="provide_word">Provides word / phrase</option>
+                <option value="question_offer">Provides candidate as a question</option>
+                <option value="guiding_prompt">Guiding prompt</option>
+                <option value="buzz_in">Buzz-in / speech projection</option>
+                <option value="other">Other / needs note</option>
+              </select>
+            </label>
+            <label>Interrupted speaker
+              <select id="ctc-interrupted-speaker">
+                <option value="">Select...</option>
+                <option value="Left">Left</option>
+                <option value="Right">Right</option>
+              </select>
+            </label>
+            <label>Interrupter
+              <select id="ctc-interrupter-speaker">
+                <option value="">Select...</option>
+                <option value="Left">Left</option>
+                <option value="Right">Right</option>
+              </select>
+            </label>
+            <label>Interrupted utterance start (s)
+              <input type="number" id="ctc-utterance-start" step="0.01" min="0">
+            </label>
+            <label>Stall / last semantic word end (s)
+              <input type="number" id="ctc-stall-time" step="0.01" min="0">
+            </label>
+            <label>Interruption start (s)
+              <input type="number" id="ctc-interruption-start" step="0.01" min="0">
+            </label>
+            <label>Interruption end (s)
+              <input type="number" id="ctc-interruption-end" step="0.01" min="0">
+            </label>
+            <label>Guess accuracy
+              <select id="ctc-guess-accuracy">
+                <option value="">Select...</option>
+                <option value="correct">Correct</option>
+                <option value="partial">Partially correct</option>
+                <option value="incorrect">Incorrect</option>
+                <option value="unclear">Unclear</option>
+                <option value="not_applicable">Not applicable</option>
+              </select>
+            </label>
+            <label class="choice checkbox-field">
+              <input type="checkbox" id="ctc-speaker-shift">
+              Interrupter becomes the main speaker after interruption
+            </label>
+          </div>
+          <label>Guiding prompt follow-up, if applicable
+            <textarea id="ctc-guidance-followup" rows="2" placeholder="Prompt, original speaker description, and response after the description."></textarea>
+          </label>
+        </fieldset>
+
+        <fieldset id="pp-fields" class="taxonomy-fields" hidden>
+          <legend>Pragmatic Pair details</legend>
+          <div class="field-grid">
+            <label>Question / first-pair-part speaker
+              <select id="pp-question-speaker">
+                <option value="">Select...</option>
+                <option value="Left">Left</option>
+                <option value="Right">Right</option>
+              </select>
+            </label>
+            <label>Response speaker
+              <select id="pp-response-speaker">
+                <option value="">Select...</option>
+                <option value="Left">Left</option>
+                <option value="Right">Right</option>
+              </select>
+            </label>
+            <label>Question utterance start (s)
+              <input type="number" id="pp-question-start" step="0.01" min="0">
+            </label>
+            <label>Question utterance end (s)
+              <input type="number" id="pp-question-end" step="0.01" min="0">
+            </label>
+            <label>Response start (s)
+              <input type="number" id="pp-response-start" step="0.01" min="0">
+            </label>
+            <label>Response end (s)
+              <input type="number" id="pp-response-end" step="0.01" min="0">
+            </label>
+          </div>
+        </fieldset>
+      </section>
+
+      <section class="card">
         <h2>Stereo playback and timestamp annotation</h2>
         <div class="controls">
           <button id="play" type="button">Play / Pause</button>
