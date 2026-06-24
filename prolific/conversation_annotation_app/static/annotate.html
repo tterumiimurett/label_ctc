@@ -78,21 +78,44 @@
       </section>
 
       <section class="card">
-        <h2>File-level labels</h2>
-        <div class="grid-two">
-          <fieldset>
-            <legend>Target status <span class="muted">(select at least one)</span></legend>
-            <div class="flag-row" id="target-status"></div>
-          </fieldset>
-          <fieldset>
-            <legend>Quality</legend>
-            <label>Audio quality
-              <select id="audio-quality"></select>
-            </label>
-            <label>Transcript quality
-              <select id="transcript-quality"></select>
-            </label>
-          </fieldset>
+        <h2>Stereo playback and timestamp annotation</h2>
+        <div class="controls">
+          <button id="play" type="button">Play / Pause</button>
+          <button id="play-selected" type="button">Play selected segment</button>
+          <label class="choice"><input id="loop-selected" type="checkbox" checked> Loop selected segment</label>
+          <span id="time-display">0.00s / 0.00s</span>
+          <label>Zoom
+            <input id="zoom" type="range" min="10" max="220" value="50">
+          </label>
+        </div>
+        <audio id="fallback-audio" controls preload="metadata"></audio>
+        <div id="wave-status" class="muted">Waveform status: waiting.</div>
+        <div class="channel-key">
+          <span class="left"><i class="dot left-dot"></i>Left</span>
+          <span class="right"><i class="dot right-dot"></i>Right</span>
+        </div>
+        <div id="waveform"></div>
+        <div class="controls lower">
+          <strong>Create segment:</strong>
+          <label class="choice"><input type="radio" name="new_channel" value="0" checked> Left</label>
+          <label class="choice"><input type="radio" name="new_channel" value="1"> Right</label>
+          <span class="muted">Choose a channel, then drag on the waveform. Drag or resize regions to correct timestamps.</span>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Selected segment annotation</h2>
+        <div class="layout">
+          <div id="segments-list"></div>
+          <div id="editor">
+            <div class="muted" id="empty-editor">Select a timestamp region to edit its transcript.</div>
+            <fieldset id="segment-fields" disabled hidden>
+              <label>Transcript <span class="muted">(required)</span>
+                <textarea id="transcript" rows="5"></textarea>
+              </label>
+              <button type="button" id="delete-segment" class="danger">Delete selected segment</button>
+            </fieldset>
+          </div>
         </div>
       </section>
 
@@ -243,65 +266,6 @@
             </label>
           </div>
         </fieldset>
-      </section>
-
-      <section class="card">
-        <h2>Stereo playback and timestamp annotation</h2>
-        <div class="controls">
-          <button id="play" type="button">Play / Pause</button>
-          <button id="play-selected" type="button">Play selected segment</button>
-          <label class="choice"><input id="loop-selected" type="checkbox" checked> Loop selected segment</label>
-          <span id="time-display">0.00s / 0.00s</span>
-          <label>Zoom
-            <input id="zoom" type="range" min="10" max="220" value="50">
-          </label>
-        </div>
-        <audio id="fallback-audio" controls preload="metadata"></audio>
-        <div id="wave-status" class="muted">Waveform status: waiting.</div>
-        <div class="channel-key">
-          <span class="left"><i class="dot left-dot"></i>Left</span>
-          <span class="right"><i class="dot right-dot"></i>Right</span>
-        </div>
-        <div id="waveform"></div>
-        <div class="controls lower">
-          <strong>Create segment:</strong>
-          <label class="choice"><input type="radio" name="new_channel" value="0" checked> Left</label>
-          <label class="choice"><input type="radio" name="new_channel" value="1"> Right</label>
-          <span class="muted">Choose a channel, then drag on the waveform. Drag or resize regions to correct timestamps.</span>
-        </div>
-      </section>
-
-      <section class="card">
-        <h2>Selected segment annotation</h2>
-        <div class="layout">
-          <div id="segments-list"></div>
-          <div id="editor">
-            <div class="muted" id="empty-editor">Select a timestamp region to edit its annotation.</div>
-            <fieldset id="segment-fields" disabled hidden>
-              <div class="time-fields">
-                <label>Start (s)<input type="text" id="start-time" readonly></label>
-                <label>End (s)<input type="text" id="end-time" readonly></label>
-                <label>Channel
-                  <select id="channel">
-                    <option value="0">Left</option>
-                    <option value="1">Right</option>
-                  </select>
-                </label>
-              </div>
-              <label>Transcript <span class="muted">(required)</span>
-                <textarea id="transcript" rows="3"></textarea>
-              </label>
-              <fieldset>
-                <legend>Segment flags</legend>
-                <div class="flag-row" id="segment-flags"></div>
-              </fieldset>
-              <label>Optional segment note
-                <textarea id="note" rows="2"></textarea>
-              </label>
-              <button type="button" id="delete-segment" class="danger">Delete selected segment</button>
-            </fieldset>
-          </div>
-        </div>
       </section>
 
       <div id="errors" class="errors"></div>

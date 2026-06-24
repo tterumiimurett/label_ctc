@@ -260,10 +260,6 @@
     byId('prev-task').disabled = index === 0;
     byId('next-task').disabled = index === state.tasks.length - 1;
 
-    makeChecks(byId('target-status'), task.choices.ctc_status, 'target_status', current.fileLevel.target_status);
-    makeChecks(byId('segment-flags'), task.choices.segment_flags, 'segment_flags', []);
-    makeOptions(byId('audio-quality'), task.choices.audio_quality, current.fileLevel.audio_quality);
-    makeOptions(byId('transcript-quality'), task.choices.transcript_quality, current.fileLevel.transcript_quality);
     renderPhenomenon();
     byId('fallback-audio').src = task.task.audio_url;
 
@@ -311,14 +307,7 @@
     byId('segment-fields').hidden = false;
     byId('segment-fields').disabled = false;
     byId('empty-editor').hidden = true;
-    byId('start-time').value = fmt(segment.start);
-    byId('end-time').value = fmt(segment.end);
-    byId('channel').value = String(segment.channel);
     byId('transcript').value = segment.transcript;
-    byId('note').value = segment.note;
-    byId('segment-flags').querySelectorAll('input').forEach((input) => {
-      input.checked = segment.flags.includes(input.value);
-    });
     renderList();
   }
 
@@ -326,15 +315,6 @@
     const segment = selectedSegment();
     if (!segment) return;
     segment.transcript = byId('transcript').value;
-    segment.note = byId('note').value;
-    segment.flags = checkedValues('segment_flags');
-    segment.channel = Number(byId('channel').value);
-    segment.label = channelLabel(segment.channel);
-    const region = state.regionById.get(segment.id);
-    if (region) {
-      region.setOptions({channelIdx: segment.channel, color: channelColor(segment.channel)});
-      region.setContent(`${channelLabel(segment.channel)} ${fmt(segment.start)}-${fmt(segment.end)}`);
-    }
     renderList();
     if (shouldSync) syncOutput();
   }
@@ -532,10 +512,6 @@
   }
 
   function saveFileLevel(shouldSync = true) {
-    const current = taskState();
-    current.fileLevel.target_status = checkedValuesIn(byId('target-status'));
-    current.fileLevel.audio_quality = byId('audio-quality').value;
-    current.fileLevel.transcript_quality = byId('transcript-quality').value;
     if (shouldSync) syncOutput();
   }
 
@@ -608,9 +584,6 @@
         errors.push(message);
         if (firstInvalidTask === null) firstInvalidTask = taskIndex;
       };
-      if (!task.file_level.target_status.length) {
-        addTaskError(`Task ${taskIndex + 1}: select at least one target status in File-level labels.`);
-      }
       const phenomenon = task.phenomenon || {};
       if (!phenomenon.phenomenon_type) {
         addTaskError(`Task ${taskIndex + 1}: select a phenomenon type.`);
@@ -740,9 +713,6 @@
 
   byId('prev-task').addEventListener('click', () => renderTask(Math.max(0, state.index - 1)));
   byId('next-task').addEventListener('click', () => renderTask(Math.min(state.tasks.length - 1, state.index + 1)));
-  byId('target-status').addEventListener('change', saveFileLevel);
-  byId('audio-quality').addEventListener('change', saveFileLevel);
-  byId('transcript-quality').addEventListener('change', saveFileLevel);
   [
     'phenomenon-type',
     'phenomenon-note',
@@ -792,9 +762,6 @@
     if (segmentId) selectSegment(segmentId);
   });
   byId('transcript').addEventListener('input', saveEditor);
-  byId('note').addEventListener('input', saveEditor);
-  byId('channel').addEventListener('change', saveEditor);
-  byId('segment-flags').addEventListener('change', saveEditor);
   byId('delete-segment').addEventListener('click', () => {
     const region = state.regionById.get(state.selectedId);
     if (region) region.remove();
