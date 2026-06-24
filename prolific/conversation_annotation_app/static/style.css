@@ -56,6 +56,36 @@ h2 { font-size: 15px; margin: 0 0 12px; }
 
 .status { background: var(--panel); }
 
+.instructions {
+  background: #fbfdfd;
+}
+
+.instructions p {
+  margin: 0 0 10px;
+}
+
+.example-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.example {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  padding: 10px;
+}
+
+.example strong,
+.example span {
+  color: var(--ink);
+  display: block;
+  margin-bottom: 4px;
+}
+
 fieldset {
   border: 0;
   margin: 0 0 10px;
@@ -141,6 +171,10 @@ textarea { resize: vertical; }
   display: grid;
   gap: 12px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.wide-field {
+  grid-column: 1 / -1;
 }
 
 .taxonomy-fields {
@@ -269,6 +303,7 @@ pre {
   }
 
   .grid-two,
+  .example-grid,
   .layout,
   .field-grid,
   .time-fields {

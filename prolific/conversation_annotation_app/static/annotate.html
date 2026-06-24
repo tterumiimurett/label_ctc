@@ -37,6 +37,46 @@
         </div>
       </section>
 
+      <section class="card instructions">
+        <h2>Annotation guide</h2>
+        <p class="muted">
+          Use the preloaded speech segments as candidates. Select the relevant utterance pair first,
+          then adjust timestamps and transcripts below if the automatic labels are slightly off.
+        </p>
+        <div class="example-grid">
+          <div class="example">
+            <strong>CTC: stuck speaker</strong>
+            <span>A: "It's a low..." B: "impact."</span>
+            Mark A as interrupted, B as interrupting, type "provides word / phrase".
+          </div>
+          <div class="example">
+            <strong>CTC: candidate question</strong>
+            <span>A: "The third one is..." B: "Rumpelstiltskin?"</span>
+            Mark as question-form offer and note accuracy.
+          </div>
+          <div class="example">
+            <strong>Guiding prompt</strong>
+            <span>A is stuck; B asks "What did it sound like?"</span>
+            Mark the prompt and describe the follow-up exchange.
+          </div>
+          <div class="example">
+            <strong>Buzz-in / projection</strong>
+            <span>A is not stuck; B guesses or overlaps with A's next words.</span>
+            Mark the interrupting segment and overlap/interruption times.
+          </div>
+          <div class="example">
+            <strong>Pragmatic Pair</strong>
+            <span>A asks a short question; B gives the paired response.</span>
+            Select the question segment and the response segment.
+          </div>
+          <div class="example">
+            <strong>Not target</strong>
+            <span>The two segments do not complete one utterance or form a required pair.</span>
+            Choose "Not CTC / not Pragmatic Pair".
+          </div>
+        </div>
+      </section>
+
       <section class="card">
         <h2>File-level labels</h2>
         <div class="grid-two">
@@ -79,7 +119,21 @@
 
         <fieldset id="ctc-fields" class="taxonomy-fields" hidden>
           <legend>CTC / Buzz-in details</legend>
+          <p class="muted">
+            Select the interrupted utterance and interrupting utterance from the preloaded regions.
+            The speaker and timestamp fields will auto-fill, but remain editable.
+          </p>
           <div class="field-grid">
+            <label class="wide-field">Interrupted utterance segment
+              <select id="ctc-interrupted-segment">
+                <option value="">Select a preloaded segment...</option>
+              </select>
+            </label>
+            <label class="wide-field">Interrupting utterance segment
+              <select id="ctc-interrupting-segment">
+                <option value="">Select a preloaded segment...</option>
+              </select>
+            </label>
             <label>Speaker state
               <select id="ctc-speaker-state">
                 <option value="">Select...</option>
@@ -146,7 +200,21 @@
 
         <fieldset id="pp-fields" class="taxonomy-fields" hidden>
           <legend>Pragmatic Pair details</legend>
+          <p class="muted">
+            Select the first pair part, usually the short question/prompt, and the response.
+            Auto-filled timestamps can be edited after selection.
+          </p>
           <div class="field-grid">
+            <label class="wide-field">Question / first-pair-part segment
+              <select id="pp-question-segment">
+                <option value="">Select a preloaded segment...</option>
+              </select>
+            </label>
+            <label class="wide-field">Response segment
+              <select id="pp-response-segment">
+                <option value="">Select a preloaded segment...</option>
+              </select>
+            </label>
             <label>Question / first-pair-part speaker
               <select id="pp-question-speaker">
                 <option value="">Select...</option>

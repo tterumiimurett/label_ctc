@@ -90,6 +90,68 @@
     byId(id).value = value === null || value === undefined ? '' : String(value);
   }
 
+  function segmentOptionLabel(segment) {
+    const transcript = String(segment.transcript || '(transcript required)').replace(/\s+/g, ' ').trim();
+    const snippet = transcript.length > 88 ? `${transcript.slice(0, 85)}...` : transcript;
+    return `${channelLabel(segment.channel)} ${fmt(segment.start)}-${fmt(segment.end)} | ${snippet}`;
+  }
+
+  function populateSegmentSelect(select, selectedId) {
+    const empty = new Option('Select a preloaded segment...', '');
+    select.replaceChildren(empty);
+    sortedSegments().forEach((segment) => {
+      select.append(new Option(segmentOptionLabel(segment), segment.id));
+    });
+    select.value = selectedId && segments().has(selectedId) ? selectedId : '';
+  }
+
+  function refreshSegmentSelectors() {
+    if (!state.assignment || !taskState()) return;
+    const phenomenon = taskState().phenomenon;
+    populateSegmentSelect(byId('ctc-interrupted-segment'), phenomenon.ctc.interrupted_segment_id);
+    populateSegmentSelect(byId('ctc-interrupting-segment'), phenomenon.ctc.interrupting_segment_id);
+    populateSegmentSelect(byId('pp-question-segment'), phenomenon.pragmatic_pair.question_segment_id);
+    populateSegmentSelect(byId('pp-response-segment'), phenomenon.pragmatic_pair.response_segment_id);
+  }
+
+  function fillCtcInterruptedFromSegment(segmentId) {
+    const segment = segments().get(segmentId);
+    if (!segment) return;
+    setValue('ctc-interrupted-speaker', channelLabel(segment.channel));
+    setNumberValue('ctc-utterance-start', segment.start);
+    setNumberValue('ctc-stall-time', segment.end);
+  }
+
+  function fillCtcInterruptingFromSegment(segmentId) {
+    const segment = segments().get(segmentId);
+    if (!segment) return;
+    setValue('ctc-interrupter-speaker', channelLabel(segment.channel));
+    setNumberValue('ctc-interruption-start', segment.start);
+    setNumberValue('ctc-interruption-end', segment.end);
+  }
+
+  function fillPragmaticPairSegment(role, segmentId) {
+    const segment = segments().get(segmentId);
+    if (!segment) return;
+    if (role === 'question') {
+      setValue('pp-question-speaker', channelLabel(segment.channel));
+      setNumberValue('pp-question-start', segment.start);
+      setNumberValue('pp-question-end', segment.end);
+    } else {
+      setValue('pp-response-speaker', channelLabel(segment.channel));
+      setNumberValue('pp-response-start', segment.start);
+      setNumberValue('pp-response-end', segment.end);
+    }
+  }
+
+  function clearDeletedSegmentReference(segmentId) {
+    const phenomenon = taskState().phenomenon;
+    if (phenomenon.ctc.interrupted_segment_id === segmentId) phenomenon.ctc.interrupted_segment_id = '';
+    if (phenomenon.ctc.interrupting_segment_id === segmentId) phenomenon.ctc.interrupting_segment_id = '';
+    if (phenomenon.pragmatic_pair.question_segment_id === segmentId) phenomenon.pragmatic_pair.question_segment_id = '';
+    if (phenomenon.pragmatic_pair.response_segment_id === segmentId) phenomenon.pragmatic_pair.response_segment_id = '';
+  }
+
   function initialPhenomenonType(task) {
     const choices = task.ctc_status || [];
     if (choices.includes('Pragmatic_Pairs')) return 'pragmatic_pair';
@@ -104,6 +166,8 @@
       phenomenon_type: initialPhenomenonType(task),
       note: '',
       ctc: {
+        interrupted_segment_id: '',
+        interrupting_segment_id: '',
         speaker_state: choices.includes('Buzz_in') ? 'not_stalled_projection' : '',
         interruption_type: choices.includes('Buzz_in') ? 'buzz_in' : '',
         interrupted_speaker: '',
@@ -117,6 +181,8 @@
         guidance_followup: '',
       },
       pragmatic_pair: {
+        question_segment_id: '',
+        response_segment_id: '',
         question_speaker: '',
         response_speaker: '',
         question_start: null,
@@ -229,6 +295,7 @@
     list.querySelectorAll('[data-segment-id]').forEach((button) => {
       button.addEventListener('click', () => selectSegment(button.dataset.segmentId));
     });
+    refreshSegmentSelectors();
   }
 
   function selectSegment(id) {
@@ -274,8 +341,11 @@
 
   function renderPhenomenon() {
     const phenomenon = taskState().phenomenon;
+    refreshSegmentSelectors();
     setValue('phenomenon-type', phenomenon.phenomenon_type);
     setValue('phenomenon-note', phenomenon.note);
+    setValue('ctc-interrupted-segment', phenomenon.ctc.interrupted_segment_id);
+    setValue('ctc-interrupting-segment', phenomenon.ctc.interrupting_segment_id);
     setValue('ctc-speaker-state', phenomenon.ctc.speaker_state);
     setValue('ctc-interruption-type', phenomenon.ctc.interruption_type);
     setValue('ctc-interrupted-speaker', phenomenon.ctc.interrupted_speaker);
@@ -287,6 +357,8 @@
     setValue('ctc-guess-accuracy', phenomenon.ctc.guess_accuracy);
     byId('ctc-speaker-shift').checked = phenomenon.ctc.interrupter_becomes_main_speaker;
     setValue('ctc-guidance-followup', phenomenon.ctc.guidance_followup);
+    setValue('pp-question-segment', phenomenon.pragmatic_pair.question_segment_id);
+    setValue('pp-response-segment', phenomenon.pragmatic_pair.response_segment_id);
     setValue('pp-question-speaker', phenomenon.pragmatic_pair.question_speaker);
     setValue('pp-response-speaker', phenomenon.pragmatic_pair.response_speaker);
     setNumberValue('pp-question-start', phenomenon.pragmatic_pair.question_start);
@@ -307,6 +379,8 @@
     phenomenon.phenomenon_type = byId('phenomenon-type').value;
     phenomenon.note = byId('phenomenon-note').value.trim();
     phenomenon.ctc = {
+      interrupted_segment_id: byId('ctc-interrupted-segment').value,
+      interrupting_segment_id: byId('ctc-interrupting-segment').value,
       speaker_state: byId('ctc-speaker-state').value,
       interruption_type: byId('ctc-interruption-type').value,
       interrupted_speaker: byId('ctc-interrupted-speaker').value,
@@ -320,6 +394,8 @@
       guidance_followup: byId('ctc-guidance-followup').value.trim(),
     };
     phenomenon.pragmatic_pair = {
+      question_segment_id: byId('pp-question-segment').value,
+      response_segment_id: byId('pp-response-segment').value,
       question_speaker: byId('pp-question-speaker').value,
       response_speaker: byId('pp-response-speaker').value,
       question_start: numberValue('pp-question-start'),
@@ -382,10 +458,12 @@
     regions.on('region-removed', (region) => {
       state.regionById.delete(region.id);
       segments().delete(region.id);
+      clearDeletedSegmentReference(region.id);
       if (state.selectedId === region.id) {
         state.selectedId = sortedSegments().length ? sortedSegments()[0].id : null;
       }
       selectSegment(state.selectedId);
+      refreshSegmentSelectors();
       syncOutput();
     });
   }
@@ -539,6 +617,14 @@
       }
       if (phenomenon.phenomenon_type === 'ctc') {
         const ctc = phenomenon.ctc || {};
+        const segmentIds = new Set(task.segments.map((segment) => segment.segment_id));
+        if (!ctc.interrupted_segment_id || !ctc.interrupting_segment_id) {
+          addTaskError(`Task ${taskIndex + 1}: select the interrupted and interrupting utterance segments.`);
+        } else if (!segmentIds.has(ctc.interrupted_segment_id) || !segmentIds.has(ctc.interrupting_segment_id)) {
+          addTaskError(`Task ${taskIndex + 1}: selected CTC utterance segment no longer exists.`);
+        } else if (ctc.interrupted_segment_id === ctc.interrupting_segment_id) {
+          addTaskError(`Task ${taskIndex + 1}: CTC interrupted and interrupting utterances should be different segments.`);
+        }
         if (!ctc.speaker_state) addTaskError(`Task ${taskIndex + 1}: select the CTC speaker state.`);
         if (!ctc.interruption_type) addTaskError(`Task ${taskIndex + 1}: select the CTC interruption type.`);
         if (!ctc.interrupted_speaker || !ctc.interrupter_speaker) {
@@ -547,12 +633,38 @@
         if (ctc.interruption_start === null) {
           addTaskError(`Task ${taskIndex + 1}: enter the CTC interruption start time.`);
         }
+        if (ctc.interruption_end === null) {
+          addTaskError(`Task ${taskIndex + 1}: enter the CTC interruption end time.`);
+        }
+        if (ctc.utterance_start === null) {
+          addTaskError(`Task ${taskIndex + 1}: enter the interrupted utterance start time.`);
+        }
+        if (ctc.stall_time === null) {
+          addTaskError(`Task ${taskIndex + 1}: enter the stall / last semantic word end time.`);
+        }
+        if (!ctc.guess_accuracy) {
+          addTaskError(`Task ${taskIndex + 1}: select CTC guess accuracy.`);
+        }
+        if (ctc.interruption_type === 'guiding_prompt' && !ctc.guidance_followup) {
+          addTaskError(`Task ${taskIndex + 1}: describe the guiding prompt follow-up exchange.`);
+        }
         if (ctc.interruption_end !== null && ctc.interruption_start !== null && ctc.interruption_end <= ctc.interruption_start) {
           addTaskError(`Task ${taskIndex + 1}: CTC interruption end must be after start.`);
+        }
+        if (ctc.stall_time !== null && ctc.utterance_start !== null && ctc.stall_time <= ctc.utterance_start) {
+          addTaskError(`Task ${taskIndex + 1}: CTC stall / last semantic word end must be after utterance start.`);
         }
       }
       if (phenomenon.phenomenon_type === 'pragmatic_pair') {
         const pair = phenomenon.pragmatic_pair || {};
+        const segmentIds = new Set(task.segments.map((segment) => segment.segment_id));
+        if (!pair.question_segment_id || !pair.response_segment_id) {
+          addTaskError(`Task ${taskIndex + 1}: select the Pragmatic Pair question and response segments.`);
+        } else if (!segmentIds.has(pair.question_segment_id) || !segmentIds.has(pair.response_segment_id)) {
+          addTaskError(`Task ${taskIndex + 1}: selected Pragmatic Pair segment no longer exists.`);
+        } else if (pair.question_segment_id === pair.response_segment_id) {
+          addTaskError(`Task ${taskIndex + 1}: Pragmatic Pair question and response should be different segments.`);
+        }
         if (!pair.question_speaker || !pair.response_speaker) {
           addTaskError(`Task ${taskIndex + 1}: select Pragmatic Pair question and response speakers.`);
         }
@@ -654,6 +766,30 @@
   ].forEach((id) => {
     byId(id).addEventListener('input', savePhenomenon);
     byId(id).addEventListener('change', savePhenomenon);
+  });
+  byId('ctc-interrupted-segment').addEventListener('change', () => {
+    const segmentId = byId('ctc-interrupted-segment').value;
+    fillCtcInterruptedFromSegment(segmentId);
+    savePhenomenon();
+    if (segmentId) selectSegment(segmentId);
+  });
+  byId('ctc-interrupting-segment').addEventListener('change', () => {
+    const segmentId = byId('ctc-interrupting-segment').value;
+    fillCtcInterruptingFromSegment(segmentId);
+    savePhenomenon();
+    if (segmentId) selectSegment(segmentId);
+  });
+  byId('pp-question-segment').addEventListener('change', () => {
+    const segmentId = byId('pp-question-segment').value;
+    fillPragmaticPairSegment('question', segmentId);
+    savePhenomenon();
+    if (segmentId) selectSegment(segmentId);
+  });
+  byId('pp-response-segment').addEventListener('change', () => {
+    const segmentId = byId('pp-response-segment').value;
+    fillPragmaticPairSegment('response', segmentId);
+    savePhenomenon();
+    if (segmentId) selectSegment(segmentId);
   });
   byId('transcript').addEventListener('input', saveEditor);
   byId('note').addEventListener('input', saveEditor);
