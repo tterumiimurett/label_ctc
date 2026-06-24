@@ -235,10 +235,32 @@ textarea { resize: vertical; }
   grid-template-columns: minmax(220px, 34%) 1fr;
 }
 
+.segment-card {
+  padding-bottom: 10px;
+}
+
+.segment-card h2 {
+  margin-bottom: 8px;
+}
+
+.segment-card .layout {
+  align-items: start;
+  gap: 10px;
+  grid-template-columns: minmax(260px, 42%) 1fr;
+}
+
+.segment-card #segment-fields label {
+  margin-bottom: 8px;
+}
+
+.segment-card #transcript {
+  min-height: 82px;
+}
+
 #segments-list {
   border: 1px solid var(--line);
   border-radius: 5px;
-  max-height: 340px;
+  max-height: 210px;
   overflow-y: auto;
 }
 
@@ -247,7 +269,8 @@ textarea { resize: vertical; }
   border-bottom: 1px solid #eef2f7;
   border-radius: 0;
   display: block;
-  padding: 8px 10px;
+  line-height: 1.25;
+  padding: 5px 8px;
   text-align: left;
   width: 100%;
 }
