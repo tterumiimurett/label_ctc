@@ -90,6 +90,17 @@
     byId(id).value = value === null || value === undefined ? '' : String(value);
   }
 
+  function booleanSelectValue(id) {
+    const value = byId(id).value;
+    if (value === 'yes') return true;
+    if (value === 'no') return false;
+    return null;
+  }
+
+  function setBooleanSelectValue(id, value) {
+    byId(id).value = value === true ? 'yes' : value === false ? 'no' : '';
+  }
+
   function segmentOptionLabel(segment) {
     const transcript = String(segment.transcript || '(transcript required)').replace(/\s+/g, ' ').trim();
     const snippet = transcript.length > 88 ? `${transcript.slice(0, 85)}...` : transcript;
@@ -177,7 +188,7 @@
         interruption_start: null,
         interruption_end: null,
         guess_accuracy: '',
-        interrupter_becomes_main_speaker: false,
+        interrupter_becomes_main_speaker: null,
         guidance_followup: '',
       },
       pragmatic_pair: {
@@ -335,7 +346,7 @@
     setNumberValue('ctc-interruption-start', phenomenon.ctc.interruption_start);
     setNumberValue('ctc-interruption-end', phenomenon.ctc.interruption_end);
     setValue('ctc-guess-accuracy', phenomenon.ctc.guess_accuracy);
-    byId('ctc-speaker-shift').checked = phenomenon.ctc.interrupter_becomes_main_speaker;
+    setBooleanSelectValue('ctc-speaker-shift', phenomenon.ctc.interrupter_becomes_main_speaker);
     setValue('ctc-guidance-followup', phenomenon.ctc.guidance_followup);
     setValue('pp-question-segment', phenomenon.pragmatic_pair.question_segment_id);
     setValue('pp-response-segment', phenomenon.pragmatic_pair.response_segment_id);
@@ -370,7 +381,7 @@
       interruption_start: numberValue('ctc-interruption-start'),
       interruption_end: numberValue('ctc-interruption-end'),
       guess_accuracy: byId('ctc-guess-accuracy').value,
-      interrupter_becomes_main_speaker: byId('ctc-speaker-shift').checked,
+      interrupter_becomes_main_speaker: booleanSelectValue('ctc-speaker-shift'),
       guidance_followup: byId('ctc-guidance-followup').value.trim(),
     };
     phenomenon.pragmatic_pair = {
@@ -617,6 +628,9 @@
         }
         if (!ctc.guess_accuracy) {
           addTaskError(`Task ${taskIndex + 1}: select CTC guess accuracy.`);
+        }
+        if (ctc.interrupter_becomes_main_speaker === null || ctc.interrupter_becomes_main_speaker === undefined) {
+          addTaskError(`Task ${taskIndex + 1}: answer whether the interrupter becomes the main speaker.`);
         }
         if (ctc.interruption_type === 'guiding_prompt' && !ctc.guidance_followup) {
           addTaskError(`Task ${taskIndex + 1}: describe the guiding prompt follow-up exchange.`);

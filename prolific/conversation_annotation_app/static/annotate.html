@@ -144,7 +144,7 @@
           <legend>CTC / Buzz-in details</legend>
           <p class="muted">
             Select the interrupted utterance and interrupting utterance from the preloaded regions.
-            The speaker and timestamp fields will auto-fill, but remain editable.
+            Speaker and timestamp metadata is filled from those selections.
           </p>
           <div class="field-grid">
             <label class="wide-field">Interrupted utterance segment
@@ -175,32 +175,12 @@
                 <option value="other">Other / needs note</option>
               </select>
             </label>
-            <label>Interrupted speaker
-              <select id="ctc-interrupted-speaker">
-                <option value="">Select...</option>
-                <option value="Left">Left</option>
-                <option value="Right">Right</option>
-              </select>
-            </label>
-            <label>Interrupter
-              <select id="ctc-interrupter-speaker">
-                <option value="">Select...</option>
-                <option value="Left">Left</option>
-                <option value="Right">Right</option>
-              </select>
-            </label>
-            <label>Interrupted utterance start (s)
-              <input type="number" id="ctc-utterance-start" step="0.01" min="0">
-            </label>
-            <label>Stall / last semantic word end (s)
-              <input type="number" id="ctc-stall-time" step="0.01" min="0">
-            </label>
-            <label>Interruption start (s)
-              <input type="number" id="ctc-interruption-start" step="0.01" min="0">
-            </label>
-            <label>Interruption end (s)
-              <input type="number" id="ctc-interruption-end" step="0.01" min="0">
-            </label>
+            <input type="hidden" id="ctc-interrupted-speaker">
+            <input type="hidden" id="ctc-interrupter-speaker">
+            <input type="hidden" id="ctc-utterance-start">
+            <input type="hidden" id="ctc-stall-time">
+            <input type="hidden" id="ctc-interruption-start">
+            <input type="hidden" id="ctc-interruption-end">
             <label>Guess accuracy
               <select id="ctc-guess-accuracy">
                 <option value="">Select...</option>
@@ -211,9 +191,12 @@
                 <option value="not_applicable">Not applicable</option>
               </select>
             </label>
-            <label class="choice checkbox-field">
-              <input type="checkbox" id="ctc-speaker-shift">
-              Interrupter becomes the main speaker after interruption
+            <label>Interrupter becomes the main speaker after interruption
+              <select id="ctc-speaker-shift">
+                <option value="">Select...</option>
+                <option value="yes">Yes</option>
+                <option value="no">No</option>
+              </select>
             </label>
           </div>
           <label>Guiding prompt follow-up, if applicable
