@@ -35,6 +35,7 @@ body {
 
 h1 { font-size: 20px; margin: 0 0 4px; }
 h2 { font-size: 15px; margin: 0 0 12px; }
+h3 { font-size: 13px; margin: 12px 0 5px; }
 
 .muted {
   color: var(--muted);
@@ -55,6 +56,19 @@ h2 { font-size: 15px; margin: 0 0 12px; }
 }
 
 .status { background: var(--panel); }
+
+.intro-card p {
+  margin: 0 0 7px;
+}
+
+.intro-card ol {
+  margin: 0 0 8px 18px;
+  padding: 0;
+}
+
+.intro-card li {
+  margin: 3px 0;
+}
 
 .instructions {
   background: #fbfdfd;

@@ -141,6 +141,19 @@
     setNumberValue('ctc-interruption-end', segment.end);
   }
 
+  function ctcMetadataFromSelections(interruptedSegmentId, interruptingSegmentId) {
+    const interrupted = segments().get(interruptedSegmentId);
+    const interrupting = segments().get(interruptingSegmentId);
+    return {
+      interrupted_speaker: interrupted ? channelLabel(interrupted.channel) : '',
+      interrupter_speaker: interrupting ? channelLabel(interrupting.channel) : '',
+      utterance_start: interrupted ? round(interrupted.start) : null,
+      stall_time: interrupted ? round(interrupted.end) : null,
+      interruption_start: interrupting ? round(interrupting.start) : null,
+      interruption_end: interrupting ? round(interrupting.end) : null,
+    };
+  }
+
   function fillPragmaticPairSegment(role, segmentId) {
     const segment = segments().get(segmentId);
     if (!segment) return;
@@ -367,19 +380,22 @@
 
   function savePhenomenon(shouldSync = true) {
     const phenomenon = taskState().phenomenon;
+    const interruptedSegmentId = byId('ctc-interrupted-segment').value;
+    const interruptingSegmentId = byId('ctc-interrupting-segment').value;
+    const ctcMetadata = ctcMetadataFromSelections(interruptedSegmentId, interruptingSegmentId);
     phenomenon.phenomenon_type = byId('phenomenon-type').value;
     phenomenon.note = byId('phenomenon-note').value.trim();
     phenomenon.ctc = {
-      interrupted_segment_id: byId('ctc-interrupted-segment').value,
-      interrupting_segment_id: byId('ctc-interrupting-segment').value,
+      interrupted_segment_id: interruptedSegmentId,
+      interrupting_segment_id: interruptingSegmentId,
       speaker_state: byId('ctc-speaker-state').value,
       interruption_type: byId('ctc-interruption-type').value,
-      interrupted_speaker: byId('ctc-interrupted-speaker').value,
-      interrupter_speaker: byId('ctc-interrupter-speaker').value,
-      utterance_start: numberValue('ctc-utterance-start'),
-      stall_time: numberValue('ctc-stall-time'),
-      interruption_start: numberValue('ctc-interruption-start'),
-      interruption_end: numberValue('ctc-interruption-end'),
+      interrupted_speaker: ctcMetadata.interrupted_speaker,
+      interrupter_speaker: ctcMetadata.interrupter_speaker,
+      utterance_start: ctcMetadata.utterance_start,
+      stall_time: ctcMetadata.stall_time,
+      interruption_start: ctcMetadata.interruption_start,
+      interruption_end: ctcMetadata.interruption_end,
       guess_accuracy: byId('ctc-guess-accuracy').value,
       interrupter_becomes_main_speaker: booleanSelectValue('ctc-speaker-shift'),
       guidance_followup: byId('ctc-guidance-followup').value.trim(),

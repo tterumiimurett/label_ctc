@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>CTC / PP Conversation Annotation</title>
+  <title>Conversation Interruption Annotation</title>
   <link rel="stylesheet" href="/static/style.css">
   <script src="https://unpkg.com/wavesurfer.js@7.10.1/dist/wavesurfer.min.js"></script>
   <script src="https://unpkg.com/wavesurfer.js@7.10.1/dist/plugins/regions.min.js"></script>
@@ -12,7 +12,7 @@
   <main class="shell">
     <header class="topbar">
       <div>
-        <h1>CTC / PP Conversation Annotation</h1>
+        <h1>Conversation Interruption Annotation</h1>
         <div class="muted" id="worker-line">Loading participant session...</div>
       </div>
       <div class="progress" id="progress-line"></div>
@@ -37,8 +37,40 @@
         </div>
       </section>
 
+      <section class="card intro-card">
+        <h2>Introduction</h2>
+        <p>
+          We are looking for interruptions during a conversation and the type of interruption.
+        </p>
+        <h3>1. Collaborative Turn Completion (CTC)</h3>
+        <p>
+          Both speakers collaboratively complete a conversation for a natural interaction.
+          There are several cases:
+        </p>
+        <ol>
+          <li><strong>Speaker got stuck, but has provided enough information.</strong> The interrupter provides a word/phrase to complete the sentence.</li>
+          <li><strong>Speaker got stuck, but has not provided enough information.</strong> The interrupter makes a guess with question mark to complete the sentence.</li>
+          <li><strong>Speaker got stuck, but has not provided enough information.</strong> The interrupter, instead of trying to complete the sentence, asks a question to guide the speaker.</li>
+          <li><strong>Speaker is not stuck.</strong> The interrupter buzzes in and speaks simultaneously with the speaker.</li>
+        </ol>
+        <h3>2. Pragmatic Pairs</h3>
+        <p>
+          This is not strictly an interruption, but requires the other speaker to intervene and provide a short response for a smoother conversation.
+        </p>
+        <p>Examples can be found below.</p>
+        <h3>Your task</h3>
+        <ol>
+          <li>Identify what type is present: CTC, Pragmatic Pair, non-existent, or other.</li>
+          <li>For CTC, select the specific type of CTC as well.</li>
+          <li>Select the segment in the audio for the interrupted and interrupting utterances. The audio has been pre-segmented and transcribed to make your life easier, but there can be mistakes.</li>
+          <li>You can edit, drag, and create segments on the audio waveform. Please also help us complete the transcript if you find any mistakes.</li>
+          <li>If after the interruption, the interrupter takes over the conversation and becomes the main speaker, please mark this.</li>
+          <li>If you find more than one interruption in the audio, please label them.</li>
+        </ol>
+      </section>
+
       <section class="card instructions">
-        <h2>Annotation guide</h2>
+        <h2>Examples</h2>
         <p class="muted">
           Use the preloaded speech segments as candidates. Select the relevant utterance pair first,
           then adjust timestamps and transcripts below if the automatic labels are slightly off.
