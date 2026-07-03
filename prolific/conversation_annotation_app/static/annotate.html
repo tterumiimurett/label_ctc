@@ -48,22 +48,23 @@
           There are several cases:
         </p>
         <ol>
-          <li><strong>Speaker got stuck, but has provided enough information.</strong> The interrupter provides a word/phrase to complete the sentence.</li>
-          <li><strong>Speaker got stuck, but has not provided enough information.</strong> The interrupter makes a guess with question mark to complete the sentence.</li>
-          <li><strong>Speaker got stuck, but has not provided enough information.</strong> The interrupter, instead of trying to complete the sentence, asks a question to guide the speaker.</li>
-          <li><strong>Speaker is not stuck.</strong> The interrupter buzzes in and speaks simultaneously with the speaker.</li>
+          <li><strong>The speaker got stuck.</strong> The interrupter provides a word/phrase in an assertive way to complete the sentence.</li>
+          <li><strong>The speaker got stuck.</strong> The interrupter guesses a word/phrase in an unsure way to complete the sentence.</li>
+          <li><strong>The speaker got stuck.</strong> The interrupter, instead of trying to complete the sentence, asks a question to guide the speaker.</li>
+          <li><strong>The speaker is not stuck.</strong> The interrupter buzzes in and speaks simultaneously with the speaker.</li>
         </ol>
         <h3>2. Pragmatic Pairs</h3>
         <p>
           This is not strictly an interruption, but requires the other speaker to intervene and provide a short response for a smoother conversation.
         </p>
-        <p>Examples can be found below.</p>
+        <p>Audio examples can be found below.</p>
         <h3>Your task</h3>
         <ol>
           <li>Identify what type is present: CTC, Pragmatic Pair, non-existent, or other.</li>
           <li>For CTC, select the specific type of CTC as well.</li>
           <li>Select the segment in the audio for the interrupted and interrupting utterances. The audio has been pre-segmented and transcribed to make your life easier, but there can be mistakes.</li>
           <li>You can edit, drag, and create segments on the audio waveform. Please also help us complete the transcript if you find any mistakes.</li>
+          <li>When the speaker is stuck and the interrupter provides or guesses a word/phrase to complete the sentence, mark whether the interrupter's guess is correct.</li>
           <li>If after the interruption, the interrupter takes over the conversation and becomes the main speaker, please mark this.</li>
           <li>If you find more than one interruption in the audio, please label them.</li>
         </ol>
@@ -84,7 +85,7 @@
           <div class="example">
             <strong>CTC: candidate question</strong>
             <span>A: "The third one is..." B: "Rumpelstiltskin?"</span>
-            Mark as question-form offer and note accuracy.
+            Mark as word/phrase (guess/unsure) and indicate whether it fits correctly.
           </div>
           <div class="example">
             <strong>Guiding prompt</strong>
@@ -104,7 +105,7 @@
           <div class="example">
             <strong>Not target</strong>
             <span>The two segments do not complete one utterance or form a required pair.</span>
-            Choose "Not CTC / not Pragmatic Pair".
+            Choose "CTC or Pragmatic Pair not found".
           </div>
         </div>
       </section>
@@ -154,8 +155,9 @@
       <section class="card">
         <h2>Phenomenon annotations</h2>
         <p class="muted">
-          First decide whether this clip contains CTC or Pragmatic Pairs. Ignore synthetic-data categories.
+          First decide whether this clip contains CTC or Pragmatic Pairs.
           Use the waveform regions below to check and correct transcript/timestamps.
+          If the clip contains multiple phenomena, use Add phenomenon to label each one.
         </p>
         <div class="phenomenon-toolbar">
           <div id="phenomenon-list" class="phenomenon-list"></div>
@@ -166,14 +168,11 @@
           <label>Phenomenon type
             <select id="phenomenon-type">
               <option value="">Select...</option>
-              <option value="not_target">Not CTC / not Pragmatic Pair</option>
-              <option value="ctc">Collaborative Turn Completion / Buzz-in</option>
+              <option value="ctc">Collaborative Turn Completion (CTC)</option>
               <option value="pragmatic_pair">Pragmatic Pair</option>
-              <option value="unclear">Unclear / needs review</option>
+              <option value="not_target">CTC or Pragmatic Pair not found</option>
+              <option value="unclear">Unspecified Interruption</option>
             </select>
-          </label>
-          <label>Primary annotator note
-            <textarea id="phenomenon-note" rows="2" placeholder="Brief reason or uncertainty, if useful."></textarea>
           </label>
         </div>
 
@@ -197,19 +196,21 @@
             <label>Speaker state
               <select id="ctc-speaker-state">
                 <option value="">Select...</option>
-                <option value="stalled">Speaker is stuck / word retrieval problem</option>
-                <option value="not_stalled_projection">Speaker is not stuck; other speaker projects next words</option>
-                <option value="unclear">Unclear</option>
+                <option value="stalled">The speaker is stuck</option>
+                <option value="not_stalled_projection">The speaker is not stuck</option>
               </select>
             </label>
             <label>Interruption type
               <select id="ctc-interruption-type">
+                <option value="">Select speaker state first...</option>
+              </select>
+            </label>
+            <label id="ctc-word-phrase-fit-field" hidden>Does the word/phrase correctly fit the stuck sentence?
+              <select id="ctc-word-phrase-fit">
                 <option value="">Select...</option>
-                <option value="provide_word">Provides word / phrase</option>
-                <option value="question_offer">Provides candidate as a question</option>
-                <option value="guiding_prompt">Guiding prompt</option>
-                <option value="buzz_in">Buzz-in / speech projection</option>
-                <option value="other">Other / needs note</option>
+                <option value="yes">Yes</option>
+                <option value="no">No</option>
+                <option value="not_applicable">Not applicable</option>
               </select>
             </label>
             <input type="hidden" id="ctc-interrupted-speaker">

@@ -75,6 +75,59 @@
     byId(id).value = value === true ? 'yes' : value === false ? 'no' : '';
   }
 
+  function wordPhraseFitValue() {
+    const value = byId('ctc-word-phrase-fit').value;
+    if (value === 'not_applicable') return 'not_applicable';
+    return booleanSelectValue('ctc-word-phrase-fit');
+  }
+
+  function setWordPhraseFitValue(value) {
+    byId('ctc-word-phrase-fit').value = value === 'not_applicable'
+      ? 'not_applicable'
+      : value === true
+        ? 'yes'
+        : value === false
+          ? 'no'
+          : '';
+  }
+
+  const ctcInterruptionTypes = {
+    stalled: [
+      ['word_phrase_confident', 'Word/phrase (confident)'],
+      ['word_phrase_unsure', 'Word/phrase (guess/unsure)'],
+      ['guiding_question', 'Guiding question'],
+      ['unspecified', 'Unspecified'],
+    ],
+    not_stalled_projection: [
+      ['buzz_in', 'Buzz-in'],
+      ['unspecified', 'Unspecified'],
+    ],
+  };
+
+  function isWordPhraseInterruption(type) {
+    return type === 'word_phrase_confident' || type === 'word_phrase_unsure';
+  }
+
+  function renderCtcInterruptionOptions(speakerState, selectedValue = '') {
+    const select = byId('ctc-interruption-type');
+    const choices = ctcInterruptionTypes[speakerState] || [];
+    const placeholder = choices.length ? 'Select...' : 'Select speaker state first...';
+    select.replaceChildren(new Option(placeholder, ''));
+    choices.forEach(([value, label]) => select.append(new Option(label, value)));
+    select.value = choices.some(([value]) => value === selectedValue) ? selectedValue : '';
+    select.disabled = choices.length === 0;
+  }
+
+  function syncWordPhraseFitVisibility(resetAutomaticValue = true) {
+    const visible = isWordPhraseInterruption(byId('ctc-interruption-type').value);
+    byId('ctc-word-phrase-fit-field').hidden = !visible;
+    if (!visible) {
+      setValue('ctc-word-phrase-fit', 'not_applicable');
+    } else if (resetAutomaticValue && byId('ctc-word-phrase-fit').value === 'not_applicable') {
+      setValue('ctc-word-phrase-fit', '');
+    }
+  }
+
   function segmentOptionLabel(segment) {
     const transcript = String(segment.transcript || '(transcript required)').replace(/\s+/g, ' ').trim();
     const snippet = transcript.length > 88 ? `${transcript.slice(0, 85)}...` : transcript;
@@ -167,7 +220,6 @@
     const choices = task.ctc_status || [];
     return {
       phenomenon_type: initialPhenomenonType(task),
-      note: '',
       ctc: {
         interrupted_segment_id: '',
         interrupting_segment_id: '',
@@ -179,6 +231,7 @@
         stall_time: null,
         interruption_start: null,
         interruption_end: null,
+        word_phrase_fits: 'not_applicable',
         interrupter_becomes_main_speaker: null,
       },
       pragmatic_pair: {
@@ -291,6 +344,11 @@
     refreshSegmentSelectors();
   }
 
+  function scrollSelectedSegmentIntoView() {
+    const selected = byId('segments-list').querySelector('.segment-button.selected');
+    if (selected) selected.scrollIntoView({block: 'nearest', inline: 'nearest'});
+  }
+
   function selectSegment(id) {
     state.selectedId = id;
     const segment = selectedSegment();
@@ -306,6 +364,7 @@
     byId('empty-editor').hidden = true;
     byId('transcript').value = segment.transcript;
     renderList();
+    scrollSelectedSegmentIntoView();
   }
 
   function saveEditor(shouldSync = true) {
@@ -320,8 +379,8 @@
     return {
       ctc: 'CTC',
       pragmatic_pair: 'Pragmatic Pair',
-      not_target: 'Not target',
-      unclear: 'Unclear',
+      not_target: 'Not found',
+      unclear: 'Unspecified Interruption',
     }[type] || 'Unlabeled';
   }
 
@@ -344,11 +403,12 @@
     renderPhenomenonList();
     refreshSegmentSelectors();
     setValue('phenomenon-type', phenomenon.phenomenon_type);
-    setValue('phenomenon-note', phenomenon.note);
     setValue('ctc-interrupted-segment', phenomenon.ctc.interrupted_segment_id);
     setValue('ctc-interrupting-segment', phenomenon.ctc.interrupting_segment_id);
     setValue('ctc-speaker-state', phenomenon.ctc.speaker_state);
-    setValue('ctc-interruption-type', phenomenon.ctc.interruption_type);
+    renderCtcInterruptionOptions(phenomenon.ctc.speaker_state, phenomenon.ctc.interruption_type);
+    setWordPhraseFitValue(phenomenon.ctc.word_phrase_fits);
+    syncWordPhraseFitVisibility(false);
     setValue('ctc-interrupted-speaker', phenomenon.ctc.interrupted_speaker);
     setValue('ctc-interrupter-speaker', phenomenon.ctc.interrupter_speaker);
     setNumberValue('ctc-utterance-start', phenomenon.ctc.utterance_start);
@@ -379,7 +439,6 @@
     const interruptingSegmentId = byId('ctc-interrupting-segment').value;
     const ctcMetadata = ctcMetadataFromSelections(interruptedSegmentId, interruptingSegmentId);
     phenomenon.phenomenon_type = byId('phenomenon-type').value;
-    phenomenon.note = byId('phenomenon-note').value.trim();
     phenomenon.ctc = {
       interrupted_segment_id: interruptedSegmentId,
       interrupting_segment_id: interruptingSegmentId,
@@ -391,6 +450,9 @@
       stall_time: ctcMetadata.stall_time,
       interruption_start: ctcMetadata.interruption_start,
       interruption_end: ctcMetadata.interruption_end,
+      word_phrase_fits: isWordPhraseInterruption(byId('ctc-interruption-type').value)
+        ? wordPhraseFitValue()
+        : 'not_applicable',
       interrupter_becomes_main_speaker: booleanSelectValue('ctc-speaker-shift'),
     };
     phenomenon.pragmatic_pair = {
@@ -573,7 +635,6 @@
     return {
       phenomenon_id: index + 1,
       phenomenon_type: phenomenon.phenomenon_type,
-      note: phenomenon.note,
       ctc: {
         ...phenomenon.ctc,
         ...ctcMetadata,
@@ -652,6 +713,16 @@
           }
           if (!ctc.speaker_state) addTaskError(`${prefix}: select the CTC speaker state.`);
           if (!ctc.interruption_type) addTaskError(`${prefix}: select the CTC interruption type.`);
+          const validInterruptionTypes = (ctcInterruptionTypes[ctc.speaker_state] || [])
+            .map(([value]) => value);
+          if (ctc.interruption_type && !validInterruptionTypes.includes(ctc.interruption_type)) {
+            addTaskError(`${prefix}: interruption type does not match the selected speaker state.`);
+          }
+          if (isWordPhraseInterruption(ctc.interruption_type) &&
+              ctc.word_phrase_fits !== true && ctc.word_phrase_fits !== false &&
+              ctc.word_phrase_fits !== 'not_applicable') {
+            addTaskError(`${prefix}: answer whether the word/phrase correctly fits the stuck sentence.`);
+          }
           if (!ctc.interrupted_speaker || !ctc.interrupter_speaker) {
             addTaskError(`${prefix}: selected segments need valid speakers.`);
           }
@@ -756,9 +827,7 @@
   byId('next-task').addEventListener('click', () => renderTask(Math.min(state.tasks.length - 1, state.index + 1)));
   [
     'phenomenon-type',
-    'phenomenon-note',
-    'ctc-speaker-state',
-    'ctc-interruption-type',
+    'ctc-word-phrase-fit',
     'ctc-interrupted-speaker',
     'ctc-interrupter-speaker',
     'ctc-utterance-start',
@@ -778,6 +847,15 @@
   });
   byId('add-phenomenon').addEventListener('click', addPhenomenon);
   byId('delete-phenomenon').addEventListener('click', deletePhenomenon);
+  byId('ctc-speaker-state').addEventListener('change', () => {
+    renderCtcInterruptionOptions(byId('ctc-speaker-state').value);
+    syncWordPhraseFitVisibility();
+    savePhenomenon();
+  });
+  byId('ctc-interruption-type').addEventListener('change', () => {
+    syncWordPhraseFitVisibility();
+    savePhenomenon();
+  });
   byId('ctc-interrupted-segment').addEventListener('change', () => {
     const segmentId = byId('ctc-interrupted-segment').value;
     fillCtcInterruptedFromSegment(segmentId);
