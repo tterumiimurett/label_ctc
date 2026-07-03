@@ -250,13 +250,6 @@ def validate_submission(payload: dict) -> list[str]:
     for task_index, task in enumerate(tasks, 1):
         if not task.get("task_id"):
             errors.append(f"Task {task_index} is missing task_id.")
-        file_level = task.get("file_level") or {}
-        if not file_level.get("target_status"):
-            errors.append(f"Task {task_index} needs at least one file-level target_status.")
-        if not file_level.get("audio_quality"):
-            errors.append(f"Task {task_index} needs audio_quality.")
-        if not file_level.get("transcript_quality"):
-            errors.append(f"Task {task_index} needs transcript_quality.")
         segments = task.get("segments") or []
         if not segments:
             errors.append(f"Task {task_index} needs at least one timestamp segment.")

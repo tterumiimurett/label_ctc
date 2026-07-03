@@ -152,11 +152,16 @@
       </section>
 
       <section class="card">
-        <h2>Phenomenon annotation</h2>
+        <h2>Phenomenon annotations</h2>
         <p class="muted">
           First decide whether this clip contains CTC or Pragmatic Pairs. Ignore synthetic-data categories.
           Use the waveform regions below to check and correct transcript/timestamps.
         </p>
+        <div class="phenomenon-toolbar">
+          <div id="phenomenon-list" class="phenomenon-list"></div>
+          <button type="button" id="add-phenomenon">Add phenomenon</button>
+          <button type="button" id="delete-phenomenon" class="danger">Delete phenomenon</button>
+        </div>
         <div class="field-grid">
           <label>Phenomenon type
             <select id="phenomenon-type">
@@ -213,16 +218,6 @@
             <input type="hidden" id="ctc-stall-time">
             <input type="hidden" id="ctc-interruption-start">
             <input type="hidden" id="ctc-interruption-end">
-            <label>Guess accuracy
-              <select id="ctc-guess-accuracy">
-                <option value="">Select...</option>
-                <option value="correct">Correct</option>
-                <option value="partial">Partially correct</option>
-                <option value="incorrect">Incorrect</option>
-                <option value="unclear">Unclear</option>
-                <option value="not_applicable">Not applicable</option>
-              </select>
-            </label>
             <label>Interrupter becomes the main speaker after interruption
               <select id="ctc-speaker-shift">
                 <option value="">Select...</option>
@@ -231,9 +226,6 @@
               </select>
             </label>
           </div>
-          <label>Guiding prompt follow-up, if applicable
-            <textarea id="ctc-guidance-followup" rows="2" placeholder="Prompt, original speaker description, and response after the description."></textarea>
-          </label>
         </fieldset>
 
         <fieldset id="pp-fields" class="taxonomy-fields" hidden>

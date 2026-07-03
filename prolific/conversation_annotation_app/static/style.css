@@ -199,6 +199,30 @@ textarea { resize: vertical; }
   padding: 12px;
 }
 
+.phenomenon-toolbar,
+.phenomenon-list {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.phenomenon-toolbar {
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+}
+
+.phenomenon-list {
+  flex: 1 1 320px;
+}
+
+.phenomenon-tab.selected {
+  background: #e2e8f0;
+  border-color: #64748b;
+  font-weight: 700;
+}
+
 .checkbox-field {
   align-self: end;
   min-height: 34px;

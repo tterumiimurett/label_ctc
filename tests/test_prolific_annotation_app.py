@@ -38,6 +38,24 @@ class ConversationAnnotationAppTest(unittest.TestCase):
             "session_id": "SESSION1",
         }
 
+    def test_frontend_supports_multiple_phenomena_without_removed_ctc_fields(self) -> None:
+        static_dir = (
+            Path(__file__).resolve().parents[1]
+            / "prolific"
+            / "conversation_annotation_app"
+            / "static"
+        )
+        html = (static_dir / "annotate.html").read_text(encoding="utf-8")
+        javascript = (static_dir / "app.js").read_text(encoding="utf-8")
+
+        self.assertIn('id="phenomenon-list"', html)
+        self.assertIn('id="add-phenomenon"', html)
+        self.assertIn('id="delete-phenomenon"', html)
+        self.assertNotIn('id="ctc-guess-accuracy"', html)
+        self.assertNotIn('id="ctc-guidance-followup"', html)
+        self.assertIn("phenomena: current.phenomena.map", javascript)
+        self.assertIn("conversation-annotation-v3", javascript)
+
     def test_assign_is_stable_for_session(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_dir:
             root = Path(temporary_dir)
@@ -112,7 +130,7 @@ class ConversationAnnotationAppTest(unittest.TestCase):
 
             response = store.submit(
                 {
-                    "schema_version": "conversation-annotation-v2",
+                    "schema_version": "conversation-annotation-v3",
                     "worker": self.worker,
                     "assignment": assignment["assignment"],
                     "tasks": [
@@ -121,11 +139,7 @@ class ConversationAnnotationAppTest(unittest.TestCase):
                             "audio_url": assigned_task["task"]["audio_url"],
                             "dataset": assigned_task["task"]["dataset"],
                             "bundle_id": assignment["assignment"]["bundle_id"],
-                            "file_level": {
-                                "target_status": ["is_CTC"],
-                                "audio_quality": "usable",
-                                "transcript_quality": "good",
-                            },
+                            "phenomena": [{"phenomenon_id": 1, "phenomenon_type": "not_target"}],
                             "segments": [
                                 {
                                     "segment_id": "seg-1",
