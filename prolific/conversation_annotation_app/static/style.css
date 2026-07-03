@@ -81,7 +81,7 @@ h3 { font-size: 13px; margin: 12px 0 5px; }
 .example-grid {
   display: grid;
   gap: 10px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
 }
 
 .example {
@@ -90,14 +90,40 @@ h3 { font-size: 13px; margin: 12px 0 5px; }
   border-radius: 6px;
   color: var(--muted);
   font-size: 12px;
+  grid-column: span 2;
   padding: 10px;
 }
 
-.example strong,
-.example span {
+.example:nth-last-child(-n + 2) {
+  grid-column: span 3;
+}
+
+.example > strong {
   color: var(--ink);
   display: block;
-  margin-bottom: 4px;
+  margin-bottom: 7px;
+}
+
+.example audio {
+  display: block;
+  height: 32px;
+  margin-bottom: 7px;
+  width: 100%;
+}
+
+.example-transcript p {
+  margin: 3px 0;
+}
+
+.example-transcript b {
+  color: var(--ink);
+}
+
+.example-transcript .example-divider {
+  border-top: 1px solid var(--line);
+  font-style: italic;
+  margin-top: 7px;
+  padding-top: 6px;
 }
 
 fieldset {
@@ -386,5 +412,10 @@ pre {
   .field-grid,
   .time-fields {
     grid-template-columns: 1fr;
+  }
+
+  .example,
+  .example:nth-last-child(-n + 2) {
+    grid-column: auto;
   }
 }

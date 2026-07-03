@@ -73,39 +73,51 @@
       <section class="card instructions">
         <h2>Examples</h2>
         <p class="muted">
-          Use the preloaded speech segments as candidates. Select the relevant utterance pair first,
-          then adjust timestamps and transcripts below if the automatic labels are slightly off.
+          Listen to these examples before beginning the annotation task.
         </p>
         <div class="example-grid">
           <div class="example">
-            <strong>CTC: stuck speaker</strong>
-            <span>A: "It's a low..." B: "impact."</span>
-            Mark A as interrupted, B as interrupting, type "provides word / phrase".
+            <strong>CTC: Word/phrase (confident)</strong>
+            <audio controls preload="metadata" src="/static/examples/audio/ctc_stuck_confident.wav"></audio>
+            <div class="example-transcript">
+              <p><b>Speaker:</b> ... like you know all these types of stores, and show you the cheapest ...</p>
+              <p><b>Interrupter:</b> place to get it</p>
+            </div>
           </div>
           <div class="example">
-            <strong>CTC: candidate question</strong>
-            <span>A: "The third one is..." B: "Rumpelstiltskin?"</span>
-            Mark as word/phrase (guess/unsure) and indicate whether it fits correctly.
+            <strong>CTC: Word/phrase (guess/unsure)</strong>
+            <audio controls preload="metadata" src="/static/examples/audio/ctc_stuck_unsure.wav"></audio>
+            <div class="example-transcript">
+              <p><b>Speaker:</b> What is that show? The one with the ... one with the wolf and one with the ...</p>
+              <p><b>Interrupter:</b> Twilight?</p>
+            </div>
           </div>
           <div class="example">
-            <strong>Guiding prompt</strong>
-            <span>A is stuck; B asks "What did it sound like?"</span>
-            Mark the prompt and describe the follow-up exchange.
+            <strong>CTC: Guiding question</strong>
+            <audio controls preload="metadata" src="/static/examples/audio/ctc_guiding_question.wav"></audio>
+            <div class="example-transcript">
+              <p><b>Speaker:</b> It was like she turned this into like ... Elf? Like in a m...m... But it was like ...</p>
+              <p><b>Interrupter:</b> What does it sound like?</p>
+            </div>
           </div>
           <div class="example">
-            <strong>Buzz-in / projection</strong>
-            <span>A is not stuck; B guesses or overlaps with A's next words.</span>
-            Mark the interrupting segment and overlap/interruption times.
+            <strong>CTC: Buzz-in</strong>
+            <audio controls preload="metadata" src="/static/examples/audio/ctc_buzz_in.wav"></audio>
+            <div class="example-transcript">
+              <p><b>Speaker:</b> Taking a nap, making a breath, do something, whatever you do ... it's a quiet time.</p>
+              <p><b>Interrupter:</b> Quiet time</p>
+            </div>
           </div>
           <div class="example">
             <strong>Pragmatic Pair</strong>
-            <span>A asks a short question; B gives the paired response.</span>
-            Select the question segment and the response segment.
-          </div>
-          <div class="example">
-            <strong>Not target</strong>
-            <span>The two segments do not complete one utterance or form a required pair.</span>
-            Choose "CTC or Pragmatic Pair not found".
+            <audio controls preload="metadata" src="/static/examples/audio/pragmatic_pair.wav"></audio>
+            <div class="example-transcript">
+              <p><b>Speaker:</b> ... What do you call it?</p>
+              <p><b>Interrupter:</b> Margin?</p>
+              <p class="example-divider">Later in the same clip:</p>
+              <p><b>Speaker:</b> ... How do you say that?</p>
+              <p><b>Interrupter:</b> Profit?</p>
+            </div>
           </div>
         </div>
       </section>

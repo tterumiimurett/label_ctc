@@ -61,6 +61,15 @@ class ConversationAnnotationAppTest(unittest.TestCase):
         self.assertIn("guiding_question", javascript)
         self.assertIn("phenomena: current.phenomena.map", javascript)
         self.assertIn("conversation-annotation-v3", javascript)
+        for filename in (
+            "ctc_stuck_confident.wav",
+            "ctc_stuck_unsure.wav",
+            "ctc_guiding_question.wav",
+            "ctc_buzz_in.wav",
+            "pragmatic_pair.wav",
+        ):
+            self.assertIn(f'/static/examples/audio/{filename}', html)
+            self.assertTrue((static_dir / "examples" / "audio" / filename).is_file())
 
     def test_assign_is_stable_for_session(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_dir:
