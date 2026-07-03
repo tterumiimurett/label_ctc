@@ -303,10 +303,9 @@
 
     const current = taskState();
     const task = current.task;
-    byId('task-title').textContent =
-      `${task.task.task_id} (${index + 1} of ${state.tasks.length})`;
-    byId('task-audio').textContent = task.task.audio_url;
+    byId('task-title').textContent = `Audio ${index + 1} of ${state.tasks.length}`;
     byId('progress-line').textContent = `Bundle ${state.assignment.bundle_id}`;
+    byId('task-nav').hidden = state.tasks.length === 1;
     byId('prev-task').disabled = index === 0;
     byId('next-task').disabled = index === state.tasks.length - 1;
 

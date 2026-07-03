@@ -37,6 +37,18 @@ h1 { font-size: 20px; margin: 0 0 4px; }
 h2 { font-size: 15px; margin: 0 0 12px; }
 h3 { font-size: 13px; margin: 12px 0 5px; }
 
+.title-line {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+
+.title-note {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .muted {
   color: var(--muted);
   font-size: 12px;
@@ -56,6 +68,16 @@ h3 { font-size: 13px; margin: 12px 0 5px; }
 }
 
 .status { background: var(--panel); }
+
+.foldable > summary {
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.foldable[open] > summary {
+  margin-bottom: 12px;
+}
 
 .intro-card p {
   margin: 0 0 7px;
