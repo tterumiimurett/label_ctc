@@ -494,12 +494,12 @@
     const regions = WaveSurfer.Regions.create();
     const wave = WaveSurfer.create({
       container: '#waveform',
+      media: byId('fallback-audio'),
       url: audioUrl,
       height: 105,
       minPxPerSec: 50,
       autoScroll: true,
-      cursorColor: '#111827',
-      cursorWidth: 2,
+      cursorWidth: 0,
       normalize: true,
       splitChannels: [
         {waveColor: '#93c5e6', progressColor: '#1f77b4'},
@@ -509,21 +509,39 @@
     });
     state.wave = wave;
     state.regions = regions;
+    const playhead = document.createElement('div');
+    playhead.id = 'playback-playhead';
+    playhead.setAttribute('aria-hidden', 'true');
+    byId('waveform').appendChild(playhead);
+
+    const updatePlayhead = (time = wave.getCurrentTime()) => {
+      const duration = wave.getDuration();
+      if (!duration) return;
+      const waveformRect = byId('waveform').getBoundingClientRect();
+      const wrapperRect = wave.getWrapper().getBoundingClientRect();
+      const position = wrapperRect.left - waveformRect.left + (time / duration) * wrapperRect.width;
+      playhead.style.left = `${position}px`;
+      playhead.hidden = position < 0 || position > waveformRect.width;
+    };
 
     wave.on('ready', () => {
       byId('wave-status').textContent = 'Waveform status: ready.';
       sortedSegments().forEach(addVisualRegion);
       configureDragSelection();
       byId('time-display').textContent = `${fmt(0)} / ${fmt(wave.getDuration())}`;
+      updatePlayhead(0);
     });
     wave.on('timeupdate', (time) => {
       byId('time-display').textContent = `${fmt(time)} / ${fmt(wave.getDuration())}`;
+      updatePlayhead(time);
       const segment = selectedSegment();
       if (state.playbackMode === 'segment' && segment && time >= segment.end) {
         if (byId('loop-selected').checked) wave.setTime(segment.start);
         else wave.pause();
       }
     });
+    wave.on('scroll', () => updatePlayhead());
+    wave.on('redrawcomplete', () => updatePlayhead());
     wave.on('error', (error) => {
       byId('wave-status').textContent = `Waveform status: audio decode/render error: ${error}`;
     });

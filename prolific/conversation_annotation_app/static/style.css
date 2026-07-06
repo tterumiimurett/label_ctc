@@ -293,6 +293,7 @@ textarea { resize: vertical; }
   border-radius: 6px;
   min-height: 222px;
   overflow: hidden;
+  position: relative;
 }
 
 .channel-key {
@@ -314,6 +315,17 @@ textarea { resize: vertical; }
 .right { color: var(--right); }
 .left-dot { background: var(--left); }
 .right-dot { background: var(--right); }
+
+#playback-playhead {
+  background: #dc2626;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.9);
+  bottom: 0;
+  pointer-events: none;
+  position: absolute;
+  top: 0;
+  width: 2px;
+  z-index: 30;
+}
 
 .layout {
   display: grid;

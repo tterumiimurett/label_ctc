@@ -52,6 +52,7 @@ class ConversationAnnotationAppTest(unittest.TestCase):
         )
         html = (static_dir / "annotate.html").read_text(encoding="utf-8")
         javascript = (static_dir / "app.js").read_text(encoding="utf-8")
+        stylesheet = (static_dir / "style.css").read_text(encoding="utf-8")
 
         self.assertIn('id="phenomenon-list"', html)
         self.assertIn('id="add-phenomenon"', html)
@@ -86,6 +87,12 @@ class ConversationAnnotationAppTest(unittest.TestCase):
         self.assertIn("the response cannot start before the prompt or question", javascript)
         self.assertIn("Buzz-in segments do not overlap", javascript)
         self.assertIn('id="warnings"', html)
+        self.assertIn("#playback-playhead", stylesheet)
+        self.assertIn("playhead.id = 'playback-playhead'", javascript)
+        self.assertIn("media: byId('fallback-audio')", javascript)
+        self.assertIn("wave.on('timeupdate'", javascript)
+        self.assertIn("wave.on('scroll'", javascript)
+        self.assertIn("wave.on('redrawcomplete'", javascript)
         self.assertIn("phenomena: current.phenomena.map", javascript)
         self.assertIn("conversation-annotation-v3", javascript)
         for filename in (
