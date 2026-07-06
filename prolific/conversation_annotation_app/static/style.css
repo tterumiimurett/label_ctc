@@ -404,6 +404,16 @@ textarea { resize: vertical; }
   padding: 9px;
 }
 
+.warnings {
+  background: #fffbeb;
+  border: 1px solid #fcd34d;
+  border-radius: 5px;
+  color: #92400e;
+  display: none;
+  margin: 12px 0;
+  padding: 9px;
+}
+
 .output summary {
   color: var(--muted);
   cursor: pointer;

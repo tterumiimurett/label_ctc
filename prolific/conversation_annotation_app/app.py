@@ -262,6 +262,89 @@ def validate_submission(payload: dict) -> list[str]:
                 errors.append(f"Task {task_index} segment {segment_index} must have start < end.")
             if not str(segment.get("transcript", "")).strip():
                 errors.append(f"Task {task_index} segment {segment_index} needs transcript.")
+        if payload.get("schema_version") != "conversation-annotation-v3":
+            continue
+        phenomena = task.get("phenomena")
+        if not isinstance(phenomena, list) or not phenomena:
+            errors.append(f"Task {task_index} needs at least one phenomenon annotation.")
+            continue
+        if len(phenomena) > 1 and any(
+            phenomenon.get("phenomenon_type") == "not_target"
+            for phenomenon in phenomena
+        ):
+            errors.append(
+                f'Task {task_index}: "CTC or Pragmatic Pair not found" '
+                "cannot be combined with other annotations."
+            )
+        segment_by_id = {
+            segment.get("segment_id"): segment
+            for segment in segments
+            if segment.get("segment_id")
+        }
+        seen_pairs: set[tuple[str, str]] = set()
+        for phenomenon_index, phenomenon in enumerate(phenomena, 1):
+            prefix = f"Task {task_index}, phenomenon {phenomenon_index}"
+            phenomenon_type = phenomenon.get("phenomenon_type")
+            if phenomenon_type == "ctc":
+                details = phenomenon.get("ctc") or {}
+                first_id = details.get("interrupted_segment_id", "")
+                second_id = details.get("interrupting_segment_id", "")
+                pair_key = (first_id, second_id)
+                first_segment = segment_by_id.get(first_id)
+                second_segment = segment_by_id.get(second_id)
+                if first_id and second_id:
+                    if pair_key in seen_pairs:
+                        errors.append(f"{prefix}: this segment pair is duplicated.")
+                    seen_pairs.add(pair_key)
+                if first_segment and second_segment:
+                    first_channel = first_segment.get("channel")
+                    second_channel = second_segment.get("channel")
+                    if (
+                        first_channel is not None
+                        and second_channel is not None
+                        and first_channel == second_channel
+                    ):
+                        errors.append(
+                            f"{prefix}: interrupter and interrupted speaker must differ."
+                        )
+                    first_start = first_segment.get("start")
+                    second_start = second_segment.get("start")
+                    if (
+                        isinstance(first_start, (int, float))
+                        and isinstance(second_start, (int, float))
+                        and second_start < first_start
+                    ):
+                        errors.append(
+                            f"{prefix}: interrupter cannot start before the interrupted speaker."
+                        )
+            elif phenomenon_type == "pragmatic_pair":
+                details = phenomenon.get("pragmatic_pair") or {}
+                first_id = details.get("question_segment_id", "")
+                second_id = details.get("response_segment_id", "")
+                pair_key = (first_id, second_id)
+                first_segment = segment_by_id.get(first_id)
+                second_segment = segment_by_id.get(second_id)
+                if first_id and second_id:
+                    if pair_key in seen_pairs:
+                        errors.append(f"{prefix}: this segment pair is duplicated.")
+                    seen_pairs.add(pair_key)
+                if first_segment and second_segment:
+                    first_channel = first_segment.get("channel")
+                    second_channel = second_segment.get("channel")
+                    if (
+                        first_channel is not None
+                        and second_channel is not None
+                        and first_channel == second_channel
+                    ):
+                        errors.append(f"{prefix}: prompt and response speakers must differ.")
+                    first_start = first_segment.get("start")
+                    second_start = second_segment.get("start")
+                    if (
+                        isinstance(first_start, (int, float))
+                        and isinstance(second_start, (int, float))
+                        and second_start < first_start
+                    ):
+                        errors.append(f"{prefix}: response cannot start before the prompt.")
     return errors
 
 

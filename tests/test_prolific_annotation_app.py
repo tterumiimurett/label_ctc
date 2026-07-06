@@ -3,7 +3,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from prolific.conversation_annotation_app.app import AnnotationStore, load_tasks, parse_args
+from prolific.conversation_annotation_app.app import (
+    AnnotationStore,
+    load_tasks,
+    parse_args,
+    validate_submission,
+)
 
 
 class ConversationAnnotationAppTest(unittest.TestCase):
@@ -73,6 +78,14 @@ class ConversationAnnotationAppTest(unittest.TestCase):
         self.assertIn("guiding_question", javascript)
         self.assertNotIn("['unspecified', 'Unspecified']", javascript)
         self.assertIn("notApplicable.disabled = enabled", javascript)
+        self.assertIn("the interrupter and interrupted speaker must be different people", javascript)
+        self.assertIn("the interrupter cannot start before the interrupted speaker", javascript)
+        self.assertIn("cannot be combined with other annotations", javascript)
+        self.assertIn("this segment pair has already been annotated", javascript)
+        self.assertIn("the prompt and response must come from different people", javascript)
+        self.assertIn("the response cannot start before the prompt or question", javascript)
+        self.assertIn("Buzz-in segments do not overlap", javascript)
+        self.assertIn('id="warnings"', html)
         self.assertIn("phenomena: current.phenomena.map", javascript)
         self.assertIn("conversation-annotation-v3", javascript)
         for filename in (
@@ -84,6 +97,80 @@ class ConversationAnnotationAppTest(unittest.TestCase):
         ):
             self.assertIn(f'/static/examples/audio/{filename}', html)
             self.assertTrue((static_dir / "examples" / "audio" / filename).is_file())
+
+    def test_v3_submission_rejects_invalid_phenomenon_relationships(self) -> None:
+        payload = {
+            "schema_version": "conversation-annotation-v3",
+            "worker": self.worker,
+            "tasks": [
+                {
+                    "task_id": "stereo",
+                    "segments": [
+                        {
+                            "segment_id": "speaker",
+                            "channel": 0,
+                            "start": 1.0,
+                            "end": 3.0,
+                            "transcript": "speaker",
+                        },
+                        {
+                            "segment_id": "interrupter",
+                            "channel": 0,
+                            "start": 0.5,
+                            "end": 2.0,
+                            "transcript": "interrupter",
+                        },
+                        {
+                            "segment_id": "prompt",
+                            "channel": 1,
+                            "start": 4.0,
+                            "end": 5.0,
+                            "transcript": "prompt",
+                        },
+                        {
+                            "segment_id": "response",
+                            "channel": 1,
+                            "start": 3.5,
+                            "end": 4.5,
+                            "transcript": "response",
+                        },
+                    ],
+                    "phenomena": [
+                        {"phenomenon_type": "not_target"},
+                        {
+                            "phenomenon_type": "ctc",
+                            "ctc": {
+                                "interrupted_segment_id": "speaker",
+                                "interrupting_segment_id": "interrupter",
+                            },
+                        },
+                        {
+                            "phenomenon_type": "ctc",
+                            "ctc": {
+                                "interrupted_segment_id": "speaker",
+                                "interrupting_segment_id": "interrupter",
+                            },
+                        },
+                        {
+                            "phenomenon_type": "pragmatic_pair",
+                            "pragmatic_pair": {
+                                "question_segment_id": "prompt",
+                                "response_segment_id": "response",
+                            },
+                        },
+                    ],
+                }
+            ],
+        }
+
+        errors = "\n".join(validate_submission(payload))
+
+        self.assertIn("cannot be combined with other annotations", errors)
+        self.assertIn("this segment pair is duplicated", errors)
+        self.assertIn("interrupter and interrupted speaker must differ", errors)
+        self.assertIn("interrupter cannot start before", errors)
+        self.assertIn("prompt and response speakers must differ", errors)
+        self.assertIn("response cannot start before the prompt", errors)
 
     def test_assign_is_stable_for_session(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_dir:

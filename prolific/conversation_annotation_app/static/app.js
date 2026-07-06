@@ -695,7 +695,11 @@
       };
       const phenomena = task.phenomena || [];
       const segmentIds = new Set(task.segments.map((segment) => segment.segment_id));
+      const seenPhenomenonPairs = new Set();
       if (!phenomena.length) addTaskError(`Task ${taskIndex + 1}: add at least one phenomenon annotation.`);
+      if (phenomena.length > 1 && phenomena.some((phenomenon) => phenomenon.phenomenon_type === 'not_target')) {
+        addTaskError(`Task ${taskIndex + 1}: "CTC or Pragmatic Pair not found" cannot be combined with other annotations.`);
+      }
       phenomena.forEach((phenomenon, phenomenonIndex) => {
         const prefix = `Task ${taskIndex + 1}, phenomenon ${phenomenonIndex + 1}`;
         if (!phenomenon.phenomenon_type) addTaskError(`${prefix}: select a phenomenon type.`);
@@ -707,6 +711,13 @@
             addTaskError(`${prefix}: selected CTC utterance segment no longer exists.`);
           } else if (ctc.interrupted_segment_id === ctc.interrupting_segment_id) {
             addTaskError(`${prefix}: interrupted and interrupting utterances should be different segments.`);
+          }
+          if (ctc.interrupted_segment_id && ctc.interrupting_segment_id) {
+            const pairKey = `${ctc.interrupted_segment_id}:${ctc.interrupting_segment_id}`;
+            if (seenPhenomenonPairs.has(pairKey)) {
+              addTaskError(`${prefix}: this segment pair has already been annotated.`);
+            }
+            seenPhenomenonPairs.add(pairKey);
           }
           if (!ctc.speaker_state) addTaskError(`${prefix}: select the CTC speaker state.`);
           if (!ctc.interruption_type) addTaskError(`${prefix}: select the CTC interruption type.`);
@@ -721,6 +732,8 @@
           }
           if (!ctc.interrupted_speaker || !ctc.interrupter_speaker) {
             addTaskError(`${prefix}: selected segments need valid speakers.`);
+          } else if (ctc.interrupted_speaker === ctc.interrupter_speaker) {
+            addTaskError(`${prefix}: the interrupter and interrupted speaker must be different people.`);
           }
           if (ctc.interruption_start === null || ctc.interruption_end === null ||
               ctc.utterance_start === null || ctc.stall_time === null) {
@@ -735,6 +748,10 @@
           if (ctc.stall_time !== null && ctc.utterance_start !== null && ctc.stall_time <= ctc.utterance_start) {
             addTaskError(`${prefix}: CTC utterance end must be after start.`);
           }
+          if (ctc.interruption_start !== null && ctc.utterance_start !== null &&
+              ctc.interruption_start < ctc.utterance_start) {
+            addTaskError(`${prefix}: the interrupter cannot start before the interrupted speaker.`);
+          }
         }
         if (phenomenon.phenomenon_type === 'pragmatic_pair') {
           const pair = phenomenon.pragmatic_pair || {};
@@ -745,8 +762,17 @@
           } else if (pair.question_segment_id === pair.response_segment_id) {
             addTaskError(`${prefix}: question and response should be different segments.`);
           }
+          if (pair.question_segment_id && pair.response_segment_id) {
+            const pairKey = `${pair.question_segment_id}:${pair.response_segment_id}`;
+            if (seenPhenomenonPairs.has(pairKey)) {
+              addTaskError(`${prefix}: this segment pair has already been annotated.`);
+            }
+            seenPhenomenonPairs.add(pairKey);
+          }
           if (!pair.question_speaker || !pair.response_speaker) {
             addTaskError(`${prefix}: select Pragmatic Pair question and response speakers.`);
+          } else if (pair.question_speaker === pair.response_speaker) {
+            addTaskError(`${prefix}: the prompt and response must come from different people.`);
           }
           [
             ['question start', pair.question_start],
@@ -762,6 +788,10 @@
           if (pair.response_start !== null && pair.response_end !== null && pair.response_end <= pair.response_start) {
             addTaskError(`${prefix}: Pragmatic Pair response end must be after start.`);
           }
+          if (pair.response_start !== null && pair.question_start !== null &&
+              pair.response_start < pair.question_start) {
+            addTaskError(`${prefix}: the response cannot start before the prompt or question.`);
+          }
         }
       });
       task.segments.forEach((segment, segmentIndex) => {
@@ -776,10 +806,30 @@
     return {errors, firstInvalidTask};
   }
 
+  function validationWarnings() {
+    const payload = submissionPayload();
+    const warnings = [];
+    payload.tasks.forEach((task, taskIndex) => {
+      (task.phenomena || []).forEach((phenomenon, phenomenonIndex) => {
+        const ctc = phenomenon.ctc || {};
+        if (phenomenon.phenomenon_type === 'ctc' && ctc.interruption_type === 'buzz_in' &&
+            ctc.interruption_start !== null && ctc.stall_time !== null &&
+            ctc.interruption_start >= ctc.stall_time) {
+          warnings.push(
+            `Task ${taskIndex + 1}, phenomenon ${phenomenonIndex + 1}: ` +
+            'Buzz-in segments do not overlap. Please review the timestamps.',
+          );
+        }
+      });
+    });
+    return warnings;
+  }
+
   async function submit(event) {
     event.preventDefault();
     const {errors, firstInvalidTask} = validationErrors();
     if (errors.length) {
+      byId('warnings').style.display = 'none';
       if (firstInvalidTask !== null && firstInvalidTask !== state.index) {
         renderTask(firstInvalidTask);
       }
@@ -788,6 +838,16 @@
       return;
     }
     byId('errors').style.display = 'none';
+    const warnings = validationWarnings();
+    if (warnings.length) {
+      byId('warnings').style.display = 'block';
+      byId('warnings').innerHTML = warnings.map(escapeText).join('<br>');
+      const proceed = window.confirm(
+        `${warnings.join('\n')}\n\nThese are warnings, not errors. Submit anyway?`,
+      );
+      if (!proceed) return;
+    }
+    byId('warnings').style.display = 'none';
     byId('submit').disabled = true;
     byId('save-status').textContent = 'Saving...';
     const response = await fetch('/api/submit', {
