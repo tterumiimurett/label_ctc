@@ -378,7 +378,6 @@
       ctc: 'CTC',
       pragmatic_pair: 'Pragmatic Pair',
       not_target: 'Not found',
-      unclear: 'Unspecified Interruption',
     }[type] || 'Unlabeled';
   }
 
