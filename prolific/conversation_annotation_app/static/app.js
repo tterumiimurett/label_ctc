@@ -11,6 +11,7 @@
     selectedId: null,
     disableDragSelection: null,
     playbackMode: 'full',
+    audioRouting: null,
     startedAt: new Date().toISOString(),
   };
 
@@ -49,6 +50,36 @@
 
   function selectedSegment() {
     return state.selectedId ? segments().get(state.selectedId) : null;
+  }
+
+  async function setPlaybackChannel(channel = null) {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return false;
+    try {
+      if (!state.audioRouting) {
+        const context = new AudioContextClass();
+        const source = context.createMediaElementSource(byId('fallback-audio'));
+        const splitter = context.createChannelSplitter(2);
+        const merger = context.createChannelMerger(2);
+        const leftGain = context.createGain();
+        const rightGain = context.createGain();
+        source.connect(splitter);
+        splitter.connect(leftGain, 0);
+        splitter.connect(rightGain, 1);
+        leftGain.connect(merger, 0, 0);
+        rightGain.connect(merger, 0, 1);
+        merger.connect(context.destination);
+        state.audioRouting = {context, leftGain, rightGain};
+      }
+      const {context, leftGain, rightGain} = state.audioRouting;
+      await context.resume();
+      leftGain.gain.setValueAtTime(channel === 1 ? 0 : 1, context.currentTime);
+      rightGain.gain.setValueAtTime(channel === 0 ? 0 : 1, context.currentTime);
+      return true;
+    } catch (error) {
+      byId('wave-status').textContent = `Waveform status: channel isolation unavailable (${error.message}).`;
+      return false;
+    }
   }
 
   function setValue(id, value) {
@@ -537,7 +568,11 @@
       const segment = selectedSegment();
       if (state.playbackMode === 'segment' && segment && time >= segment.end) {
         if (byId('loop-selected').checked) wave.setTime(segment.start);
-        else wave.pause();
+        else {
+          wave.pause();
+          state.playbackMode = 'full';
+          setPlaybackChannel();
+        }
       }
     });
     wave.on('scroll', () => updatePlayhead());
@@ -954,16 +989,21 @@
   document.querySelectorAll('input[name="new_channel"]').forEach((input) => {
     input.addEventListener('change', configureDragSelection);
   });
-  byId('play').addEventListener('click', () => {
+  byId('play').addEventListener('click', async () => {
     state.playbackMode = 'full';
+    await setPlaybackChannel();
     if (state.wave) state.wave.playPause();
   });
-  byId('play-selected').addEventListener('click', () => {
+  byId('play-selected').addEventListener('click', async () => {
     const segment = selectedSegment();
     if (!segment || !state.wave) return;
     state.playbackMode = 'segment';
+    await setPlaybackChannel(Number(segment.channel));
     state.wave.setTime(segment.start);
     state.wave.play();
+  });
+  byId('fallback-audio').addEventListener('play', () => {
+    if (state.audioRouting && state.playbackMode !== 'segment') setPlaybackChannel();
   });
   byId('zoom').addEventListener('input', (event) => {
     if (state.wave) state.wave.zoom(Number(event.target.value));
