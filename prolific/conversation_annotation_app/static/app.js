@@ -51,11 +51,6 @@
     return state.selectedId ? segments().get(state.selectedId) : null;
   }
 
-  function numberValue(id) {
-    const value = byId(id).value.trim();
-    return value === '' ? null : round(Number(value));
-  }
-
   function setValue(id, value) {
     byId(id).value = value ?? '';
   }
@@ -186,18 +181,21 @@
     return ctcMetadataFromSegmentMap(segments(), interruptedSegmentId, interruptingSegmentId);
   }
 
-  function fillPragmaticPairSegment(role, segmentId) {
-    const segment = segments().get(segmentId);
-    if (!segment) return;
-    if (role === 'question') {
-      setValue('pp-question-speaker', channelLabel(segment.channel));
-      setNumberValue('pp-question-start', segment.start);
-      setNumberValue('pp-question-end', segment.end);
-    } else {
-      setValue('pp-response-speaker', channelLabel(segment.channel));
-      setNumberValue('pp-response-start', segment.start);
-      setNumberValue('pp-response-end', segment.end);
-    }
+  function pragmaticPairMetadataFromSegmentMap(segmentMap, questionSegmentId, responseSegmentId) {
+    const question = segmentMap.get(questionSegmentId);
+    const response = segmentMap.get(responseSegmentId);
+    return {
+      question_speaker: question ? channelLabel(question.channel) : '',
+      response_speaker: response ? channelLabel(response.channel) : '',
+      question_start: question ? round(question.start) : null,
+      question_end: question ? round(question.end) : null,
+      response_start: response ? round(response.start) : null,
+      response_end: response ? round(response.end) : null,
+    };
+  }
+
+  function pragmaticPairMetadataFromSelections(questionSegmentId, responseSegmentId) {
+    return pragmaticPairMetadataFromSegmentMap(segments(), questionSegmentId, responseSegmentId);
   }
 
   function clearDeletedSegmentReference(segmentId) {
@@ -418,12 +416,6 @@
     setBooleanSelectValue('ctc-speaker-shift', phenomenon.ctc.interrupter_becomes_main_speaker);
     setValue('pp-question-segment', phenomenon.pragmatic_pair.question_segment_id);
     setValue('pp-response-segment', phenomenon.pragmatic_pair.response_segment_id);
-    setValue('pp-question-speaker', phenomenon.pragmatic_pair.question_speaker);
-    setValue('pp-response-speaker', phenomenon.pragmatic_pair.response_speaker);
-    setNumberValue('pp-question-start', phenomenon.pragmatic_pair.question_start);
-    setNumberValue('pp-question-end', phenomenon.pragmatic_pair.question_end);
-    setNumberValue('pp-response-start', phenomenon.pragmatic_pair.response_start);
-    setNumberValue('pp-response-end', phenomenon.pragmatic_pair.response_end);
     syncPhenomenonVisibility();
   }
 
@@ -438,6 +430,9 @@
     const interruptedSegmentId = byId('ctc-interrupted-segment').value;
     const interruptingSegmentId = byId('ctc-interrupting-segment').value;
     const ctcMetadata = ctcMetadataFromSelections(interruptedSegmentId, interruptingSegmentId);
+    const questionSegmentId = byId('pp-question-segment').value;
+    const responseSegmentId = byId('pp-response-segment').value;
+    const pairMetadata = pragmaticPairMetadataFromSelections(questionSegmentId, responseSegmentId);
     phenomenon.phenomenon_type = byId('phenomenon-type').value;
     phenomenon.ctc = {
       interrupted_segment_id: interruptedSegmentId,
@@ -456,14 +451,9 @@
       interrupter_becomes_main_speaker: booleanSelectValue('ctc-speaker-shift'),
     };
     phenomenon.pragmatic_pair = {
-      question_segment_id: byId('pp-question-segment').value,
-      response_segment_id: byId('pp-response-segment').value,
-      question_speaker: byId('pp-question-speaker').value,
-      response_speaker: byId('pp-response-speaker').value,
-      question_start: numberValue('pp-question-start'),
-      question_end: numberValue('pp-question-end'),
-      response_start: numberValue('pp-response-start'),
-      response_end: numberValue('pp-response-end'),
+      question_segment_id: questionSegmentId,
+      response_segment_id: responseSegmentId,
+      ...pairMetadata,
     };
     syncPhenomenonVisibility();
     renderPhenomenonList();
@@ -632,6 +622,11 @@
       phenomenon.ctc.interrupted_segment_id,
       phenomenon.ctc.interrupting_segment_id,
     );
+    const pairMetadata = pragmaticPairMetadataFromSegmentMap(
+      current.segments,
+      phenomenon.pragmatic_pair.question_segment_id,
+      phenomenon.pragmatic_pair.response_segment_id,
+    );
     return {
       phenomenon_id: index + 1,
       phenomenon_type: phenomenon.phenomenon_type,
@@ -639,7 +634,10 @@
         ...phenomenon.ctc,
         ...ctcMetadata,
       },
-      pragmatic_pair: {...phenomenon.pragmatic_pair},
+      pragmatic_pair: {
+        ...phenomenon.pragmatic_pair,
+        ...pairMetadata,
+      },
     };
   }
 
@@ -834,12 +832,6 @@
     'ctc-interruption-start',
     'ctc-interruption-end',
     'ctc-speaker-shift',
-    'pp-question-speaker',
-    'pp-response-speaker',
-    'pp-question-start',
-    'pp-question-end',
-    'pp-response-start',
-    'pp-response-end',
   ].forEach((id) => {
     byId(id).addEventListener('input', savePhenomenon);
     byId(id).addEventListener('change', savePhenomenon);
@@ -869,13 +861,11 @@
   });
   byId('pp-question-segment').addEventListener('change', () => {
     const segmentId = byId('pp-question-segment').value;
-    fillPragmaticPairSegment('question', segmentId);
     savePhenomenon();
     if (segmentId) selectSegment(segmentId);
   });
   byId('pp-response-segment').addEventListener('change', () => {
     const segmentId = byId('pp-response-segment').value;
-    fillPragmaticPairSegment('response', segmentId);
     savePhenomenon();
     if (segmentId) selectSegment(segmentId);
   });

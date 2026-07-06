@@ -246,11 +246,11 @@
         <fieldset id="pp-fields" class="taxonomy-fields" hidden>
           <legend>Pragmatic Pair details</legend>
           <p class="muted">
-            Select the first pair part, usually the short question/prompt, and the response.
-            Auto-filled timestamps can be edited after selection.
+            Select the prompt or question and its response.
+            Speaker and timestamp metadata is filled from those selections.
           </p>
           <div class="field-grid">
-            <label class="wide-field">Question / first-pair-part segment
+            <label class="wide-field">Prompt / question segment
               <select id="pp-question-segment">
                 <option value="">Select a preloaded segment...</option>
               </select>
@@ -259,32 +259,6 @@
               <select id="pp-response-segment">
                 <option value="">Select a preloaded segment...</option>
               </select>
-            </label>
-            <label>Question / first-pair-part speaker
-              <select id="pp-question-speaker">
-                <option value="">Select...</option>
-                <option value="Left">Left</option>
-                <option value="Right">Right</option>
-              </select>
-            </label>
-            <label>Response speaker
-              <select id="pp-response-speaker">
-                <option value="">Select...</option>
-                <option value="Left">Left</option>
-                <option value="Right">Right</option>
-              </select>
-            </label>
-            <label>Question utterance start (s)
-              <input type="number" id="pp-question-start" step="0.01" min="0">
-            </label>
-            <label>Question utterance end (s)
-              <input type="number" id="pp-question-end" step="0.01" min="0">
-            </label>
-            <label>Response start (s)
-              <input type="number" id="pp-response-start" step="0.01" min="0">
-            </label>
-            <label>Response end (s)
-              <input type="number" id="pp-response-end" step="0.01" min="0">
             </label>
           </div>
         </fieldset>
