@@ -66,6 +66,8 @@ class ConversationAnnotationAppTest(unittest.TestCase):
         self.assertIn("word_phrase_confident", javascript)
         self.assertIn("word_phrase_unsure", javascript)
         self.assertIn("guiding_question", javascript)
+        self.assertNotIn("['unspecified', 'Unspecified']", javascript)
+        self.assertIn("notApplicable.disabled = enabled", javascript)
         self.assertIn("phenomena: current.phenomena.map", javascript)
         self.assertIn("conversation-annotation-v3", javascript)
         for filename in (

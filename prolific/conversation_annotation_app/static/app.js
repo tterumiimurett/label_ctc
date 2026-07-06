@@ -96,11 +96,9 @@
       ['word_phrase_confident', 'Word/phrase (confident)'],
       ['word_phrase_unsure', 'Word/phrase (guess/unsure)'],
       ['guiding_question', 'Guiding question'],
-      ['unspecified', 'Unspecified'],
     ],
     not_stalled_projection: [
       ['buzz_in', 'Buzz-in'],
-      ['unspecified', 'Unspecified'],
     ],
   };
 
@@ -118,12 +116,15 @@
     select.disabled = choices.length === 0;
   }
 
-  function syncWordPhraseFitVisibility(resetAutomaticValue = true) {
-    const visible = isWordPhraseInterruption(byId('ctc-interruption-type').value);
-    byId('ctc-word-phrase-fit-field').hidden = !visible;
-    if (!visible) {
+  function syncWordPhraseFitState() {
+    const enabled = isWordPhraseInterruption(byId('ctc-interruption-type').value);
+    const select = byId('ctc-word-phrase-fit');
+    const notApplicable = select.querySelector('option[value="not_applicable"]');
+    select.disabled = !enabled;
+    notApplicable.disabled = enabled;
+    if (!enabled) {
       setValue('ctc-word-phrase-fit', 'not_applicable');
-    } else if (resetAutomaticValue && byId('ctc-word-phrase-fit').value === 'not_applicable') {
+    } else if (select.value === 'not_applicable') {
       setValue('ctc-word-phrase-fit', '');
     }
   }
@@ -407,7 +408,7 @@
     setValue('ctc-speaker-state', phenomenon.ctc.speaker_state);
     renderCtcInterruptionOptions(phenomenon.ctc.speaker_state, phenomenon.ctc.interruption_type);
     setWordPhraseFitValue(phenomenon.ctc.word_phrase_fits);
-    syncWordPhraseFitVisibility(false);
+    syncWordPhraseFitState();
     setValue('ctc-interrupted-speaker', phenomenon.ctc.interrupted_speaker);
     setValue('ctc-interrupter-speaker', phenomenon.ctc.interrupter_speaker);
     setNumberValue('ctc-utterance-start', phenomenon.ctc.utterance_start);
@@ -718,8 +719,7 @@
             addTaskError(`${prefix}: interruption type does not match the selected speaker state.`);
           }
           if (isWordPhraseInterruption(ctc.interruption_type) &&
-              ctc.word_phrase_fits !== true && ctc.word_phrase_fits !== false &&
-              ctc.word_phrase_fits !== 'not_applicable') {
+              ctc.word_phrase_fits !== true && ctc.word_phrase_fits !== false) {
             addTaskError(`${prefix}: answer whether the word/phrase correctly fits the stuck sentence.`);
           }
           if (!ctc.interrupted_speaker || !ctc.interrupter_speaker) {
@@ -848,11 +848,11 @@
   byId('delete-phenomenon').addEventListener('click', deletePhenomenon);
   byId('ctc-speaker-state').addEventListener('change', () => {
     renderCtcInterruptionOptions(byId('ctc-speaker-state').value);
-    syncWordPhraseFitVisibility();
+    syncWordPhraseFitState();
     savePhenomenon();
   });
   byId('ctc-interruption-type').addEventListener('change', () => {
-    syncWordPhraseFitVisibility();
+    syncWordPhraseFitState();
     savePhenomenon();
   });
   byId('ctc-interrupted-segment').addEventListener('change', () => {
