@@ -204,6 +204,27 @@ class ConversationAnnotationAppTest(unittest.TestCase):
             self.assertEqual(first["tasks"][0]["schema_version"], "conversation-annotation-v2")
             self.assertEqual(first["tasks"][0]["task"]["task_id"], "stereo")
 
+    def test_assign_rejects_session_reuse_by_another_participant(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            root = Path(temporary_dir)
+            tasks_path = root / "tasks.json"
+            tasks_path.write_text(json.dumps([self.task]), encoding="utf-8")
+            store = AnnotationStore(
+                tasks_path=tasks_path,
+                data_dir=root / "data",
+                bundle_size=1,
+                redundancy=1,
+                completion_url="https://example.test/complete",
+            )
+            store.assign(self.worker)
+
+            response = store.assign(
+                {"prolific_pid": "P2", "study_id": "S1", "session_id": "SESSION1"}
+            )
+
+            self.assertEqual(response["status"], "error")
+            self.assertIn("different participant", response["errors"][0])
+
     def test_loaded_task_schema_has_file_level_and_segment_choices_only(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_dir:
             root = Path(temporary_dir)
@@ -328,6 +349,117 @@ class ConversationAnnotationAppTest(unittest.TestCase):
 
             self.assertEqual(response["status"], "error")
             self.assertIn("No assignment exists", response["errors"][0])
+
+    def test_submit_rejects_worker_identity_mismatch(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            root = Path(temporary_dir)
+            tasks_path = root / "tasks.json"
+            tasks_path.write_text(json.dumps([self.task]), encoding="utf-8")
+            store = AnnotationStore(
+                tasks_path=tasks_path,
+                data_dir=root / "data",
+                bundle_size=1,
+                redundancy=1,
+                completion_url="https://example.test/complete",
+            )
+            store.assign(self.worker)
+
+            response = store.submit(
+                {
+                    "schema_version": "conversation-annotation-v3",
+                    "worker": {
+                        "prolific_pid": "P2",
+                        "study_id": "S1",
+                        "session_id": "SESSION1",
+                    },
+                    "tasks": [],
+                }
+            )
+
+            self.assertEqual(response["status"], "error")
+            self.assertIn("identity does not match", response["errors"][0])
+
+    def test_submission_requires_v3_and_complete_known_phenomena(self) -> None:
+        task = {
+            "task_id": "stereo",
+            "segments": [
+                {
+                    "segment_id": "left",
+                    "channel": 0,
+                    "start": 0.0,
+                    "end": 1.0,
+                    "transcript": "left",
+                },
+                {
+                    "segment_id": "right",
+                    "channel": 1,
+                    "start": 0.5,
+                    "end": 1.5,
+                    "transcript": "right",
+                },
+            ],
+            "phenomena": [{"phenomenon_type": "unknown"}],
+        }
+        payload = {
+            "schema_version": "conversation-annotation-v2",
+            "worker": self.worker,
+            "tasks": [task],
+        }
+
+        errors = "\n".join(validate_submission(payload))
+        self.assertIn("schema_version must be conversation-annotation-v3", errors)
+        self.assertIn("invalid or missing phenomenon type", errors)
+
+        payload["schema_version"] = "conversation-annotation-v3"
+        task["phenomena"] = [{"phenomenon_type": "ctc", "ctc": {}}]
+        errors = "\n".join(validate_submission(payload))
+        self.assertIn("select interrupted and interrupting segments", errors)
+        self.assertIn("invalid or missing speaker state", errors)
+        self.assertIn("main-speaker takeover must be answered", errors)
+
+    def test_repeated_submission_does_not_overwrite_saved_result(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            root = Path(temporary_dir)
+            tasks_path = root / "tasks.json"
+            tasks_path.write_text(json.dumps([self.task]), encoding="utf-8")
+            data_dir = root / "data"
+            store = AnnotationStore(
+                tasks_path=tasks_path,
+                data_dir=data_dir,
+                bundle_size=1,
+                redundancy=1,
+                completion_url="https://example.test/complete",
+            )
+            store.assign(self.worker)
+            payload = {
+                "schema_version": "conversation-annotation-v3",
+                "worker": self.worker,
+                "tasks": [
+                    {
+                        "task_id": "stereo",
+                        "phenomena": [{"phenomenon_type": "not_target"}],
+                        "segments": [
+                            {
+                                "segment_id": "seg-1",
+                                "channel": 0,
+                                "start": 0.1,
+                                "end": 1.2,
+                                "transcript": "original",
+                            }
+                        ],
+                    }
+                ],
+            }
+            first = store.submit(payload)
+            payload["tasks"][0]["segments"][0]["transcript"] = "replacement"
+
+            second = store.submit(payload)
+            saved = json.loads((data_dir / "submissions" / "SESSION1.json").read_text())
+
+            self.assertEqual(first["status"], "ok")
+            self.assertEqual(second["status"], "ok")
+            self.assertTrue(second["already_submitted"])
+            self.assertEqual(saved["tasks"][0]["segments"][0]["transcript"], "original")
 
     def test_parse_args_default_bundle_size_is_one(self) -> None:
         import sys

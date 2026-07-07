@@ -29,6 +29,7 @@ from mturk.build_mturk_audio_mvp import build_payload  # noqa: E402
 
 DEFAULT_COMPLETION_URL = "https://app.prolific.com/submissions/complete"
 SCHEMA_VERSION = "conversation-annotation-v2"
+SUBMISSION_SCHEMA_VERSION = "conversation-annotation-v3"
 TASK_LOCK = threading.Lock()
 
 
@@ -128,6 +129,14 @@ class AnnotationStore:
             assignments = read_json(self.assignments_path, {})
             existing = assignments.get(session_id)
             if existing:
+                if any(
+                    existing.get(key) != worker.get(key)
+                    for key in ("prolific_pid", "study_id")
+                ):
+                    return {
+                        "status": "error",
+                        "errors": ["SESSION_ID is already assigned to a different participant."],
+                    }
                 return self._assignment_response(existing, worker)
 
             task_counts = self._assigned_counts(assignments)
@@ -193,16 +202,32 @@ class AnnotationStore:
         }
 
     def submit(self, payload: dict) -> dict:
-        errors = validate_submission(payload)
-        if errors:
-            return {"status": "error", "errors": errors}
-        worker = payload["worker"]
-        session_id = worker["session_id"]
+        worker = payload.get("worker") if isinstance(payload, dict) else None
+        session_id = worker.get("session_id") if isinstance(worker, dict) else ""
+        if not session_id:
+            return {"status": "error", "errors": validate_submission(payload)}
         with TASK_LOCK:
             assignments = read_json(self.assignments_path, {})
             assignment = assignments.get(session_id)
             if not assignment:
                 return {"status": "error", "errors": ["No assignment exists for this SESSION_ID."]}
+            if any(
+                assignment.get(key) != worker.get(key)
+                for key in ("prolific_pid", "study_id", "session_id")
+            ):
+                return {
+                    "status": "error",
+                    "errors": ["Worker identity does not match this assignment."],
+                }
+            if assignment.get("submitted"):
+                return {
+                    "status": "ok",
+                    "completion_url": self.completion_url,
+                    "already_submitted": True,
+                }
+            errors = validate_submission(payload)
+            if errors:
+                return {"status": "error", "errors": errors}
             expected = set(assignment.get("task_ids", []))
             received = {task.get("task_id", "") for task in payload.get("tasks", [])}
             if expected != received:
@@ -239,7 +264,13 @@ def validate_worker(params: dict[str, list[str]]) -> tuple[dict[str, str] | None
 
 def validate_submission(payload: dict) -> list[str]:
     errors: list[str] = []
+    if not isinstance(payload, dict):
+        return ["Submission must be a JSON object."]
+    if payload.get("schema_version") != SUBMISSION_SCHEMA_VERSION:
+        errors.append(f"schema_version must be {SUBMISSION_SCHEMA_VERSION}.")
     worker = payload.get("worker") or {}
+    if not isinstance(worker, dict):
+        worker = {}
     for key in ("prolific_pid", "study_id", "session_id"):
         if not worker.get(key):
             errors.append(f"Missing worker.{key}.")
@@ -248,12 +279,28 @@ def validate_submission(payload: dict) -> list[str]:
         errors.append("Submission must include at least one task.")
         return errors
     for task_index, task in enumerate(tasks, 1):
+        if not isinstance(task, dict):
+            errors.append(f"Task {task_index} must be an object.")
+            continue
         if not task.get("task_id"):
             errors.append(f"Task {task_index} is missing task_id.")
-        segments = task.get("segments") or []
-        if not segments:
+        segments = task.get("segments")
+        if not isinstance(segments, list) or not segments:
             errors.append(f"Task {task_index} needs at least one timestamp segment.")
+            segments = []
+        segment_ids: set[str] = set()
         for segment_index, segment in enumerate(segments, 1):
+            if not isinstance(segment, dict):
+                errors.append(f"Task {task_index} segment {segment_index} must be an object.")
+                continue
+            segment_id = str(segment.get("segment_id", "")).strip()
+            if not segment_id:
+                errors.append(f"Task {task_index} segment {segment_index} needs segment_id.")
+            elif segment_id in segment_ids:
+                errors.append(f"Task {task_index} has duplicate segment_id {segment_id}.")
+            segment_ids.add(segment_id)
+            if segment.get("channel") not in (0, 1):
+                errors.append(f"Task {task_index} segment {segment_index} needs channel 0 or 1.")
             start = segment.get("start")
             end = segment.get("end")
             if not isinstance(start, (int, float)) or not isinstance(end, (int, float)):
@@ -262,8 +309,6 @@ def validate_submission(payload: dict) -> list[str]:
                 errors.append(f"Task {task_index} segment {segment_index} must have start < end.")
             if not str(segment.get("transcript", "")).strip():
                 errors.append(f"Task {task_index} segment {segment_index} needs transcript.")
-        if payload.get("schema_version") != "conversation-annotation-v3":
-            continue
         phenomena = task.get("phenomena")
         if not isinstance(phenomena, list) or not phenomena:
             errors.append(f"Task {task_index} needs at least one phenomenon annotation.")
@@ -284,18 +329,50 @@ def validate_submission(payload: dict) -> list[str]:
         seen_pairs: set[tuple[str, str]] = set()
         for phenomenon_index, phenomenon in enumerate(phenomena, 1):
             prefix = f"Task {task_index}, phenomenon {phenomenon_index}"
+            if not isinstance(phenomenon, dict):
+                errors.append(f"{prefix}: annotation must be an object.")
+                continue
             phenomenon_type = phenomenon.get("phenomenon_type")
             if phenomenon_type == "ctc":
                 details = phenomenon.get("ctc") or {}
+                if not isinstance(details, dict):
+                    errors.append(f"{prefix}: CTC details must be an object.")
+                    continue
                 first_id = details.get("interrupted_segment_id", "")
                 second_id = details.get("interrupting_segment_id", "")
                 pair_key = (first_id, second_id)
                 first_segment = segment_by_id.get(first_id)
                 second_segment = segment_by_id.get(second_id)
-                if first_id and second_id:
+                if not first_id or not second_id:
+                    errors.append(f"{prefix}: select interrupted and interrupting segments.")
+                elif first_id == second_id:
+                    errors.append(f"{prefix}: CTC segments must differ.")
+                elif not first_segment or not second_segment:
+                    errors.append(f"{prefix}: selected CTC segment does not exist.")
+                else:
                     if pair_key in seen_pairs:
                         errors.append(f"{prefix}: this segment pair is duplicated.")
                     seen_pairs.add(pair_key)
+                speaker_state = details.get("speaker_state")
+                interruption_type = details.get("interruption_type")
+                valid_types = {
+                    "stalled": {
+                        "word_phrase_confident",
+                        "word_phrase_unsure",
+                        "guiding_question",
+                    },
+                    "not_stalled_projection": {"buzz_in"},
+                }
+                if speaker_state not in valid_types:
+                    errors.append(f"{prefix}: invalid or missing speaker state.")
+                elif interruption_type not in valid_types[speaker_state]:
+                    errors.append(f"{prefix}: interruption type does not match speaker state.")
+                if interruption_type in {"word_phrase_confident", "word_phrase_unsure"} and not isinstance(
+                    details.get("word_phrase_fits"), bool
+                ):
+                    errors.append(f"{prefix}: word/phrase fit must be answered yes or no.")
+                if not isinstance(details.get("interrupter_becomes_main_speaker"), bool):
+                    errors.append(f"{prefix}: main-speaker takeover must be answered yes or no.")
                 if first_segment and second_segment:
                     first_channel = first_segment.get("channel")
                     second_channel = second_segment.get("channel")
@@ -319,12 +396,21 @@ def validate_submission(payload: dict) -> list[str]:
                         )
             elif phenomenon_type == "pragmatic_pair":
                 details = phenomenon.get("pragmatic_pair") or {}
+                if not isinstance(details, dict):
+                    errors.append(f"{prefix}: Pragmatic Pair details must be an object.")
+                    continue
                 first_id = details.get("question_segment_id", "")
                 second_id = details.get("response_segment_id", "")
                 pair_key = (first_id, second_id)
                 first_segment = segment_by_id.get(first_id)
                 second_segment = segment_by_id.get(second_id)
-                if first_id and second_id:
+                if not first_id or not second_id:
+                    errors.append(f"{prefix}: select prompt and response segments.")
+                elif first_id == second_id:
+                    errors.append(f"{prefix}: Pragmatic Pair segments must differ.")
+                elif not first_segment or not second_segment:
+                    errors.append(f"{prefix}: selected Pragmatic Pair segment does not exist.")
+                else:
                     if pair_key in seen_pairs:
                         errors.append(f"{prefix}: this segment pair is duplicated.")
                     seen_pairs.add(pair_key)
@@ -345,6 +431,8 @@ def validate_submission(payload: dict) -> list[str]:
                         and second_start < first_start
                     ):
                         errors.append(f"{prefix}: response cannot start before the prompt.")
+            elif phenomenon_type != "not_target":
+                errors.append(f"{prefix}: invalid or missing phenomenon type.")
     return errors
 
 
