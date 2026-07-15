@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Human / LLM Label Review</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="https://unpkg.com/wavesurfer.js@7.10.1/dist/wavesurfer.min.js"></script>
+  <script src="https://unpkg.com/wavesurfer.js@7.10.1/dist/plugins/regions.min.js"></script>
+</head>
+<body>
+  <main class="shell review-shell">
+    <header class="topbar">
+      <div>
+        <h1>Human / LLM Label Review</h1>
+        <div class="muted" id="review-summary">Loading review data...</div>
+      </div>
+      <div class="task-nav">
+        <button type="button" id="prev-item">Previous</button>
+        <button type="button" id="next-item">Next</button>
+      </div>
+    </header>
+
+    <section class="card status" id="review-loading">
+      <h2>Loading labels</h2>
+      <p id="review-message">Reading pilot submissions and LLM auto-label candidates.</p>
+    </section>
+
+    <section id="review-app" hidden>
+      <section class="card">
+        <div class="review-toolbar">
+          <label>Filter
+            <select id="review-filter">
+              <option value="all">All clips</option>
+              <option value="disagree">Human / LLM CTC disagreement</option>
+              <option value="human_ctc">Human CTC</option>
+              <option value="human_pp">Human Pragmatic Pair</option>
+              <option value="human_not_target">Human not target</option>
+              <option value="llm_ctc">LLM CTC</option>
+              <option value="llm_non_ctc">LLM non-CTC</option>
+            </select>
+          </label>
+          <label>Jump to clip
+            <select id="item-select"></select>
+          </label>
+          <span id="item-position" class="progress"></span>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2 id="review-task-title">Task</h2>
+        <div class="muted" id="review-task-meta"></div>
+        <audio id="review-audio" controls preload="metadata" crossorigin="anonymous"></audio>
+        <div id="review-wave-status" class="muted">Waveform status: waiting.</div>
+        <div class="channel-key">
+          <span class="left"><i class="dot left-dot"></i>Left / human interrupted or prompt</span>
+          <span class="right"><i class="dot right-dot"></i>Right / human interrupting or response</span>
+          <span><i class="dot llm-dot"></i>LLM candidate region</span>
+        </div>
+        <div id="review-waveform"></div>
+      </section>
+
+      <section class="review-columns">
+        <section class="card">
+          <h2>Human label</h2>
+          <div id="human-labels"></div>
+        </section>
+        <section class="card">
+          <h2>LLM auto label</h2>
+          <div id="llm-labels"></div>
+        </section>
+      </section>
+
+      <section class="card segment-card">
+        <h2>Submitted segments</h2>
+        <div id="review-segments-list"></div>
+      </section>
+    </section>
+  </main>
+  <script src="/static/review.js"></script>
+</body>
+</html>
