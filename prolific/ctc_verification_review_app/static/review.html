@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CTC Verification Result Review</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="https://unpkg.com/wavesurfer.js@7.10.1/dist/wavesurfer.min.js"></script>
+  <script src="https://unpkg.com/wavesurfer.js@7.10.1/dist/plugins/regions.min.js"></script>
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div>
+        <h1>CTC Verification Result Review</h1>
+        <div id="summary" class="muted">Loading submissions...</div>
+      </div>
+      <div class="nav">
+        <button id="prev" type="button">Previous</button>
+        <button id="next" type="button">Next</button>
+      </div>
+    </header>
+
+    <section id="loading" class="card status">
+      <h2>Loading annotation results</h2>
+      <p id="message">Reading submitted CTC verification JSON files.</p>
+    </section>
+
+    <section id="app" hidden>
+      <section class="card toolbar">
+        <label>Filter
+          <select id="filter">
+            <option value="all">All submitted annotations</option>
+            <option value="agree">Pre-label / verification agree</option>
+            <option value="disagree">Pre-label / verification disagree</option>
+            <option value="stuck">Speaker stuck</option>
+            <option value="not_stuck">Speaker not stuck</option>
+            <option value="unanswered">Unanswered</option>
+            <option value="word_phrase_confident">Word/phrase (confident)</option>
+            <option value="word_phrase_unsure">Word/phrase (guess/unsure)</option>
+            <option value="guiding_question">Guiding question</option>
+            <option value="speaker_shift">Interrupter becomes main speaker</option>
+            <option value="notes">Has note</option>
+            <option value="transcript_edits">Has transcript edits</option>
+          </select>
+        </label>
+        <label>Jump to submission
+          <select id="item-select"></select>
+        </label>
+        <span id="position" class="progress"></span>
+      </section>
+
+      <section class="card">
+        <h2 id="task-title">Submission</h2>
+        <div id="task-meta" class="muted"></div>
+        <audio id="audio" controls preload="metadata" crossorigin="anonymous"></audio>
+        <div id="audio-url" class="muted"></div>
+        <div id="wave-status" class="muted">Waveform status: waiting.</div>
+        <div class="key">
+          <span class="interrupted"><i class="dot interrupted-dot"></i>Interrupted utterance</span>
+          <span class="interrupting"><i class="dot interrupting-dot"></i>Interrupting utterance</span>
+          <span class="stall"><i class="dot stall-dot"></i>Submitted last stuck word</span>
+        </div>
+        <div id="waveform"></div>
+      </section>
+
+      <section class="columns">
+        <section class="card">
+          <h2>Submitted label</h2>
+          <div id="label-details"></div>
+        </section>
+        <section class="card">
+          <h2>Pre-labelled utterances</h2>
+          <div id="utterance-details"></div>
+        </section>
+      </section>
+
+      <section class="card">
+        <h2>Submission metadata</h2>
+        <div id="metadata" class="kv"></div>
+      </section>
+    </section>
+  </main>
+  <script src="/static/review.js"></script>
+</body>
+</html>
