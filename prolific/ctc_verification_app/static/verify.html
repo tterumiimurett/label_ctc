@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Interruption Type Annotation</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="https://unpkg.com/wavesurfer.js@7.10.1/dist/wavesurfer.min.js"></script>
+  <script src="https://unpkg.com/wavesurfer.js@7.10.1/dist/plugins/regions.min.js"></script>
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div>
+        <h1>Interruption Type Annotation</h1>
+        <div class="muted" id="worker-line">Loading participant session...</div>
+      </div>
+      <div class="progress" id="progress-line"></div>
+    </header>
+
+    <section class="card status" id="loading-card">
+      <h2>Loading assignment</h2>
+      <p id="loading-message">Requesting pre-labelled interruption candidates from the server.</p>
+    </section>
+
+    <form id="verification-form" hidden>
+      <section class="card">
+        <div class="task-header">
+          <div>
+            <h2 id="task-title">Pre-labelled candidate</h2>
+            <div id="task-meta" class="muted"></div>
+          </div>
+          <div class="task-nav" id="task-nav">
+            <button id="prev-task" type="button">Previous</button>
+            <button id="next-task" type="button">Next</button>
+          </div>
+        </div>
+      </section>
+
+      <details class="card foldable" open>
+        <summary>Instruction</summary>
+        <p>
+          Audio clips have been pre-labelled with a possible interruption where the first speaker may be stuck.
+          Your task is to verify the candidate and annotate the interruption type.
+        </p>
+        <p>
+          Specifically, an interruption may happen when the original speaker gets stuck,
+          and the other speaker helps by offering a word/phrase or asking a guiding question.
+        </p>
+        <ol>
+          <li>Check whether the original speaker is stuck.</li>
+          <li>If the speaker is stuck, choose the interruption type.</li>
+          <li>Drag the <strong>bold red line</strong> on the audio waveform to the timestamp of the last stuck word before the other speaker steps in.</li>
+          <li>Correct the interrupted or interrupting transcript if they are wrong.</li>
+        </ol>
+      </details>
+
+      <details class="card foldable examples" open>
+        <summary>Examples</summary>
+        <p class="muted">Listen to these examples before beginning the annotation task.</p>
+        <div class="example-grid">
+          <div class="example">
+            <strong>Word/phrase (confident)</strong>
+            <audio controls preload="metadata" src="/static/examples/audio/ctc_stuck_confident.wav"></audio>
+            <p><b>Speaker:</b> ... show you the cheapest ...</p>
+            <p><b>Interrupter:</b> place to get it</p>
+          </div>
+          <div class="example">
+            <strong>Word/phrase (guess/unsure)</strong>
+            <audio controls preload="metadata" src="/static/examples/audio/ctc_stuck_unsure.wav"></audio>
+            <p><b>Speaker:</b> What is that show? The one with the ...</p>
+            <p><b>Interrupter:</b> Twilight?</p>
+          </div>
+          <div class="example">
+            <strong>Guiding question</strong>
+            <audio controls preload="metadata" src="/static/examples/audio/ctc_guiding_question.wav"></audio>
+            <p><b>Speaker:</b> It was like she turned this into like ...</p>
+            <p><b>Interrupter:</b> What does it sound like?</p>
+          </div>
+        </div>
+      </details>
+
+      <section class="card">
+        <h2>Stereo playback</h2>
+        <div class="controls">
+          <button id="play" type="button">Play / Pause</button>
+          <button id="play-interrupted" type="button">Play interrupted utterance</button>
+          <button id="play-interrupting" type="button">Play interrupting utterance</button>
+          <span id="time-display">0.00s / 0.00s</span>
+          <label>Zoom
+            <input id="zoom" type="range" min="10" max="220" value="50">
+          </label>
+        </div>
+        <audio id="audio" controls preload="metadata" crossorigin="anonymous"></audio>
+        <div id="audio-url" class="muted"></div>
+        <div id="wave-status" class="muted">Waveform status: waiting.</div>
+        <div class="channel-key">
+          <span class="main-speaker"><i class="dot main-dot"></i>Interrupted utterance</span>
+          <span class="interrupter"><i class="dot interrupter-dot"></i>Interrupting utterance</span>
+          <span class="stall"><i class="dot stall-dot"></i>Last stuck word timestamp</span>
+        </div>
+        <div id="waveform"></div>
+        <p class="muted">Please drag the bold red line to the last stuck word before the other speaker steps in. It should be inside the interrupted utterance, not at its beginning.</p>
+      </section>
+
+      <section class="grid-two">
+        <section class="card prelabel-card">
+          <h2>Pre-labelled utterances</h2>
+          <div class="utterance-panel">
+            <h3>Interrupted speaker</h3>
+            <div class="speaker-line" id="interrupted-speaker"></div>
+            <p id="interrupted-context"></p>
+          </div>
+          <div class="utterance-panel">
+            <h3>Interrupting speaker</h3>
+            <div class="speaker-line" id="interrupting-speaker"></div>
+            <p id="interrupting-context"></p>
+          </div>
+          <div class="utterance-panel">
+            <h3>Original pre-label explanation</h3>
+            <p id="prelabel-explanation"></p>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>Interruption type annotation</h2>
+          <fieldset class="field-grid">
+            <label>Is the interrupted speaker stuck before the other speaker steps in?
+              <select id="speaker-stuck">
+                <option value="">Select...</option>
+                <option value="yes">Yes</option>
+                <option value="no">No</option>
+              </select>
+            </label>
+            <label class="wide-field">Interruption type
+              <select id="interruption-type">
+                <option value="">Select...</option>
+                <option value="word_phrase_confident">Word/phrase (confident)</option>
+                <option value="word_phrase_unsure">Word/phrase (guess/unsure)</option>
+                <option value="guiding_question">Guiding question</option>
+              </select>
+            </label>
+            <label>Last stuck word timestamp (s) <span class="muted">drag the bold red line inside the interrupted utterance</span>
+              <input id="stall-time" type="number" min="0" step="0.01">
+            </label>
+            <label>Interrupter becomes main speaker?
+              <select id="speaker-shift">
+                <option value="">Select...</option>
+                <option value="yes">Yes</option>
+                <option value="no">No</option>
+              </select>
+            </label>
+            <label class="wide-field">Correct interrupted transcript if possible <span class="muted">(optional)</span>
+              <textarea id="interrupted-transcript" rows="3"></textarea>
+            </label>
+            <label class="wide-field">Correct interrupting transcript if possible <span class="muted">(optional)</span>
+              <textarea id="interrupting-transcript" rows="3"></textarea>
+            </label>
+            <label class="wide-field">Optional note
+              <textarea id="note" rows="2"></textarea>
+            </label>
+          </fieldset>
+        </section>
+      </section>
+
+      <div class="errors" id="errors"></div>
+      <div class="submit-row card">
+        <button class="primary" id="submit" type="submit">Submit annotation</button>
+        <span id="save-status" class="muted"></span>
+      </div>
+
+      <details class="card output">
+        <summary>Preview submitted JSON</summary>
+        <pre id="json-output"></pre>
+      </details>
+    </form>
+  </main>
+  <script src="/static/app.js"></script>
+</body>
+</html>
