@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CTC Subclass JSONL Preview</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/vendor/wavesurfer.min.js"></script>
+  <script src="/vendor/regions.min.js"></script>
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div>
+        <h1>CTC Subclass JSONL Preview</h1>
+        <div id="summary" class="muted">Loading JSONL...</div>
+      </div>
+      <div class="nav">
+        <button id="prev" type="button">Previous</button>
+        <button id="next" type="button">Next</button>
+      </div>
+    </header>
+
+    <section id="loading" class="card status">
+      <h2>Loading preview data</h2>
+      <p id="message">Reading subclass labels, timestamps, and matched test audio.</p>
+    </section>
+
+    <section id="app" hidden>
+      <section id="dataset-note" class="card dataset-note"></section>
+
+      <section class="card toolbar">
+        <label>Filter
+          <select id="filter">
+            <option value="subclassed">Subclassed CTC only</option>
+            <option value="all">All JSONL rows</option>
+            <option value="stuck_word">Stuck word</option>
+            <option value="stuck_guide">Stuck guide</option>
+            <option value="not_stuck">Not stuck</option>
+            <option value="not_ctc">Not CTC</option>
+            <option value="unclassified">Unclassified</option>
+          </select>
+        </label>
+        <label>Search
+          <input id="search" type="search" placeholder="interaction, candidate, transcript">
+        </label>
+        <label>Jump to row
+          <select id="item-select"></select>
+        </label>
+        <span id="position" class="progress"></span>
+      </section>
+
+      <section class="card">
+        <div class="title-line">
+          <div>
+            <h2 id="task-title">Candidate</h2>
+            <div id="task-meta" class="muted"></div>
+          </div>
+          <span id="category-badge" class="badge"></span>
+        </div>
+
+        <audio id="audio" controls preload="metadata" crossorigin="anonymous"></audio>
+        <div id="audio-url" class="muted"></div>
+        <div id="wave-status" class="muted">Waveform status: waiting.</div>
+        <div class="key">
+          <span class="interrupted"><i class="dot interrupted-dot"></i>Interrupted utterance / main speaker</span>
+          <span class="interrupting"><i class="dot interrupting-dot"></i>Interrupting utterance / interrupter</span>
+          <span class="last-word"><i class="dot last-word-dot"></i>Main speaker last word end</span>
+          <span class="first-word"><i class="dot first-word-dot"></i>Interrupter first word start</span>
+        </div>
+        <div id="waveform"></div>
+      </section>
+
+      <section class="columns">
+        <article class="card">
+          <h2>Subclass result</h2>
+          <div id="classification" class="kv"></div>
+          <h3>Classifier reasoning</h3>
+          <p id="classifier-reasoning"></p>
+        </article>
+
+        <article class="card">
+          <h2>Timestamp audit</h2>
+          <div id="timestamps" class="kv"></div>
+          <p class="muted">Absolute = original conversation timeline. Clip-relative = the audio player and waveform timeline.</p>
+        </article>
+      </section>
+
+      <section class="columns">
+        <article class="card">
+          <h2>Conversation context</h2>
+          <div id="context"></div>
+        </article>
+
+        <article class="card">
+          <h2>Audio/source mapping</h2>
+          <div id="source-mapping" class="kv"></div>
+        </article>
+      </section>
+
+      <section class="card">
+        <h2>Dialogue in clip-relative time</h2>
+        <div id="dialogue" class="dialogue"></div>
+      </section>
+
+      <details class="card">
+        <summary><strong>Raw JSONL row</strong></summary>
+        <pre id="raw-json"></pre>
+      </details>
+    </section>
+  </main>
+  <script src="/static/preview.js"></script>
+</body>
+</html>

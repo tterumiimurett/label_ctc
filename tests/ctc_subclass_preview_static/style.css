@@ -1,0 +1,242 @@
+:root {
+  --ink: #1f2937;
+  --muted: #64748b;
+  --line: #dbe2ea;
+  --panel: #f8fafc;
+  --main: #1f77b4;
+  --interrupter: #f97316;
+  --last-word: #dc2626;
+  --first-word: #7c3aed;
+  --accent: #0f766e;
+  --danger: #b91c1c;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  background: white;
+  color: var(--ink);
+  font: 14px/1.45 Arial, Helvetica, sans-serif;
+  margin: 0;
+}
+
+.shell {
+  margin: 0 auto;
+  max-width: 1240px;
+  padding: 18px;
+}
+
+.topbar,
+.nav,
+.toolbar,
+.key,
+.title-line {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+h1 { font-size: 21px; margin: 0 0 4px; }
+h2 { font-size: 16px; margin: 0 0 12px; }
+h3 { font-size: 13px; margin: 14px 0 5px; }
+p { margin: 6px 0; }
+
+.muted {
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.progress {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  margin: 14px 0;
+  padding: 14px;
+}
+
+.status,
+.dataset-note,
+.dialogue-row {
+  background: var(--panel);
+}
+
+.dataset-note.warning {
+  background: #fffbeb;
+  border-color: #fde68a;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+button {
+  background: white;
+  border: 1px solid #94a3b8;
+  border-radius: 5px;
+  cursor: pointer;
+  padding: 6px 12px;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+input,
+select {
+  border: 1px solid #cbd5e1;
+  border-radius: 5px;
+  margin-left: 5px;
+  padding: 5px;
+}
+
+#search { min-width: 230px; }
+#item-select { max-width: 380px; }
+
+#audio {
+  display: block;
+  margin-bottom: 8px;
+  width: 100%;
+}
+
+#waveform {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  min-height: 222px;
+  overflow: hidden;
+}
+
+.key {
+  font-size: 12px;
+  font-weight: 700;
+  justify-content: flex-start;
+  margin: 9px 0 5px;
+}
+
+.dot {
+  border-radius: 50%;
+  display: inline-block;
+  height: 10px;
+  margin-right: 5px;
+  width: 10px;
+}
+
+.interrupted { color: var(--main); }
+.interrupting { color: var(--interrupter); }
+.last-word { color: var(--last-word); }
+.first-word { color: var(--first-word); }
+.interrupted-dot { background: var(--main); }
+.interrupting-dot { background: var(--interrupter); }
+.last-word-dot { background: var(--last-word); }
+.first-word-dot { background: var(--first-word); }
+
+.columns {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.columns .card { margin: 0; }
+
+.kv {
+  display: grid;
+  gap: 7px 12px;
+  grid-template-columns: max-content minmax(0, 1fr);
+}
+
+.kv strong { color: var(--muted); }
+
+.badge {
+  background: #e2e8f0;
+  border-radius: 999px;
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 3px 9px;
+}
+
+.badge.stuck_word {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.badge.stuck_guide {
+  background: #ede9fe;
+  color: #5b21b6;
+}
+
+.badge.not_stuck {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.badge.not_ctc {
+  background: #e2e8f0;
+  color: #334155;
+}
+
+.dialogue {
+  display: grid;
+  gap: 7px;
+  max-height: 350px;
+  overflow: auto;
+}
+
+.dialogue-row {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 90px 120px minmax(0, 1fr);
+  padding: 8px;
+}
+
+.dialogue-row .speaker { font-weight: 700; }
+.dialogue-row .time { color: var(--muted); font-variant-numeric: tabular-nums; }
+
+pre {
+  background: #0f172a;
+  border-radius: 6px;
+  color: #e2e8f0;
+  font: 12px/1.45 Menlo, Monaco, Consolas, monospace;
+  margin: 12px 0 0;
+  max-height: 520px;
+  overflow: auto;
+  padding: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.errors {
+  background: #fef2f2;
+  border-color: #fecaca;
+  color: var(--danger);
+}
+
+@media (max-width: 800px) {
+  .topbar,
+  .toolbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .columns,
+  .kv {
+    grid-template-columns: 1fr;
+  }
+
+  .dialogue-row {
+    grid-template-columns: 1fr;
+    gap: 3px;
+  }
+}
