@@ -155,6 +155,9 @@ def load_auto_candidates(patterns: list[str]) -> list[dict]:
 
 
 def default_stall_time(candidate: dict, clip_start: float | None) -> float | None:
+    last_word_end = relative_time(candidate.get("main_speaker_last_word_end_time"), clip_start)
+    if last_word_end is not None:
+        return last_word_end
     word = candidate.get("interrupted_word") or {}
     word_time = relative_time(word.get("end"), clip_start)
     if word_time is not None:
@@ -199,7 +202,6 @@ def verification_task(candidate: dict, source_task: dict) -> dict:
             "line_number": candidate.get("_line_number"),
             "pred_confidence": candidate.get("pred_confidence", ""),
             "pred_completion_target": candidate.get("pred_completion_target", ""),
-            "pred_reasoning": candidate.get("pred_reasoning", ""),
             "audio_verify": candidate.get("audio_verify"),
             "main_speaker_pre_interrupt_transcript": candidate.get(
                 "main_speaker_pre_interrupt_transcript",
@@ -289,7 +291,7 @@ class VerificationStore:
                     }
                 return self._assignment_response(existing, worker)
 
-            task_counts = self._assigned_counts(assignments)
+            task_counts = self._claim_counts(assignments)
             existing_worker_candidates = {
                 candidate_id
                 for assignment in assignments.values()
@@ -303,11 +305,13 @@ class VerificationStore:
                 and task["candidate_id"] not in existing_worker_candidates
             ]
             if len(candidates) < self.bundle_size:
-                candidates = [
-                    task
-                    for task in self.tasks
-                    if task["candidate_id"] not in existing_worker_candidates
-                ] or self.tasks
+                return {
+                    "status": "error",
+                    "errors": [
+                        "No unassigned pre-labelled candidates remain for this study. "
+                        "Please return the Prolific submission."
+                    ],
+                }
             candidates.sort(key=lambda task: (task_counts.get(task["candidate_id"], 0), task["task_id"]))
             chosen = candidates[: self.bundle_size]
             assignment = {
@@ -323,11 +327,26 @@ class VerificationStore:
             atomic_write_json(self.assignments_path, assignments)
             return self._assignment_response(assignment, worker)
 
-    def _assigned_counts(self, assignments: dict) -> dict[str, int]:
-        counts: dict[str, int] = {}
+    def _claim_counts(self, assignments: dict) -> dict[str, int]:
+        counts = self._submitted_counts()
         for assignment in assignments.values():
+            if assignment.get("submitted"):
+                continue
             for candidate_id in assignment.get("candidate_ids", []):
                 counts[candidate_id] = counts.get(candidate_id, 0) + 1
+        return counts
+
+    def _submitted_counts(self) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        for path in self.submissions_dir.glob("*.json"):
+            try:
+                payload = read_json(path, {})
+            except (OSError, json.JSONDecodeError):
+                continue
+            for task in payload.get("tasks", []):
+                candidate_id = task.get("candidate_id")
+                if candidate_id:
+                    counts[candidate_id] = counts.get(candidate_id, 0) + 1
         return counts
 
     def _assignment_response(self, assignment: dict, worker: dict[str, str]) -> dict:
@@ -408,9 +427,10 @@ def validate_submission(payload: dict) -> list[str]:
     if not isinstance(tasks, list) or not tasks:
         errors.append("Submission must include at least one task.")
         return errors
-    valid_types = {"word_phrase_confident", "word_phrase_unsure", "guiding_question"}
+    word_phrase_types = {"word_phrase", "word_phrase_confident", "word_phrase_unsure"}
+    valid_types = word_phrase_types | {"guiding_question", "other"}
     for index, task in enumerate(tasks, 1):
-        prefix = f"Task {index}"
+        prefix = "Check"
         if not isinstance(task, dict):
             errors.append(f"{prefix} must be an object.")
             continue
@@ -432,25 +452,40 @@ def validate_submission(payload: dict) -> list[str]:
             errors.append(f"{prefix}: select a valid interruption type.")
         if candidate_valid and speaker_stuck is False and interruption_type not in ("", None, "not_applicable"):
             errors.append(f"{prefix}: interruption type should be blank when the speaker is not stuck.")
+        if candidate_valid and speaker_stuck is True and interruption_type in word_phrase_types:
+            if not isinstance(task.get("word_phrase_fits"), bool):
+                errors.append(
+                    f"{prefix}: answer whether the word/phrase correctly fits the speaker's intention."
+                )
+        if candidate_valid and speaker_stuck is True and interruption_type in {"guiding_question", "other"}:
+            if task.get("word_phrase_fits") not in ("", None, "not_applicable"):
+                errors.append(f"{prefix}: word/phrase correctness should be blank unless the type is word/phrase.")
         stall_time = task.get("stall_time")
         duration = task.get("duration")
         if candidate_valid and speaker_stuck is True:
             if not isinstance(stall_time, (int, float)):
-                errors.append(f"{prefix}: mark the last stuck word timestamp.")
+                errors.append(f"{prefix}: mark the end timestamp of the last stuck word.")
             elif isinstance(duration, (int, float)) and not 0 <= stall_time <= duration:
-                errors.append(f"{prefix}: last stuck word timestamp must be within the audio clip.")
+                errors.append(f"{prefix}: end timestamp of the last stuck word must be within the audio clip.")
             else:
-                interrupted = ((task.get("regions") or {}).get("interrupted") or {})
+                regions = task.get("regions") or {}
+                interrupted = (regions.get("interrupted") or {})
+                interrupting = (regions.get("interrupting") or {})
                 interrupted_start = interrupted.get("start")
                 interrupted_end = interrupted.get("end")
+                interruption_start = interrupting.get("start")
                 tolerance = 0.01
                 if isinstance(interrupted_start, (int, float)) and stall_time <= interrupted_start + tolerance:
                     errors.append(
-                        f"{prefix}: last stuck word timestamp must be after the start of the interrupted utterance."
+                        f"{prefix}: end timestamp of the last stuck word must be after the start of the interrupted utterance."
                     )
                 if isinstance(interrupted_end, (int, float)) and stall_time > interrupted_end + tolerance:
                     errors.append(
-                        f"{prefix}: last stuck word timestamp must be within the interrupted utterance."
+                        f"{prefix}: end timestamp of the last stuck word must be within the interrupted utterance."
+                    )
+                if isinstance(interruption_start, (int, float)) and stall_time > interruption_start + tolerance:
+                    errors.append(
+                        f"{prefix}: end timestamp of the last stuck word must be before the interrupting utterance starts."
                     )
     return errors
 

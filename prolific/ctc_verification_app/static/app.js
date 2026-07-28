@@ -11,6 +11,7 @@
     regionById: new Map(),
     playbackMode: 'full',
     startedAt: new Date().toISOString(),
+    hasRenderedTask: false,
   };
 
   const byId = (id) => document.getElementById(id);
@@ -105,16 +106,35 @@
       started_at: new Date().toISOString(),
       speaker_stuck: null,
       interruption_type: '',
+      word_phrase_fits: null,
       stall_time: task.prelabels ? task.prelabels.stall_time : null,
       interrupter_becomes_main_speaker: null,
-      corrected_interrupted_transcript: interrupted ? interrupted.transcript : '',
-      corrected_interrupting_transcript: interrupting ? interrupting.transcript : '',
+      corrected_interrupted_transcript: prefilledInterruptedTranscript(task, interrupted),
+      corrected_interrupting_transcript: prefilledInterruptingTranscript(task, interrupting),
       note: '',
     };
   }
 
+  function prefilledInterruptedTranscript(task, interrupted) {
+    return (
+      task.prelabel.main_speaker_pre_interrupt_transcript ||
+      (interrupted && interrupted.transcript) ||
+      task.prelabel.victim_text ||
+      ''
+    );
+  }
+
+  function prefilledInterruptingTranscript(task, interrupting) {
+    return (
+      task.prelabel.interrupter_post_start_utterance ||
+      (interrupting && interrupting.transcript) ||
+      task.prelabel.interrupter_text ||
+      ''
+    );
+  }
+
   function renderTask(index) {
-    persistCurrentTask();
+    if (state.hasRenderedTask) persistCurrentTask();
     destroyWave();
     state.index = index;
     const task = currentTask();
@@ -127,24 +147,9 @@
     byId('prev-task').disabled = index === 0;
     byId('next-task').disabled = index === state.tasks.length - 1;
 
-    const interrupted = task.regions && task.regions.interrupted;
-    const interrupting = task.regions && task.regions.interrupting;
-    byId('interrupted-speaker').textContent = task.speakers.interrupted || 'Unknown';
-    byId('interrupting-speaker').textContent = task.speakers.interrupting || 'Unknown';
-    byId('interrupted-context').textContent =
-      task.prelabel.main_speaker_pre_interrupt_transcript ||
-      (interrupted && interrupted.transcript) ||
-      task.prelabel.victim_text ||
-      '';
-    byId('interrupting-context').textContent =
-      task.prelabel.interrupter_post_start_utterance ||
-      (interrupting && interrupting.transcript) ||
-      task.prelabel.interrupter_text ||
-      '';
-    byId('prelabel-explanation').textContent = task.prelabel.pred_reasoning || '';
-
     setBoolValue('speaker-stuck', item.speaker_stuck);
-    byId('interruption-type').value = item.interruption_type || '';
+    byId('interruption-type').value = normalizeInterruptionType(item.interruption_type);
+    setBoolValue('word-phrase-fits', item.word_phrase_fits);
     byId('stall-time').value = item.stall_time ?? '';
     setBoolValue('speaker-shift', item.interrupter_becomes_main_speaker);
     byId('interrupted-transcript').value = item.corrected_interrupted_transcript;
@@ -156,18 +161,29 @@
     byId('audio-url').innerHTML = `Audio URL: <a href="${escapeText(task.audio_url)}" target="_blank" rel="noopener">${escapeText(task.audio_url)}</a>`;
     wireWave(task);
     syncOutput();
+    state.hasRenderedTask = true;
   }
 
   function syncFieldState() {
     const stuck = byId('speaker-stuck').value === 'yes';
+    const wordPhrase = byId('interruption-type').value === 'word_phrase';
     byId('interruption-type').disabled = !stuck;
+    byId('word-phrase-fits').disabled = !stuck || !wordPhrase;
     byId('stall-time').disabled = !stuck;
     byId('speaker-shift').disabled = !stuck;
     if (!stuck) {
       byId('interruption-type').value = '';
+      byId('word-phrase-fits').value = '';
       byId('stall-time').value = '';
       byId('speaker-shift').value = '';
+    } else if (!wordPhrase) {
+      byId('word-phrase-fits').value = '';
     }
+  }
+
+  function normalizeInterruptionType(value) {
+    if (value === 'word_phrase_confident' || value === 'word_phrase_unsure') return 'word_phrase';
+    return value || '';
   }
 
   function destroyWave() {
@@ -296,7 +312,8 @@
     const item = current();
     item.speaker_stuck = boolValue('speaker-stuck');
     item.candidate_valid = item.speaker_stuck === true;
-    item.interruption_type = byId('interruption-type').value;
+    item.interruption_type = normalizeInterruptionType(byId('interruption-type').value);
+    item.word_phrase_fits = boolValue('word-phrase-fits');
     item.stall_time = byId('stall-time').value === '' ? null : round(Number(byId('stall-time').value));
     item.interrupter_becomes_main_speaker = boolValue('speaker-shift');
     item.corrected_interrupted_transcript = byId('interrupted-transcript').value;
@@ -304,8 +321,11 @@
     item.note = byId('note').value;
     if (item.speaker_stuck !== true) {
       item.interruption_type = '';
+      item.word_phrase_fits = null;
       item.stall_time = null;
       item.interrupter_becomes_main_speaker = null;
+    } else if (item.interruption_type !== 'word_phrase') {
+      item.word_phrase_fits = null;
     }
   }
 
@@ -321,6 +341,7 @@
       candidate_valid: item.candidate_valid,
       speaker_stuck: item.speaker_stuck,
       interruption_type: item.interruption_type,
+      word_phrase_fits: item.word_phrase_fits,
       stall_time: item.stall_time,
       interrupter_becomes_main_speaker: item.interrupter_becomes_main_speaker,
       corrected_interrupted_transcript: item.corrected_interrupted_transcript.trim(),
@@ -356,7 +377,7 @@
         errors.push(message);
         if (firstInvalidTask === null) firstInvalidTask = index;
       };
-      const prefix = `Candidate ${index + 1}`;
+      const prefix = 'Check';
       if (task.speaker_stuck !== true && task.speaker_stuck !== false) {
         add(`${prefix}: answer whether the interrupted speaker is stuck before the other speaker steps in.`);
         return;
@@ -364,19 +385,29 @@
       if (task.speaker_stuck === false) return;
       if (task.speaker_stuck === true) {
         if (!task.interruption_type) add(`${prefix}: select the interruption type.`);
+        if (task.interruption_type === 'word_phrase' &&
+            task.word_phrase_fits !== true &&
+            task.word_phrase_fits !== false) {
+          add(`${prefix}: answer whether the word/phrase correctly fits the speaker's intention.`);
+        }
         if (task.stall_time === null || Number.isNaN(task.stall_time)) {
-          add(`${prefix}: mark the last stuck word timestamp.`);
+          add(`${prefix}: mark the end timestamp of the last stuck word.`);
         } else if (task.duration !== null && (task.stall_time < 0 || task.stall_time > task.duration)) {
-          add(`${prefix}: last stuck word timestamp must be inside the audio clip.`);
+          add(`${prefix}: end timestamp of the last stuck word must be inside the audio clip.`);
         } else {
           const interrupted = task.regions && task.regions.interrupted;
+          const interrupting = task.regions && task.regions.interrupting;
           const start = interrupted && Number(interrupted.start);
           const end = interrupted && Number(interrupted.end);
+          const interruptionStart = interrupting && Number(interrupting.start);
           if (Number.isFinite(start) && task.stall_time <= start) {
-            add(`${prefix}: last stuck word timestamp must be after the start of the interrupted utterance.`);
+            add(`${prefix}: end timestamp of the last stuck word must be after the start of the interrupted utterance.`);
           }
           if (Number.isFinite(end) && task.stall_time > end) {
-            add(`${prefix}: last stuck word timestamp must be within the interrupted utterance.`);
+            add(`${prefix}: end timestamp of the last stuck word must be within the interrupted utterance.`);
+          }
+          if (Number.isFinite(interruptionStart) && task.stall_time > interruptionStart) {
+            add(`${prefix}: end timestamp of the last stuck word must be before the interrupting utterance starts.`);
           }
         }
       }
@@ -433,12 +464,13 @@
       syncOutput();
     });
   });
-  ['interruption-type', 'speaker-shift', 'interrupted-transcript', 'interrupting-transcript', 'note'].forEach((id) => {
+  ['interruption-type', 'word-phrase-fits', 'speaker-shift', 'interrupted-transcript', 'interrupting-transcript', 'note'].forEach((id) => {
     byId(id).addEventListener('input', () => {
       persistCurrentTask();
       syncOutput();
     });
     byId(id).addEventListener('change', () => {
+      syncFieldState();
       persistCurrentTask();
       syncOutput();
     });

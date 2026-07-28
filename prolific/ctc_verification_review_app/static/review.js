@@ -14,6 +14,7 @@
   }[character]));
 
   const typeLabels = {
+    word_phrase: 'Word/phrase',
     word_phrase_confident: 'Word/phrase (confident)',
     word_phrase_unsure: 'Word/phrase (guess/unsure)',
     guiding_question: 'Guiding question',
@@ -41,6 +42,11 @@
     return `${item.task_id || item.candidate_id} · ${worker} · ${item.summary_label}`;
   }
 
+  function normalizedType(value) {
+    if (value === 'word_phrase_confident' || value === 'word_phrase_unsure') return 'word_phrase';
+    return value || '';
+  }
+
   function applyFilter() {
     const filter = byId('filter').value;
     state.filtered = state.items.filter((item) => {
@@ -52,7 +58,7 @@
       if (filter === 'speaker_shift') return item.interrupter_becomes_main_speaker === true;
       if (filter === 'notes') return Boolean((item.note || '').trim());
       if (filter === 'transcript_edits') return hasTranscriptEdits(item);
-      if (filter in typeLabels) return item.interruption_type === filter;
+      if (filter in typeLabels) return normalizedType(item.interruption_type) === filter;
       return true;
     });
     renderSelect();
@@ -66,12 +72,14 @@
   }
 
   function renderLabelDetails(item) {
-    const type = item.interruption_type ? typeLabels[item.interruption_type] || item.interruption_type : 'Not applicable';
+    const typeKey = normalizedType(item.interruption_type);
+    const type = typeKey ? typeLabels[typeKey] || typeKey : 'Not applicable';
     byId('label-details').innerHTML = `
       <div class="kv">
         <strong>Interrupted speaker stuck</strong><span>${yesNo(item.speaker_stuck)}</span>
         <strong>Interruption type</strong><span>${escapeText(type)}</span>
-        <strong>Last stuck word timestamp</strong><span>${item.stall_time === null || item.stall_time === undefined ? 'Not applicable' : fmt(item.stall_time)}</span>
+        <strong>Word/phrase correctly fits</strong><span>${typeKey === 'word_phrase' ? yesNo(item.word_phrase_fits) : 'Not applicable'}</span>
+        <strong>End of last stuck word</strong><span>${item.stall_time === null || item.stall_time === undefined ? 'Not applicable' : fmt(item.stall_time)}</span>
         <strong>Interrupter becomes main speaker</strong><span>${yesNo(item.interrupter_becomes_main_speaker)}</span>
       </div>
       <h3>Transcript corrections</h3>

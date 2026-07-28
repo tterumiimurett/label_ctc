@@ -101,6 +101,7 @@ class VerificationReviewStore:
             "speaker_stuck": speaker_stuck,
             "candidate_valid": task.get("candidate_valid", speaker_stuck is True),
             "interruption_type": task.get("interruption_type", ""),
+            "word_phrase_fits": task.get("word_phrase_fits"),
             "stall_time": task.get("stall_time"),
             "interrupter_becomes_main_speaker": task.get("interrupter_becomes_main_speaker"),
             "corrected_interrupted_transcript": task.get("corrected_interrupted_transcript", ""),
@@ -119,6 +120,8 @@ class VerificationReviewStore:
         if task.get("speaker_stuck") is not True:
             return "Unanswered"
         interruption_type = task.get("interruption_type") or "Unspecified type"
+        if interruption_type in {"word_phrase_confident", "word_phrase_unsure"}:
+            interruption_type = "word_phrase"
         return f"Stuck: {interruption_type}"
 
 

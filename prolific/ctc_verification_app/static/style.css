@@ -42,6 +42,15 @@ h3 { font-size: 13px; margin: 0 0 5px; }
   font-size: 12px;
 }
 
+.red-cue {
+  color: #dc2626;
+  font-weight: 700;
+}
+
+.required-star {
+  color: #dc2626;
+}
+
 .progress {
   color: var(--muted);
   font-variant-numeric: tabular-nums;
@@ -55,8 +64,7 @@ h3 { font-size: 13px; margin: 0 0 5px; }
   padding: 14px;
 }
 
-.status,
-.utterance-panel {
+.status {
   background: var(--panel);
 }
 
@@ -127,12 +135,6 @@ fieldset {
 
 .controls { margin-bottom: 10px; }
 
-.grid-two {
-  display: grid;
-  gap: 14px;
-  grid-template-columns: minmax(240px, 0.62fr) minmax(460px, 1fr);
-}
-
 .field-grid {
   display: grid;
   gap: 12px;
@@ -142,7 +144,7 @@ fieldset {
 .example-grid {
   display: grid;
   gap: 10px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .example {
@@ -173,6 +175,10 @@ fieldset {
 
 .example b {
   color: var(--ink);
+}
+
+.example .red-cue {
+  color: #dc2626;
 }
 
 .wide-field {
@@ -218,30 +224,6 @@ fieldset {
 .interrupter-dot { background: var(--interrupter); }
 .stall-dot { background: #dc2626; }
 
-.utterance-panel {
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  margin-bottom: 8px;
-  padding: 8px;
-}
-
-.utterance-panel p {
-  margin: 5px 0 0;
-  max-height: 76px;
-  overflow: auto;
-  scrollbar-gutter: stable;
-}
-
-.prelabel-card h2 {
-  margin-bottom: 8px;
-}
-
-.speaker-line {
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 700;
-}
-
 .review-kv {
   display: grid;
   gap: 5px 10px;
@@ -280,7 +262,6 @@ pre {
     flex-direction: column;
   }
 
-  .grid-two,
   .field-grid,
   .example-grid {
     grid-template-columns: 1fr;

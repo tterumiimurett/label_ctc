@@ -44,14 +44,34 @@
           Your task is to verify the candidate and annotate the interruption type.
         </p>
         <p>
+          Only evaluate the <strong>two highlighted utterances</strong> in each audio clip: the
+          <strong class="main-speaker">interrupted utterance</strong> and the
+          <strong class="interrupter">interrupting utterance</strong>. The clip may contain other speech, but you do not need to label interruptions
+          or stuck speech outside these highlighted turns.
+        </p>
+        <p>
           Specifically, an interruption may happen when the original speaker gets stuck,
           and the other speaker helps by offering a word/phrase or asking a guiding question.
         </p>
         <ol>
-          <li>Check whether the original speaker is stuck.</li>
-          <li>If the speaker is stuck, choose the interruption type.</li>
-          <li>Drag the <strong>bold red line</strong> on the audio waveform to the timestamp of the last stuck word before the other speaker steps in.</li>
-          <li>Correct the interrupted or interrupting transcript if they are wrong.</li>
+          <li>
+            Check whether the original speaker is stuck. Common signs include:
+            <ul>
+              <li>A long silent pause, e.g. &gt;0.5s.</li>
+              <li>Repeated fillers such as "um", "uh", "well", or "you know".</li>
+              <li>Broken or restarted speech.</li>
+              <li>Repeated words.</li>
+              <li>Self-correction.</li>
+              <li>Stretched-out sounds while searching for a word.</li>
+            </ul>
+          </li>
+          <li>
+            If the speaker is stuck, choose the interruption type. We are mainly interested in
+            word/phrase completions and guiding questions; see the examples below.
+          </li>
+          <li>Drag the <strong class="red-cue">bold red line</strong> on the audio waveform to the end timestamp of the last stuck word before the other speaker steps in.</li>
+          <li>If the speaker is stuck and interrupted, answer whether the word/phrase fits the speaker's intention and whether the interrupter becomes the main speaker.</li>
+          <li>Correct the interrupted or interrupting transcript if they are wrong. For the interrupted transcript, remove words after the interruption.</li>
         </ol>
       </details>
 
@@ -60,22 +80,18 @@
         <p class="muted">Listen to these examples before beginning the annotation task.</p>
         <div class="example-grid">
           <div class="example">
-            <strong>Word/phrase (confident)</strong>
+            <strong>Word/phrase</strong>
             <audio controls preload="metadata" src="/static/examples/audio/ctc_stuck_confident.wav"></audio>
-            <p><b>Speaker:</b> ... show you the cheapest ...</p>
+            <p><b>Speaker:</b> Like you know all these types of stores and show you the cheapest ...</p>
             <p><b>Interrupter:</b> place to get it</p>
-          </div>
-          <div class="example">
-            <strong>Word/phrase (guess/unsure)</strong>
-            <audio controls preload="metadata" src="/static/examples/audio/ctc_stuck_unsure.wav"></audio>
-            <p><b>Speaker:</b> What is that show? The one with the ...</p>
-            <p><b>Interrupter:</b> Twilight?</p>
+            <p><b class="red-cue">Marker:</b> Place the red line after "cheapest", before the interruption starts.</p>
           </div>
           <div class="example">
             <strong>Guiding question</strong>
             <audio controls preload="metadata" src="/static/examples/audio/ctc_guiding_question.wav"></audio>
-            <p><b>Speaker:</b> It was like she turned this into like ...</p>
+            <p><b>Speaker:</b> It was like she turned into this like ... elf ... like in a mu ... mu... but it was like ...</p>
             <p><b>Interrupter:</b> What does it sound like?</p>
+            <p><b class="red-cue">Marker:</b> Place the red line after the last "like", before the interruption starts.</p>
           </div>
         </div>
       </details>
@@ -97,70 +113,58 @@
         <div class="channel-key">
           <span class="main-speaker"><i class="dot main-dot"></i>Interrupted utterance</span>
           <span class="interrupter"><i class="dot interrupter-dot"></i>Interrupting utterance</span>
-          <span class="stall"><i class="dot stall-dot"></i>Last stuck word timestamp</span>
+          <span class="stall"><i class="dot stall-dot"></i>End of last stuck word</span>
         </div>
         <div id="waveform"></div>
-        <p class="muted">Please drag the bold red line to the last stuck word before the other speaker steps in. It should be inside the interrupted utterance, not at its beginning.</p>
+        <p class="muted">Focus only on the highlighted interrupted and interrupting utterances. Do not mark other possible interruptions elsewhere in the clip.</p>
+        <p class="muted">Please drag the <strong class="red-cue">bold red line</strong> to the end of the last stuck word before the other speaker steps in. It should be inside the interrupted utterance, not at its beginning or after the interruption starts.</p>
       </section>
 
-      <section class="grid-two">
-        <section class="card prelabel-card">
-          <h2>Pre-labelled utterances</h2>
-          <div class="utterance-panel">
-            <h3>Interrupted speaker</h3>
-            <div class="speaker-line" id="interrupted-speaker"></div>
-            <p id="interrupted-context"></p>
-          </div>
-          <div class="utterance-panel">
-            <h3>Interrupting speaker</h3>
-            <div class="speaker-line" id="interrupting-speaker"></div>
-            <p id="interrupting-context"></p>
-          </div>
-          <div class="utterance-panel">
-            <h3>Original pre-label explanation</h3>
-            <p id="prelabel-explanation"></p>
-          </div>
-        </section>
-
-        <section class="card">
-          <h2>Interruption type annotation</h2>
-          <fieldset class="field-grid">
-            <label>Is the interrupted speaker stuck before the other speaker steps in?
-              <select id="speaker-stuck">
-                <option value="">Select...</option>
-                <option value="yes">Yes</option>
-                <option value="no">No</option>
-              </select>
-            </label>
-            <label class="wide-field">Interruption type
-              <select id="interruption-type">
-                <option value="">Select...</option>
-                <option value="word_phrase_confident">Word/phrase (confident)</option>
-                <option value="word_phrase_unsure">Word/phrase (guess/unsure)</option>
-                <option value="guiding_question">Guiding question</option>
-              </select>
-            </label>
-            <label>Last stuck word timestamp (s) <span class="muted">drag the bold red line inside the interrupted utterance</span>
-              <input id="stall-time" type="number" min="0" step="0.01">
-            </label>
-            <label>Interrupter becomes main speaker?
-              <select id="speaker-shift">
-                <option value="">Select...</option>
-                <option value="yes">Yes</option>
-                <option value="no">No</option>
-              </select>
-            </label>
-            <label class="wide-field">Correct interrupted transcript if possible <span class="muted">(optional)</span>
-              <textarea id="interrupted-transcript" rows="3"></textarea>
-            </label>
-            <label class="wide-field">Correct interrupting transcript if possible <span class="muted">(optional)</span>
-              <textarea id="interrupting-transcript" rows="3"></textarea>
-            </label>
-            <label class="wide-field">Optional note
-              <textarea id="note" rows="2"></textarea>
-            </label>
-          </fieldset>
-        </section>
+      <section class="card">
+        <h2>Interruption type annotation</h2>
+        <fieldset class="field-grid">
+          <label>Is the interrupted speaker stuck before the other speaker steps in? <span class="required-star">*</span>
+            <select id="speaker-stuck">
+              <option value="">Select...</option>
+              <option value="yes">Yes</option>
+              <option value="no">No</option>
+            </select>
+          </label>
+          <label class="wide-field">Interruption type <span class="required-star">*</span>
+            <select id="interruption-type">
+              <option value="">Select...</option>
+              <option value="word_phrase">Word/phrase</option>
+              <option value="guiding_question">Guiding question</option>
+              <option value="other">Other</option>
+            </select>
+          </label>
+          <label>Does the word/phrase correctly fit the speaker's intention? <span class="required-star">*</span>
+            <select id="word-phrase-fits">
+              <option value="">Select...</option>
+              <option value="yes">Yes</option>
+              <option value="no">No</option>
+            </select>
+          </label>
+          <label>End of last stuck word (s) <span class="required-star">*</span> <span class="muted">drag the <strong class="red-cue">bold red line</strong> before the interruption starts</span>
+            <input id="stall-time" type="number" min="0" step="0.01">
+          </label>
+          <label>Interrupter becomes main speaker? <span class="required-star">*</span>
+            <select id="speaker-shift">
+              <option value="">Select...</option>
+              <option value="yes">Yes</option>
+              <option value="no">No</option>
+            </select>
+          </label>
+          <label class="wide-field">Interrupted utterance transcript <span class="muted">(auto-generated; remove words after interruption; correct if needed)</span>
+            <textarea id="interrupted-transcript" rows="3"></textarea>
+          </label>
+          <label class="wide-field">Interrupting utterance transcript <span class="muted">(auto-generated; correct if needed)</span>
+            <textarea id="interrupting-transcript" rows="3"></textarea>
+          </label>
+          <label class="wide-field">Optional note
+            <textarea id="note" rows="2"></textarea>
+          </label>
+        </fieldset>
       </section>
 
       <div class="errors" id="errors"></div>
