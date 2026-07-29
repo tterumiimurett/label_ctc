@@ -55,6 +55,12 @@
         </p>
         <ol>
           <li>
+            First, decide whether this is a relevant interruption before the first speaker finishes.
+            Choose Yes only if the second speaker comes in before the first speaker has finished
+            what they were trying to say. Choose No for normal turn-taking, short expected replies,
+            backchannels like "yeah" or "uh-huh", or unrelated interruptions/questions.
+          </li>
+          <li>
             Check whether the original speaker is stuck. Common signs include:
             <ul>
               <li>A long silent pause, e.g. &gt;0.5s.</li>
@@ -123,6 +129,14 @@
       <section class="card">
         <h2>Interruption type annotation</h2>
         <fieldset class="field-grid">
+          <label class="wide-field">Is this a relevant interruption before the first speaker finishes? <span class="required-star">*</span>
+            <select id="relevant-interruption">
+              <option value="">Select...</option>
+              <option value="yes">Yes</option>
+              <option value="no">No</option>
+            </select>
+            <span class="muted">Choose No for normal turn-taking, short expected replies, backchannels, or unrelated interruptions/questions.</span>
+          </label>
           <label>Is the interrupted speaker stuck before the other speaker steps in? <span class="required-star">*</span>
             <select id="speaker-stuck">
               <option value="">Select...</option>

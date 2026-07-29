@@ -6,10 +6,10 @@ cd "$ROOT_DIR"
 
 HOST="${HOST:-0.0.0.0}"
 PORT="${PORT:-8002}"
-SOURCE_TASKS="${SOURCE_TASKS:-label_studio/data/tasks_test_predictions.json}"
-AUTO_LABELS="${AUTO_LABELS:-label_studio/data/high_confidence_candidates_*.jsonl}"
+SOURCE_TASKS="${SOURCE_TASKS:-label_studio/data/seamless_ctc_train_upload_checkpoint.jsonl}"
+AUTO_LABELS="${AUTO_LABELS:-tables/ctc_verification_train_balanced_800.jsonl}"
 DATA_DIR="${DATA_DIR:-prolific/ctc_verification_app/data}"
-BUNDLE_SIZE="${BUNDLE_SIZE:-1}"
+BUNDLE_SIZE="${BUNDLE_SIZE:-5}"
 REDUNDANCY="${REDUNDANCY:-3}"
 COMPLETION_URL="${COMPLETION_URL:-https://app.prolific.com/submissions/complete}"
 

@@ -104,6 +104,7 @@
     return {
       task,
       started_at: new Date().toISOString(),
+      relevant_interruption: null,
       speaker_stuck: null,
       interruption_type: '',
       word_phrase_fits: null,
@@ -147,6 +148,7 @@
     byId('prev-task').disabled = index === 0;
     byId('next-task').disabled = index === state.tasks.length - 1;
 
+    setBoolValue('relevant-interruption', item.relevant_interruption);
     setBoolValue('speaker-stuck', item.speaker_stuck);
     byId('interruption-type').value = normalizeInterruptionType(item.interruption_type);
     setBoolValue('word-phrase-fits', item.word_phrase_fits);
@@ -165,13 +167,21 @@
   }
 
   function syncFieldState() {
+    const relevant = byId('relevant-interruption').value === 'yes';
     const stuck = byId('speaker-stuck').value === 'yes';
     const wordPhrase = byId('interruption-type').value === 'word_phrase';
-    byId('interruption-type').disabled = !stuck;
-    byId('word-phrase-fits').disabled = !stuck || !wordPhrase;
-    byId('stall-time').disabled = !stuck;
-    byId('speaker-shift').disabled = !stuck;
-    if (!stuck) {
+    byId('speaker-stuck').disabled = !relevant;
+    byId('interruption-type').disabled = !relevant || !stuck;
+    byId('word-phrase-fits').disabled = !relevant || !stuck || !wordPhrase;
+    byId('stall-time').disabled = !relevant || !stuck;
+    byId('speaker-shift').disabled = !relevant || !stuck;
+    if (!relevant) {
+      byId('speaker-stuck').value = '';
+      byId('interruption-type').value = '';
+      byId('word-phrase-fits').value = '';
+      byId('stall-time').value = '';
+      byId('speaker-shift').value = '';
+    } else if (!stuck) {
       byId('interruption-type').value = '';
       byId('word-phrase-fits').value = '';
       byId('stall-time').value = '';
@@ -310,8 +320,9 @@
   function persistCurrentTask() {
     if (!state.assignment || !current()) return;
     const item = current();
+    item.relevant_interruption = boolValue('relevant-interruption');
     item.speaker_stuck = boolValue('speaker-stuck');
-    item.candidate_valid = item.speaker_stuck === true;
+    item.candidate_valid = item.relevant_interruption === true && item.speaker_stuck === true;
     item.interruption_type = normalizeInterruptionType(byId('interruption-type').value);
     item.word_phrase_fits = boolValue('word-phrase-fits');
     item.stall_time = byId('stall-time').value === '' ? null : round(Number(byId('stall-time').value));
@@ -319,7 +330,13 @@
     item.corrected_interrupted_transcript = byId('interrupted-transcript').value;
     item.corrected_interrupting_transcript = byId('interrupting-transcript').value;
     item.note = byId('note').value;
-    if (item.speaker_stuck !== true) {
+    if (item.relevant_interruption !== true) {
+      item.speaker_stuck = null;
+      item.interruption_type = '';
+      item.word_phrase_fits = null;
+      item.stall_time = null;
+      item.interrupter_becomes_main_speaker = null;
+    } else if (item.speaker_stuck !== true) {
       item.interruption_type = '';
       item.word_phrase_fits = null;
       item.stall_time = null;
@@ -339,6 +356,7 @@
       prelabel_candidate_key: task.prelabel.candidate_key,
       regions: task.regions || {},
       candidate_valid: item.candidate_valid,
+      relevant_interruption: item.relevant_interruption,
       speaker_stuck: item.speaker_stuck,
       interruption_type: item.interruption_type,
       word_phrase_fits: item.word_phrase_fits,
@@ -377,7 +395,12 @@
         errors.push(message);
         if (firstInvalidTask === null) firstInvalidTask = index;
       };
-      const prefix = 'Check';
+      const prefix = `Item ${index + 1}`;
+      if (task.relevant_interruption !== true && task.relevant_interruption !== false) {
+        add(`${prefix}: answer whether this is a relevant interruption before the first speaker finishes.`);
+        return;
+      }
+      if (task.relevant_interruption === false) return;
       if (task.speaker_stuck !== true && task.speaker_stuck !== false) {
         add(`${prefix}: answer whether the interrupted speaker is stuck before the other speaker steps in.`);
         return;
@@ -457,7 +480,7 @@
 
   byId('prev-task').addEventListener('click', () => renderTask(Math.max(0, state.index - 1)));
   byId('next-task').addEventListener('click', () => renderTask(Math.min(state.tasks.length - 1, state.index + 1)));
-  ['speaker-stuck'].forEach((id) => {
+  ['relevant-interruption', 'speaker-stuck'].forEach((id) => {
     byId(id).addEventListener('change', () => {
       syncFieldState();
       persistCurrentTask();

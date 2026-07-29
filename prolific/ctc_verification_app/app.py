@@ -120,10 +120,17 @@ def relative_region(source: dict | None, clip_start: float | None) -> dict | Non
 def load_source_tasks(paths: list[Path]) -> dict[str, dict]:
     task_by_id: dict[str, dict] = {}
     for path in paths:
-        raw_tasks = json.loads(path.read_text(encoding="utf-8"))
+        if path.suffix == ".jsonl":
+            raw_tasks = [
+                json.loads(line)
+                for line in path.read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            ]
+        else:
+            raw_tasks = json.loads(path.read_text(encoding="utf-8"))
         for task in raw_tasks:
-            data = task.get("data") or {}
-            audio_url = data.get("audio") or data.get("audio_url") or ""
+            data = task.get("data") or task
+            audio_url = data.get("audio") or data.get("audio_url") or data.get("outer_url") or ""
             if not audio_url:
                 continue
             task_id = Path(audio_url).stem
@@ -132,8 +139,8 @@ def load_source_tasks(paths: list[Path]) -> dict[str, dict]:
                 "audio_url": audio_url,
                 "path_seg": data.get("path_seg", ""),
                 "inner_url": data.get("inner_url", ""),
-                "user": data.get("user", ""),
-                "assistant": data.get("assistant", ""),
+                "user": data.get("user", data.get("victim_id", "")),
+                "assistant": data.get("assistant", data.get("interrupter_id", "")),
             }
     return task_by_id
 
@@ -152,6 +159,13 @@ def load_auto_candidates(patterns: list[str]) -> list[dict]:
                     candidate["_line_number"] = line_number
                     rows.append(candidate)
     return rows
+
+
+def candidate_audio_url(candidate: dict) -> str:
+    tos_audio = candidate.get("tos_audio") or {}
+    if isinstance(tos_audio, dict):
+        return str(tos_audio.get("outer_url") or tos_audio.get("inner_url") or "")
+    return ""
 
 
 def default_stall_time(candidate: dict, clip_start: float | None) -> float | None:
@@ -173,6 +187,16 @@ def verification_task(candidate: dict, source_task: dict) -> dict:
     clip_start, clip_end = candidate_window(candidate)
     candidate_key = candidate.get("candidate_key", "")
     candidate_id = hashlib.sha1(candidate_key.encode("utf-8")).hexdigest()[:16]
+    audio_url = source_task.get("audio_url") or candidate_audio_url(candidate)
+    task_id = source_task.get("task_id") or task_id_from_candidate(candidate)
+    tos_audio = candidate.get("tos_audio") or {}
+    left_speaker = source_task.get("user", "")
+    right_speaker = source_task.get("assistant", "")
+    if isinstance(tos_audio, dict):
+        left_channel = tos_audio.get("left_channel") or {}
+        right_channel = tos_audio.get("right_channel") or {}
+        left_speaker = left_speaker or left_channel.get("speaker_id", "")
+        right_speaker = right_speaker or right_channel.get("speaker_id", "")
     interrupted_region = relative_region(
         candidate.get("interrupted_segment_context"),
         clip_start,
@@ -183,8 +207,8 @@ def verification_task(candidate: dict, source_task: dict) -> dict:
     )
     return {
         "candidate_id": candidate_id,
-        "task_id": source_task["task_id"],
-        "audio_url": source_task["audio_url"],
+        "task_id": task_id,
+        "audio_url": audio_url,
         "clip_start": clip_start,
         "clip_end": clip_end,
         "duration": round(clip_end - clip_start, 2)
@@ -193,8 +217,8 @@ def verification_task(candidate: dict, source_task: dict) -> dict:
         "speakers": {
             "interrupted": candidate.get("victim_id", ""),
             "interrupting": candidate.get("interrupter_id", ""),
-            "left": source_task.get("user", ""),
-            "right": source_task.get("assistant", ""),
+            "left": left_speaker,
+            "right": right_speaker,
         },
         "prelabel": {
             "candidate_key": candidate_key,
@@ -228,18 +252,23 @@ def load_verification_tasks(
     source_task_paths: list[Path],
     auto_label_patterns: list[str],
     include_audio_unverified: bool = False,
+    include_non_ctc: bool = False,
 ) -> list[dict]:
     source_tasks = load_source_tasks(source_task_paths)
     tasks = []
     seen_candidate_ids: set[str] = set()
     for candidate in load_auto_candidates(auto_label_patterns):
-        if candidate.get("pred_is_ctc") is not True:
+        if not include_non_ctc and candidate.get("pred_is_ctc") is not True:
             continue
         audio_verify = candidate.get("audio_verify") or {}
-        if not include_audio_unverified and audio_verify.get("verify_is_ctc") is not True:
+        if (
+            not include_non_ctc
+            and not include_audio_unverified
+            and audio_verify.get("verify_is_ctc") is not True
+        ):
             continue
-        source_task = source_tasks.get(task_id_from_candidate(candidate))
-        if not source_task:
+        source_task = source_tasks.get(task_id_from_candidate(candidate)) or {}
+        if not source_task and not candidate_audio_url(candidate):
             continue
         task = verification_task(candidate, source_task)
         if task["candidate_id"] in seen_candidate_ids:
@@ -262,11 +291,13 @@ class VerificationStore:
         redundancy: int,
         completion_url: str,
         include_audio_unverified: bool,
+        include_non_ctc: bool = False,
     ) -> None:
         self.tasks = load_verification_tasks(
             source_task_paths,
             auto_label_patterns,
             include_audio_unverified=include_audio_unverified,
+            include_non_ctc=include_non_ctc,
         )
         self.data_dir = data_dir
         self.assignments_path = data_dir / "assignments.json"
@@ -289,7 +320,15 @@ class VerificationStore:
                         "status": "error",
                         "errors": ["SESSION_ID is already assigned to a different participant."],
                     }
-                return self._assignment_response(existing, worker)
+                current_candidate_ids = {task["candidate_id"] for task in self.tasks}
+                if len(existing.get("candidate_ids", [])) != self.bundle_size or any(
+                    candidate_id not in current_candidate_ids
+                    for candidate_id in existing.get("candidate_ids", [])
+                ):
+                    del assignments[session_id]
+                    atomic_write_json(self.assignments_path, assignments)
+                else:
+                    return self._assignment_response(existing, worker)
 
             task_counts = self._claim_counts(assignments)
             existing_worker_candidates = {
@@ -430,7 +469,7 @@ def validate_submission(payload: dict) -> list[str]:
     word_phrase_types = {"word_phrase", "word_phrase_confident", "word_phrase_unsure"}
     valid_types = word_phrase_types | {"guiding_question", "other"}
     for index, task in enumerate(tasks, 1):
-        prefix = "Check"
+        prefix = f"Item {index}"
         if not isinstance(task, dict):
             errors.append(f"{prefix} must be an object.")
             continue
@@ -438,6 +477,14 @@ def validate_submission(payload: dict) -> list[str]:
             errors.append(f"{prefix}: missing candidate_id.")
         if not task.get("task_id"):
             errors.append(f"{prefix}: missing task_id.")
+        relevant_interruption = task.get("relevant_interruption")
+        if not isinstance(relevant_interruption, bool):
+            errors.append(
+                f"{prefix}: answer whether this is a relevant interruption before the first speaker finishes."
+            )
+            continue
+        if relevant_interruption is False:
+            continue
         speaker_stuck = task.get("speaker_stuck")
         if not isinstance(speaker_stuck, bool):
             errors.append(
@@ -446,7 +493,7 @@ def validate_submission(payload: dict) -> list[str]:
             continue
         candidate_valid = task.get("candidate_valid")
         if not isinstance(candidate_valid, bool):
-            candidate_valid = speaker_stuck is True
+            candidate_valid = relevant_interruption is True and speaker_stuck is True
         interruption_type = task.get("interruption_type")
         if candidate_valid and speaker_stuck is True and interruption_type not in valid_types:
             errors.append(f"{prefix}: select a valid interruption type.")
@@ -587,6 +634,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Include pre-labelled candidates not confirmed by the audio verifier.",
     )
+    parser.add_argument(
+        "--include-non-ctc",
+        action="store_true",
+        help="Include rows pre-labelled as non-CTC. Intended for internal calibration runs.",
+    )
     args = parser.parse_args()
     if args.source_tasks is None:
         args.source_tasks = [ROOT / "label_studio" / "data" / "tasks_test_predictions.json"]
@@ -607,11 +659,12 @@ def main() -> None:
         redundancy=args.redundancy,
         completion_url=args.completion_url,
         include_audio_unverified=args.include_audio_unverified,
+        include_non_ctc=args.include_non_ctc,
     )
     handler = make_handler(store, Path(__file__).with_name("static"))
     server = ThreadingHTTPServer((args.host, args.port), handler)
     print(f"Serving interruption type annotation app at http://{args.host}:{args.port}/verify")
-    print(f"Loaded {len(store.tasks)} pre-labelled CTC candidates")
+    print(f"Loaded {len(store.tasks)} pre-labelled candidates")
     server.serve_forever()
 
 
