@@ -224,12 +224,30 @@ fieldset {
   margin: 9px 0 5px;
 }
 
+.dot,
+.legend-box,
+.legend-dash {
+  display: inline-block;
+  margin-right: 5px;
+}
+
 .dot {
   border-radius: 50%;
-  display: inline-block;
   height: 10px;
-  margin-right: 5px;
   width: 10px;
+}
+
+.legend-box {
+  border-radius: 2px;
+  height: 10px;
+  width: 18px;
+}
+
+.legend-dash {
+  border-radius: 999px;
+  height: 16px;
+  transform: translateY(3px);
+  width: 4px;
 }
 
 .main-speaker { color: var(--main); }
@@ -238,6 +256,10 @@ fieldset {
 .main-dot { background: var(--main); }
 .interrupter-dot { background: var(--interrupter); }
 .stall-dot { background: #dc2626; }
+.main-box { background: rgba(31, 119, 180, 0.45); }
+.interrupter-box { background: rgba(255, 127, 14, 0.45); }
+.interrupter-dash { background: var(--interrupter); }
+.stall-dash { background: #dc2626; }
 
 .review-kv {
   display: grid;

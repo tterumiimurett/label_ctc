@@ -57,9 +57,48 @@
     return {
       interrupted: 'Interrupted utterance',
       interrupting: 'Interrupting utterance',
-      interruptingStart: 'Interruption start',
-      stall: 'Stuck',
+      interruptingStart: 'Start',
+      stall: 'Word end',
     }[kind];
+  }
+
+  function regionLabelElement(text, kind) {
+    const label = document.createElement('span');
+    label.textContent = text;
+    label.className = `wave-region-label ${kind}-label`;
+    Object.assign(label.style, {
+      background: 'rgba(255, 255, 255, 0.88)',
+      borderRadius: '3px',
+      boxShadow: '0 1px 2px rgba(15, 23, 42, 0.12)',
+      fontSize: '11px',
+      fontWeight: '700',
+      left: '4px',
+      lineHeight: '1',
+      maxWidth: 'none',
+      padding: '2px 4px',
+      pointerEvents: 'none',
+      position: 'absolute',
+      top: '4px',
+      whiteSpace: 'nowrap',
+      zIndex: '10',
+    });
+    if (kind === 'interrupting-start-marker') {
+      label.style.color = '#c2410c';
+      label.style.top = '176px';
+    } else if (kind === 'stall-marker') {
+      label.style.color = '#dc2626';
+      label.style.top = '70px';
+    } else if (kind === 'interrupted') {
+      label.style.color = '#1f77b4';
+    } else if (kind === 'interrupting') {
+      label.style.color = '#c2410c';
+    }
+    return label;
+  }
+
+  function keepRegionLabelVisible(region) {
+    if (!region || !region.element) return;
+    region.element.style.overflow = 'visible';
   }
 
   async function init() {
@@ -187,7 +226,7 @@
     byId('speaker-stuck').disabled = !relevant;
     byId('interruption-type').disabled = !relevant || !stuck;
     byId('word-phrase-fits').disabled = !relevant || !stuck || !wordPhrase;
-    byId('stall-time').disabled = !relevant || !stuck;
+    byId('stall-time').disabled = !relevant;
     byId('speaker-shift').disabled = !relevant || !stuck;
     if (!relevant) {
       byId('speaker-stuck').value = '';
@@ -198,7 +237,6 @@
     } else if (!stuck) {
       byId('interruption-type').value = '';
       byId('word-phrase-fits').value = '';
-      byId('stall-time').value = '';
       byId('speaker-shift').value = '';
     } else if (!wordPhrase) {
       byId('word-phrase-fits').value = '';
@@ -287,10 +325,11 @@
       end,
       channelIdx,
       color: regionColor(kind),
-      content: regionLabel(kind),
+      content: regionLabelElement(regionLabel(kind), kind),
       drag: false,
       resize: false,
     });
+    keepRegionLabelVisible(waveRegion);
     state.regionById.set(kind, waveRegion);
   }
 
@@ -304,11 +343,12 @@
       start,
       end: Math.min(start + markerWidth, duration || start + markerWidth),
       color: regionColor('interruptingStart'),
-      content: regionLabel('interruptingStart'),
+      content: regionLabelElement(regionLabel('interruptingStart'), 'interrupting-start-marker'),
       drag: true,
       resize: false,
       minLength: 0.03,
     });
+    keepRegionLabelVisible(marker);
     state.regionById.set('interrupting-start-marker', marker);
   }
 
@@ -322,11 +362,12 @@
       start,
       end: Math.min(start + markerWidth, duration || start + markerWidth),
       color: regionColor('stall'),
-      content: 'Stuck',
+      content: regionLabelElement(regionLabel('stall'), 'stall-marker'),
       drag: true,
       resize: false,
       minLength: 0.03,
     });
+    keepRegionLabelVisible(marker);
     state.regionById.set('stall-marker', marker);
   }
 
@@ -392,7 +433,6 @@
     } else if (item.speaker_stuck !== true) {
       item.interruption_type = '';
       item.word_phrase_fits = null;
-      item.stall_time = null;
       item.interrupter_becomes_main_speaker = null;
     } else if (item.interruption_type !== 'word_phrase') {
       item.word_phrase_fits = null;
@@ -414,6 +454,7 @@
       interruption_type: item.interruption_type,
       word_phrase_fits: item.word_phrase_fits,
       stall_time: item.stall_time,
+      last_word_before_interruption_end_time: item.stall_time,
       interrupting_start_time: item.interrupting_start_time,
       interrupting_start_checked: item.interrupting_start_checked,
       interrupter_becomes_main_speaker: item.interrupter_becomes_main_speaker,
@@ -452,7 +493,7 @@
       };
       const prefix = `Item ${index + 1}`;
       if (task.relevant_interruption !== true && task.relevant_interruption !== false) {
-        add(`${prefix}: answer whether this is a relevant interruption before the first speaker finishes.`);
+        add(`${prefix}: answer whether the second speaker's utterance completes the first speaker's unfinished sentence.`);
         return;
       }
       if (typeof task.interrupting_start_time !== 'number' || Number.isNaN(task.interrupting_start_time)) {
@@ -475,7 +516,25 @@
         add(`${prefix}: answer whether the interrupted speaker is stuck before the other speaker steps in.`);
         return;
       }
-      if (task.speaker_stuck === false) return;
+      if (task.stall_time === null || Number.isNaN(task.stall_time)) {
+        add(`${prefix}: mark the end timestamp of the last word before the interruption.`);
+      } else if (task.duration !== null && (task.stall_time < 0 || task.stall_time > task.duration)) {
+        add(`${prefix}: end timestamp of the last word before the interruption must be inside the audio clip.`);
+      } else {
+        const interrupted = task.regions && task.regions.interrupted;
+        const start = interrupted && Number(interrupted.start);
+        const end = interrupted && Number(interrupted.end);
+        const interruptionStart = Number(task.interrupting_start_time);
+        if (Number.isFinite(start) && task.stall_time <= start) {
+          add(`${prefix}: end timestamp of the last word before the interruption must be after the start of the interrupted utterance.`);
+        }
+        if (Number.isFinite(end) && task.stall_time > end) {
+          add(`${prefix}: end timestamp of the last word before the interruption must be within the interrupted utterance.`);
+        }
+        if (Number.isFinite(interruptionStart) && task.stall_time > interruptionStart) {
+          add(`${prefix}: end timestamp of the last word before the interruption must be before the interrupting utterance starts.`);
+        }
+      }
       if (task.speaker_stuck === true) {
         if (!task.interruption_type) add(`${prefix}: select the interruption type.`);
         if (task.interruption_type === 'word_phrase' &&
@@ -483,29 +542,10 @@
             task.word_phrase_fits !== false) {
           add(`${prefix}: answer whether the word/phrase correctly fits the speaker's intention.`);
         }
-        if (task.stall_time === null || Number.isNaN(task.stall_time)) {
-          add(`${prefix}: mark the end timestamp of the last stuck word.`);
-        } else if (task.duration !== null && (task.stall_time < 0 || task.stall_time > task.duration)) {
-          add(`${prefix}: end timestamp of the last stuck word must be inside the audio clip.`);
-        } else {
-          const interrupted = task.regions && task.regions.interrupted;
-          const start = interrupted && Number(interrupted.start);
-          const end = interrupted && Number(interrupted.end);
-          const interruptionStart = Number(task.interrupting_start_time);
-          if (Number.isFinite(start) && task.stall_time <= start) {
-            add(`${prefix}: end timestamp of the last stuck word must be after the start of the interrupted utterance.`);
-          }
-          if (Number.isFinite(end) && task.stall_time > end) {
-            add(`${prefix}: end timestamp of the last stuck word must be within the interrupted utterance.`);
-          }
-          if (Number.isFinite(interruptionStart) && task.stall_time > interruptionStart) {
-            add(`${prefix}: end timestamp of the last stuck word must be before the interrupting utterance starts.`);
-          }
+        if (task.interrupter_becomes_main_speaker !== true &&
+            task.interrupter_becomes_main_speaker !== false) {
+          add(`${prefix}: answer whether the interrupter becomes the main speaker.`);
         }
-      }
-      if (task.interrupter_becomes_main_speaker !== true &&
-          task.interrupter_becomes_main_speaker !== false) {
-        add(`${prefix}: answer whether the interrupter becomes the main speaker.`);
       }
     });
     return {errors, firstInvalidTask};

@@ -55,10 +55,10 @@
         </p>
         <ol>
           <li>
-            First, decide whether this is a relevant interruption before the first speaker finishes.
-            Choose Yes only if the second speaker comes in before the first speaker has finished
-            what they were trying to say. Choose No for normal turn-taking, short expected replies,
-            backchannels like "yeah" or "uh-huh", or unrelated interruptions/questions.
+            First, decide whether the second speaker's utterance completes the first speaker's unfinished sentence.
+            Choose Yes if the first speaker's incomplete phrase and the second speaker's response fit together
+            into one complete, meaningful sentence or thought. Choose No for normal turn-taking, short expected replies,
+            backchannels like "yeah" or "uh-huh", unrelated comments, or interruptions that do not complete the first speaker's sentence.
           </li>
           <li>
             Check whether the original speaker is stuck. Common signs include:
@@ -78,7 +78,11 @@
           <li>
             Drag the <strong class="orange-cue">orange line</strong> to the true start of the interrupting utterance if the pre-labelled start is wrong, then confirm that you checked it.
           </li>
-          <li>Drag the <strong class="red-cue">bold red line</strong> on the audio waveform to the end timestamp of the last stuck word before the other speaker steps in.</li>
+          <li>
+            Drag the <strong class="red-cue">bold red line</strong> on the audio waveform to the end timestamp of the last word before the other speaker steps in.
+            If the speaker is stuck, mark the last word after the stuck portion and before the interruption.
+            If the speaker is not stuck, mark the last complete word before the interruption.
+          </li>
           <li>If the speaker is stuck and interrupted, answer whether the word/phrase fits the speaker's intention and whether the interrupter becomes the main speaker.</li>
           <li>Correct the interrupted or interrupting transcript if they are wrong. For the interrupted transcript, remove words after the interruption.</li>
         </ol>
@@ -120,27 +124,27 @@
         <div id="audio-url" class="muted"></div>
         <div id="wave-status" class="muted">Waveform status: waiting.</div>
         <div class="channel-key">
-          <span class="main-speaker"><i class="dot main-dot"></i>Interrupted utterance</span>
-          <span class="interrupter"><i class="dot interrupter-dot"></i>Interrupting utterance</span>
-          <span class="interrupter"><i class="dot interrupter-dot"></i>Start of interrupting utterance</span>
-          <span class="stall"><i class="dot stall-dot"></i>End of last stuck word</span>
+          <span class="main-speaker"><i class="legend-box main-box"></i>Interrupted utterance</span>
+          <span class="interrupter"><i class="legend-box interrupter-box"></i>Interrupting utterance</span>
+          <span class="interrupter"><i class="legend-dash interrupter-dash"></i>Start of interrupting utterance</span>
+          <span class="stall"><i class="legend-dash stall-dash"></i>End of last word before interruption</span>
         </div>
         <div id="waveform"></div>
         <p class="muted">Focus only on the highlighted interrupted and interrupting utterances. Do not mark other possible interruptions elsewhere in the clip.</p>
         <p class="muted">Please drag the <strong class="orange-cue">orange line</strong> to the true start of the interrupting utterance if the pre-labelled start is wrong.</p>
-        <p class="muted">Please drag the <strong class="red-cue">bold red line</strong> to the end of the last stuck word before the other speaker steps in. It should be inside the interrupted utterance, not at its beginning or after the interruption starts.</p>
+        <p class="muted">Please drag the <strong class="red-cue">bold red line</strong> to the end of the last word before the other speaker steps in. It should be inside the interrupted utterance, not at its beginning or after the interruption starts.</p>
       </section>
 
       <section class="card">
         <h2>Interruption type annotation</h2>
         <fieldset class="field-grid">
-          <label class="wide-field">Is this a relevant interruption before the first speaker finishes? <span class="required-star">*</span>
+          <label class="wide-field">Does the second speaker's utterance complete the first speaker's unfinished sentence? <span class="required-star">*</span>
             <select id="relevant-interruption">
               <option value="">Select...</option>
               <option value="yes">Yes</option>
               <option value="no">No</option>
             </select>
-            <span class="muted">Choose No for normal turn-taking, short expected replies, backchannels, or unrelated interruptions/questions.</span>
+            <span class="muted">Choose Yes only if the two utterances fit together into one complete, meaningful sentence or thought.</span>
           </label>
           <label>Is the interrupted speaker stuck before the other speaker steps in? <span class="required-star">*</span>
             <select id="speaker-stuck">
@@ -164,7 +168,7 @@
               <option value="no">No</option>
             </select>
           </label>
-          <label>End of last stuck word (s) <span class="required-star">*</span> <span class="muted">drag the <strong class="red-cue">bold red line</strong> before the interruption starts</span>
+          <label>End of last word before interruption (s) <span class="required-star">*</span> <span class="muted">drag the <strong class="red-cue">bold red line</strong> before the interruption starts</span>
             <input id="stall-time" type="number" min="0" step="0.01">
           </label>
           <label>Start of interrupting utterance (s) <span class="required-star">*</span> <span class="muted">drag the <strong class="orange-cue">orange line</strong> if needed</span>

@@ -483,7 +483,7 @@ def validate_submission(payload: dict) -> list[str]:
         relevant_interruption = task.get("relevant_interruption")
         if not isinstance(relevant_interruption, bool):
             errors.append(
-                f"{prefix}: answer whether this is a relevant interruption before the first speaker finishes."
+                f"{prefix}: answer whether the second speaker's utterance completes the first speaker's unfinished sentence."
             )
             continue
         interrupting_start_time = task.get("interrupting_start_time")
@@ -524,7 +524,7 @@ def validate_submission(payload: dict) -> list[str]:
         interruption_type = task.get("interruption_type")
         if candidate_valid and speaker_stuck is True and interruption_type not in valid_types:
             errors.append(f"{prefix}: select a valid interruption type.")
-        if candidate_valid and speaker_stuck is False and interruption_type not in ("", None, "not_applicable"):
+        if relevant_interruption is True and speaker_stuck is False and interruption_type not in ("", None, "not_applicable"):
             errors.append(f"{prefix}: interruption type should be blank when the speaker is not stuck.")
         if candidate_valid and speaker_stuck is True and interruption_type in word_phrase_types:
             if not isinstance(task.get("word_phrase_fits"), bool):
@@ -535,11 +535,13 @@ def validate_submission(payload: dict) -> list[str]:
             if task.get("word_phrase_fits") not in ("", None, "not_applicable"):
                 errors.append(f"{prefix}: word/phrase correctness should be blank unless the type is word/phrase.")
         stall_time = task.get("stall_time")
-        if candidate_valid and speaker_stuck is True:
+        if relevant_interruption is True:
             if not isinstance(stall_time, (int, float)):
-                errors.append(f"{prefix}: mark the end timestamp of the last stuck word.")
+                errors.append(f"{prefix}: mark the end timestamp of the last word before the interruption.")
             elif isinstance(duration, (int, float)) and not 0 <= stall_time <= duration:
-                errors.append(f"{prefix}: end timestamp of the last stuck word must be within the audio clip.")
+                errors.append(
+                    f"{prefix}: end timestamp of the last word before the interruption must be within the audio clip."
+                )
             else:
                 regions = task.get("regions") or {}
                 interrupted = (regions.get("interrupted") or {})
@@ -548,16 +550,19 @@ def validate_submission(payload: dict) -> list[str]:
                 tolerance = 0.01
                 if isinstance(interrupted_start, (int, float)) and stall_time <= interrupted_start + tolerance:
                     errors.append(
-                        f"{prefix}: end timestamp of the last stuck word must be after the start of the interrupted utterance."
+                        f"{prefix}: end timestamp of the last word before the interruption must be after the start of the interrupted utterance."
                     )
                 if isinstance(interrupted_end, (int, float)) and stall_time > interrupted_end + tolerance:
                     errors.append(
-                        f"{prefix}: end timestamp of the last stuck word must be within the interrupted utterance."
+                        f"{prefix}: end timestamp of the last word before the interruption must be within the interrupted utterance."
                     )
                 if isinstance(interrupting_start_time, (int, float)) and stall_time > interrupting_start_time + tolerance:
                     errors.append(
-                        f"{prefix}: end timestamp of the last stuck word must be before the interrupting utterance starts."
+                        f"{prefix}: end timestamp of the last word before the interruption must be before the interrupting utterance starts."
                     )
+        if candidate_valid and speaker_stuck is True:
+            if not isinstance(task.get("interrupter_becomes_main_speaker"), bool):
+                errors.append(f"{prefix}: answer whether the interrupter becomes the main speaker.")
     return errors
 
 
