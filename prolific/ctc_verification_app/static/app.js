@@ -48,6 +48,7 @@
     return {
       interrupted: 'rgba(31, 119, 180, 0.28)',
       interrupting: 'rgba(255, 127, 14, 0.28)',
+      interruptingStart: 'rgba(255, 127, 14, 0.78)',
       stall: 'rgba(220, 38, 38, 0.75)',
     }[kind];
   }
@@ -56,6 +57,7 @@
     return {
       interrupted: 'Interrupted utterance',
       interrupting: 'Interrupting utterance',
+      interruptingStart: 'Interruption start',
       stall: 'Stuck',
     }[kind];
   }
@@ -109,11 +111,21 @@
       interruption_type: '',
       word_phrase_fits: null,
       stall_time: task.prelabels ? task.prelabels.stall_time : null,
+      interrupting_start_time: defaultInterruptingStartTime(task, interrupting),
+      interrupting_start_checked: false,
       interrupter_becomes_main_speaker: null,
       corrected_interrupted_transcript: prefilledInterruptedTranscript(task, interrupted),
       corrected_interrupting_transcript: prefilledInterruptingTranscript(task, interrupting),
       note: '',
     };
+  }
+
+  function defaultInterruptingStartTime(task, interrupting) {
+    const prelabelStart = task.prelabels && Number(task.prelabels.interrupting_start_time);
+    if (Number.isFinite(prelabelStart)) {
+      return prelabelStart;
+    }
+    return interrupting && Number.isFinite(Number(interrupting.start)) ? Number(interrupting.start) : null;
   }
 
   function prefilledInterruptedTranscript(task, interrupted) {
@@ -153,6 +165,8 @@
     byId('interruption-type').value = normalizeInterruptionType(item.interruption_type);
     setBoolValue('word-phrase-fits', item.word_phrase_fits);
     byId('stall-time').value = item.stall_time ?? '';
+    byId('interrupting-start-time').value = item.interrupting_start_time ?? '';
+    byId('interrupting-start-checked').checked = item.interrupting_start_checked === true;
     setBoolValue('speaker-shift', item.interrupter_becomes_main_speaker);
     byId('interrupted-transcript').value = item.corrected_interrupted_transcript;
     byId('interrupting-transcript').value = item.corrected_interrupting_transcript;
@@ -232,6 +246,7 @@
       byId('wave-status').textContent = 'Waveform status: ready.';
       addStaticRegion('interrupted', task.regions && task.regions.interrupted, 0);
       addStaticRegion('interrupting', task.regions && task.regions.interrupting, 1);
+      addInterruptingStartMarker();
       addStallMarker();
       byId('time-display').textContent = `${fmt(0)} / ${fmt(wave.getDuration())}`;
     });
@@ -247,10 +262,16 @@
       byId('wave-status').textContent = `Waveform status: audio decode/render error: ${error}`;
     });
     regions.on('region-updated', (region) => {
-      if (region.id !== 'stall-marker') return;
       const time = round(region.start);
-      current().stall_time = time;
-      byId('stall-time').value = time;
+      if (region.id === 'stall-marker') {
+        current().stall_time = time;
+        byId('stall-time').value = time;
+      } else if (region.id === 'interrupting-start-marker') {
+        current().interrupting_start_time = time;
+        byId('interrupting-start-time').value = time;
+      } else {
+        return;
+      }
       syncOutput();
     });
   }
@@ -273,6 +294,24 @@
     state.regionById.set(kind, waveRegion);
   }
 
+  function addInterruptingStartMarker() {
+    if (!state.regions) return;
+    const duration = state.wave.getDuration() || currentTask().duration || 0;
+    const start = Math.min(Math.max(Number(current().interrupting_start_time || 0), 0), duration);
+    const markerWidth = 0.08;
+    const marker = state.regions.addRegion({
+      id: 'interrupting-start-marker',
+      start,
+      end: Math.min(start + markerWidth, duration || start + markerWidth),
+      color: regionColor('interruptingStart'),
+      content: regionLabel('interruptingStart'),
+      drag: true,
+      resize: false,
+      minLength: 0.03,
+    });
+    state.regionById.set('interrupting-start-marker', marker);
+  }
+
   function addStallMarker() {
     if (!state.regions) return;
     const duration = state.wave.getDuration() || currentTask().duration || 0;
@@ -289,6 +328,18 @@
       minLength: 0.03,
     });
     state.regionById.set('stall-marker', marker);
+  }
+
+  function updateInterruptingStartMarkerFromInput() {
+    const marker = state.regionById.get('interrupting-start-marker');
+    if (!marker) return;
+    const duration = state.wave ? state.wave.getDuration() : currentTask().duration;
+    const time = Math.min(Math.max(Number(byId('interrupting-start-time').value || 0), 0), duration || Infinity);
+    const markerWidth = 0.08;
+    marker.setOptions({
+      start: time,
+      end: Math.min(time + markerWidth, duration || time + markerWidth),
+    });
   }
 
   function updateStallMarkerFromInput() {
@@ -326,6 +377,8 @@
     item.interruption_type = normalizeInterruptionType(byId('interruption-type').value);
     item.word_phrase_fits = boolValue('word-phrase-fits');
     item.stall_time = byId('stall-time').value === '' ? null : round(Number(byId('stall-time').value));
+    item.interrupting_start_time = byId('interrupting-start-time').value === '' ? null : round(Number(byId('interrupting-start-time').value));
+    item.interrupting_start_checked = byId('interrupting-start-checked').checked;
     item.interrupter_becomes_main_speaker = boolValue('speaker-shift');
     item.corrected_interrupted_transcript = byId('interrupted-transcript').value;
     item.corrected_interrupting_transcript = byId('interrupting-transcript').value;
@@ -361,6 +414,8 @@
       interruption_type: item.interruption_type,
       word_phrase_fits: item.word_phrase_fits,
       stall_time: item.stall_time,
+      interrupting_start_time: item.interrupting_start_time,
+      interrupting_start_checked: item.interrupting_start_checked,
       interrupter_becomes_main_speaker: item.interrupter_becomes_main_speaker,
       corrected_interrupted_transcript: item.corrected_interrupted_transcript.trim(),
       corrected_interrupting_transcript: item.corrected_interrupting_transcript.trim(),
@@ -400,6 +455,21 @@
         add(`${prefix}: answer whether this is a relevant interruption before the first speaker finishes.`);
         return;
       }
+      if (typeof task.interrupting_start_time !== 'number' || Number.isNaN(task.interrupting_start_time)) {
+        add(`${prefix}: mark the start timestamp of the interrupting utterance.`);
+      } else if (task.duration !== null &&
+          (task.interrupting_start_time < 0 || task.interrupting_start_time > task.duration)) {
+        add(`${prefix}: start timestamp of the interrupting utterance must be inside the audio clip.`);
+      } else {
+        const interrupting = task.regions && task.regions.interrupting;
+        const interruptingEnd = interrupting && Number(interrupting.end);
+        if (Number.isFinite(interruptingEnd) && task.interrupting_start_time >= interruptingEnd) {
+          add(`${prefix}: start timestamp of the interrupting utterance must be before the end of that utterance.`);
+        }
+      }
+      if (task.interrupting_start_checked !== true) {
+        add(`${prefix}: confirm that you checked the start of the interrupting utterance.`);
+      }
       if (task.relevant_interruption === false) return;
       if (task.speaker_stuck !== true && task.speaker_stuck !== false) {
         add(`${prefix}: answer whether the interrupted speaker is stuck before the other speaker steps in.`);
@@ -419,10 +489,9 @@
           add(`${prefix}: end timestamp of the last stuck word must be inside the audio clip.`);
         } else {
           const interrupted = task.regions && task.regions.interrupted;
-          const interrupting = task.regions && task.regions.interrupting;
           const start = interrupted && Number(interrupted.start);
           const end = interrupted && Number(interrupted.end);
-          const interruptionStart = interrupting && Number(interrupting.start);
+          const interruptionStart = Number(task.interrupting_start_time);
           if (Number.isFinite(start) && task.stall_time <= start) {
             add(`${prefix}: end timestamp of the last stuck word must be after the start of the interrupted utterance.`);
           }
@@ -501,6 +570,15 @@
   byId('stall-time').addEventListener('input', () => {
     persistCurrentTask();
     updateStallMarkerFromInput();
+    syncOutput();
+  });
+  byId('interrupting-start-time').addEventListener('input', () => {
+    persistCurrentTask();
+    updateInterruptingStartMarkerFromInput();
+    syncOutput();
+  });
+  byId('interrupting-start-checked').addEventListener('change', () => {
+    persistCurrentTask();
     syncOutput();
   });
   byId('play').addEventListener('click', () => {

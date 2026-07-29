@@ -75,6 +75,9 @@
             If the speaker is stuck, choose the interruption type. We are mainly interested in
             word/phrase completions and guiding questions; see the examples below.
           </li>
+          <li>
+            Drag the <strong class="orange-cue">orange line</strong> to the true start of the interrupting utterance if the pre-labelled start is wrong, then confirm that you checked it.
+          </li>
           <li>Drag the <strong class="red-cue">bold red line</strong> on the audio waveform to the end timestamp of the last stuck word before the other speaker steps in.</li>
           <li>If the speaker is stuck and interrupted, answer whether the word/phrase fits the speaker's intention and whether the interrupter becomes the main speaker.</li>
           <li>Correct the interrupted or interrupting transcript if they are wrong. For the interrupted transcript, remove words after the interruption.</li>
@@ -119,10 +122,12 @@
         <div class="channel-key">
           <span class="main-speaker"><i class="dot main-dot"></i>Interrupted utterance</span>
           <span class="interrupter"><i class="dot interrupter-dot"></i>Interrupting utterance</span>
+          <span class="interrupter"><i class="dot interrupter-dot"></i>Start of interrupting utterance</span>
           <span class="stall"><i class="dot stall-dot"></i>End of last stuck word</span>
         </div>
         <div id="waveform"></div>
         <p class="muted">Focus only on the highlighted interrupted and interrupting utterances. Do not mark other possible interruptions elsewhere in the clip.</p>
+        <p class="muted">Please drag the <strong class="orange-cue">orange line</strong> to the true start of the interrupting utterance if the pre-labelled start is wrong.</p>
         <p class="muted">Please drag the <strong class="red-cue">bold red line</strong> to the end of the last stuck word before the other speaker steps in. It should be inside the interrupted utterance, not at its beginning or after the interruption starts.</p>
       </section>
 
@@ -161,6 +166,13 @@
           </label>
           <label>End of last stuck word (s) <span class="required-star">*</span> <span class="muted">drag the <strong class="red-cue">bold red line</strong> before the interruption starts</span>
             <input id="stall-time" type="number" min="0" step="0.01">
+          </label>
+          <label>Start of interrupting utterance (s) <span class="required-star">*</span> <span class="muted">drag the <strong class="orange-cue">orange line</strong> if needed</span>
+            <input id="interrupting-start-time" type="number" min="0" step="0.01">
+          </label>
+          <label class="checkbox-field wide-field">
+            <input id="interrupting-start-checked" type="checkbox">
+            <span>I checked the start of the interrupting utterance and corrected it if needed. <span class="required-star">*</span></span>
           </label>
           <label>Interrupter becomes main speaker? <span class="required-star">*</span>
             <select id="speaker-shift">

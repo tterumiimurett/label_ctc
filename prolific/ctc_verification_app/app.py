@@ -244,6 +244,9 @@ def verification_task(candidate: dict, source_task: dict) -> dict:
         },
         "prelabels": {
             "stall_time": default_stall_time(candidate, clip_start),
+            "interrupting_start_time": interrupting_region.get("start")
+            if interrupting_region
+            else relative_time(candidate.get("interrupter_start_time"), clip_start),
         },
     }
 
@@ -483,6 +486,30 @@ def validate_submission(payload: dict) -> list[str]:
                 f"{prefix}: answer whether this is a relevant interruption before the first speaker finishes."
             )
             continue
+        interrupting_start_time = task.get("interrupting_start_time")
+        duration = task.get("duration")
+        if not isinstance(interrupting_start_time, (int, float)):
+            errors.append(f"{prefix}: mark the start timestamp of the interrupting utterance.")
+        elif isinstance(duration, (int, float)) and not 0 <= interrupting_start_time <= duration:
+            errors.append(
+                f"{prefix}: start timestamp of the interrupting utterance must be within the audio clip."
+            )
+        else:
+            regions = task.get("regions") or {}
+            interrupting = regions.get("interrupting") or {}
+            interrupting_end = interrupting.get("end")
+            if (
+                isinstance(interrupting_start_time, (int, float))
+                and isinstance(interrupting_end, (int, float))
+                and interrupting_start_time >= interrupting_end
+            ):
+                errors.append(
+                    f"{prefix}: start timestamp of the interrupting utterance must be before the end of that utterance."
+                )
+        if task.get("interrupting_start_checked") is not True:
+            errors.append(
+                f"{prefix}: confirm that you checked the start of the interrupting utterance."
+            )
         if relevant_interruption is False:
             continue
         speaker_stuck = task.get("speaker_stuck")
@@ -508,7 +535,6 @@ def validate_submission(payload: dict) -> list[str]:
             if task.get("word_phrase_fits") not in ("", None, "not_applicable"):
                 errors.append(f"{prefix}: word/phrase correctness should be blank unless the type is word/phrase.")
         stall_time = task.get("stall_time")
-        duration = task.get("duration")
         if candidate_valid and speaker_stuck is True:
             if not isinstance(stall_time, (int, float)):
                 errors.append(f"{prefix}: mark the end timestamp of the last stuck word.")
@@ -517,10 +543,8 @@ def validate_submission(payload: dict) -> list[str]:
             else:
                 regions = task.get("regions") or {}
                 interrupted = (regions.get("interrupted") or {})
-                interrupting = (regions.get("interrupting") or {})
                 interrupted_start = interrupted.get("start")
                 interrupted_end = interrupted.get("end")
-                interruption_start = interrupting.get("start")
                 tolerance = 0.01
                 if isinstance(interrupted_start, (int, float)) and stall_time <= interrupted_start + tolerance:
                     errors.append(
@@ -530,7 +554,7 @@ def validate_submission(payload: dict) -> list[str]:
                     errors.append(
                         f"{prefix}: end timestamp of the last stuck word must be within the interrupted utterance."
                     )
-                if isinstance(interruption_start, (int, float)) and stall_time > interruption_start + tolerance:
+                if isinstance(interrupting_start_time, (int, float)) and stall_time > interrupting_start_time + tolerance:
                     errors.append(
                         f"{prefix}: end timestamp of the last stuck word must be before the interrupting utterance starts."
                     )

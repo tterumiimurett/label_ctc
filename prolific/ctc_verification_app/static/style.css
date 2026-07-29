@@ -47,6 +47,11 @@ h3 { font-size: 13px; margin: 0 0 5px; }
   font-weight: 700;
 }
 
+.orange-cue {
+  color: var(--interrupter);
+  font-weight: 700;
+}
+
 .required-star {
   color: #dc2626;
 }
@@ -102,6 +107,16 @@ button:disabled {
 label {
   display: block;
   font-weight: 700;
+}
+
+.checkbox-field {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.checkbox-field input {
+  flex: 0 0 auto;
 }
 
 input[type="number"],
