@@ -9,6 +9,7 @@ import hashlib
 import json
 import mimetypes
 import os
+import re
 import sys
 import tempfile
 import threading
@@ -23,10 +24,24 @@ ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_COMPLETION_URL = "https://app.prolific.com/submissions/complete"
 SCHEMA_VERSION = "ctc-verification-v1"
 TASK_LOCK = threading.Lock()
+FILLER_WORDS = {"ah", "eh", "er", "hm", "hmm", "mhm", "mm", "oh", "ok", "okay", "uh", "uhh", "um", "umm", "yeah", "yep"}
+FILLER_PHRASES = {"uh huh", "uh-huh", "mhm", "mm hmm", "you know"}
 
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def normalize_transcript(text: str | None) -> str:
+    normalized = re.sub(r"[^\w\s'-]+", " ", str(text or "").lower())
+    return re.sub(r"\s+", " ", normalized).strip()
+
+
+def has_non_filler_word(text: str | None) -> bool:
+    normalized = normalize_transcript(text)
+    if not normalized or normalized in FILLER_PHRASES:
+        return False
+    return any(word.strip("'") not in FILLER_WORDS for word in normalized.split())
 
 
 def read_json(path: Path, default):
@@ -496,8 +511,18 @@ def validate_submission(payload: dict) -> list[str]:
             )
         else:
             regions = task.get("regions") or {}
+            interrupted = regions.get("interrupted") or {}
             interrupting = regions.get("interrupting") or {}
+            interrupted_start = interrupted.get("start")
             interrupting_end = interrupting.get("end")
+            if (
+                isinstance(interrupting_start_time, (int, float))
+                and isinstance(interrupted_start, (int, float))
+                and interrupting_start_time < interrupted_start
+            ):
+                errors.append(
+                    f"{prefix}: start timestamp of the interrupting utterance must not be before the interrupted utterance starts."
+                )
             if (
                 isinstance(interrupting_start_time, (int, float))
                 and isinstance(interrupting_end, (int, float))
@@ -512,6 +537,26 @@ def validate_submission(payload: dict) -> list[str]:
             )
         if relevant_interruption is False:
             continue
+        if not str(task.get("corrected_interrupted_transcript") or "").strip():
+            errors.append(
+                f"{prefix}: enter the interrupted utterance transcript and remove words after the interruption."
+            )
+        if not str(task.get("corrected_interrupting_transcript") or "").strip():
+            errors.append(f"{prefix}: enter the interrupting utterance transcript.")
+        regions = task.get("regions") or {}
+        interrupted = regions.get("interrupted") or {}
+        interrupted_end = interrupted.get("end")
+        if (
+            isinstance(interrupted_end, (int, float))
+            and isinstance(interrupting_start_time, (int, float))
+            and interrupted_end > interrupting_start_time
+            and normalize_transcript(task.get("corrected_interrupted_transcript"))
+            and normalize_transcript(task.get("corrected_interrupted_transcript"))
+            == normalize_transcript(interrupted.get("transcript"))
+        ):
+            errors.append(
+                f"{prefix}: interrupted transcript appears unchanged; remove words after the interruption."
+            )
         speaker_stuck = task.get("speaker_stuck")
         if not isinstance(speaker_stuck, bool):
             errors.append(
@@ -526,10 +571,18 @@ def validate_submission(payload: dict) -> list[str]:
             errors.append(f"{prefix}: select a valid interruption type.")
         if relevant_interruption is True and speaker_stuck is False and interruption_type not in ("", None, "not_applicable"):
             errors.append(f"{prefix}: interruption type should be blank when the speaker is not stuck.")
+        if relevant_interruption is True and speaker_stuck is False and task.get("word_phrase_fits") not in ("", None, "not_applicable"):
+            errors.append(f"{prefix}: word/phrase correctness should be blank when the speaker is not stuck.")
+        if not isinstance(task.get("interrupter_becomes_main_speaker"), bool):
+            errors.append(f"{prefix}: answer whether the interrupter becomes the main speaker.")
         if candidate_valid and speaker_stuck is True and interruption_type in word_phrase_types:
             if not isinstance(task.get("word_phrase_fits"), bool):
                 errors.append(
                     f"{prefix}: answer whether the word/phrase correctly fits the speaker's intention."
+                )
+            if not has_non_filler_word(task.get("corrected_interrupting_transcript")):
+                errors.append(
+                    f"{prefix}: word/phrase interruptions should include at least one non-filler word in the interrupting transcript."
                 )
         if candidate_valid and speaker_stuck is True and interruption_type in {"guiding_question", "other"}:
             if task.get("word_phrase_fits") not in ("", None, "not_applicable"):
@@ -556,13 +609,10 @@ def validate_submission(payload: dict) -> list[str]:
                     errors.append(
                         f"{prefix}: end timestamp of the last word before the interruption must be within the interrupted utterance."
                     )
-                if isinstance(interrupting_start_time, (int, float)) and stall_time > interrupting_start_time + tolerance:
+                if isinstance(interrupting_start_time, (int, float)) and stall_time >= interrupting_start_time:
                     errors.append(
                         f"{prefix}: end timestamp of the last word before the interruption must be before the interrupting utterance starts."
                     )
-        if candidate_valid and speaker_stuck is True:
-            if not isinstance(task.get("interrupter_becomes_main_speaker"), bool):
-                errors.append(f"{prefix}: answer whether the interrupter becomes the main speaker.")
     return errors
 
 

@@ -83,7 +83,7 @@
             If the speaker is stuck, mark the last word after the stuck portion and before the interruption.
             If the speaker is not stuck, mark the last complete word before the interruption.
           </li>
-          <li>If the speaker is stuck and interrupted, answer whether the word/phrase fits the speaker's intention and whether the interrupter becomes the main speaker.</li>
+          <li>If the speaker is stuck, answer whether the word/phrase fits the speaker's intention. For every completed sentence, answer whether the interrupter becomes the main speaker.</li>
           <li>Correct the interrupted or interrupting transcript if they are wrong. For the interrupted transcript, remove words after the interruption.</li>
         </ol>
       </details>
@@ -185,10 +185,10 @@
               <option value="no">No</option>
             </select>
           </label>
-          <label class="wide-field">Interrupted utterance transcript <span class="muted">(auto-generated; remove words after interruption; correct if needed)</span>
+          <label class="wide-field">Interrupted utterance transcript <span class="required-star">*</span> <span class="muted">(auto-generated; remove words after interruption)</span>
             <textarea id="interrupted-transcript" rows="3"></textarea>
           </label>
-          <label class="wide-field">Interrupting utterance transcript <span class="muted">(auto-generated; correct if needed)</span>
+          <label class="wide-field">Interrupting utterance transcript <span class="required-star">*</span> <span class="muted">(auto-generated; correct if needed)</span>
             <textarea id="interrupting-transcript" rows="3"></textarea>
           </label>
           <label class="wide-field">Optional note

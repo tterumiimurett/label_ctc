@@ -20,6 +20,8 @@
   const escapeText = (text) => String(text ?? '').replace(/[&<>"']/g, (character) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
   }[character]));
+  const fillerWords = new Set(['ah', 'eh', 'er', 'hm', 'hmm', 'mhm', 'mm', 'oh', 'ok', 'okay', 'uh', 'uhh', 'um', 'umm', 'yeah', 'yep']);
+  const fillerPhrases = new Set(['uh huh', 'uh-huh', 'mhm', 'mm hmm', 'you know']);
 
   function params() {
     return new URLSearchParams(window.location.search);
@@ -42,6 +44,22 @@
 
   function setBoolValue(id, value) {
     byId(id).value = value === true ? 'yes' : value === false ? 'no' : '';
+  }
+
+  function normalizeTranscript(text) {
+    return String(text || '')
+      .toLowerCase()
+      .replace(/[^\w\s'-]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function hasNonFillerWord(text) {
+    const normalized = normalizeTranscript(text);
+    if (!normalized || fillerPhrases.has(normalized)) return false;
+    return normalized
+      .split(/\s+/)
+      .some((word) => word && !fillerWords.has(word.replace(/^'+|'+$/g, '')));
   }
 
   function regionColor(kind) {
@@ -227,7 +245,7 @@
     byId('interruption-type').disabled = !relevant || !stuck;
     byId('word-phrase-fits').disabled = !relevant || !stuck || !wordPhrase;
     byId('stall-time').disabled = !relevant;
-    byId('speaker-shift').disabled = !relevant || !stuck;
+    byId('speaker-shift').disabled = !relevant;
     if (!relevant) {
       byId('speaker-stuck').value = '';
       byId('interruption-type').value = '';
@@ -237,7 +255,6 @@
     } else if (!stuck) {
       byId('interruption-type').value = '';
       byId('word-phrase-fits').value = '';
-      byId('speaker-shift').value = '';
     } else if (!wordPhrase) {
       byId('word-phrase-fits').value = '';
     }
@@ -433,7 +450,6 @@
     } else if (item.speaker_stuck !== true) {
       item.interruption_type = '';
       item.word_phrase_fits = null;
-      item.interrupter_becomes_main_speaker = null;
     } else if (item.interruption_type !== 'word_phrase') {
       item.word_phrase_fits = null;
     }
@@ -503,7 +519,12 @@
         add(`${prefix}: start timestamp of the interrupting utterance must be inside the audio clip.`);
       } else {
         const interrupting = task.regions && task.regions.interrupting;
+        const interrupted = task.regions && task.regions.interrupted;
+        const interruptedStart = interrupted && Number(interrupted.start);
         const interruptingEnd = interrupting && Number(interrupting.end);
+        if (Number.isFinite(interruptedStart) && task.interrupting_start_time < interruptedStart) {
+          add(`${prefix}: start timestamp of the interrupting utterance must not be before the interrupted utterance starts.`);
+        }
         if (Number.isFinite(interruptingEnd) && task.interrupting_start_time >= interruptingEnd) {
           add(`${prefix}: start timestamp of the interrupting utterance must be before the end of that utterance.`);
         }
@@ -512,9 +533,32 @@
         add(`${prefix}: confirm that you checked the start of the interrupting utterance.`);
       }
       if (task.relevant_interruption === false) return;
+      if (!task.corrected_interrupted_transcript) {
+        add(`${prefix}: enter the interrupted utterance transcript and remove words after the interruption.`);
+      }
+      if (!task.corrected_interrupting_transcript) {
+        add(`${prefix}: enter the interrupting utterance transcript.`);
+      }
+      const interruptedRegion = task.regions && task.regions.interrupted;
+      if (interruptedRegion &&
+          Number.isFinite(Number(interruptedRegion.end)) &&
+          Number.isFinite(Number(task.interrupting_start_time)) &&
+          Number(interruptedRegion.end) > Number(task.interrupting_start_time) &&
+          normalizeTranscript(task.corrected_interrupted_transcript) &&
+          normalizeTranscript(task.corrected_interrupted_transcript) === normalizeTranscript(interruptedRegion.transcript)) {
+        add(`${prefix}: interrupted transcript appears unchanged; remove words after the interruption.`);
+      }
       if (task.speaker_stuck !== true && task.speaker_stuck !== false) {
         add(`${prefix}: answer whether the interrupted speaker is stuck before the other speaker steps in.`);
         return;
+      }
+      if (task.speaker_stuck === false) {
+        if (task.interruption_type) {
+          add(`${prefix}: interruption type should be blank when the speaker is not stuck.`);
+        }
+        if (task.word_phrase_fits !== null && task.word_phrase_fits !== '') {
+          add(`${prefix}: word/phrase correctness should be blank when the speaker is not stuck.`);
+        }
       }
       if (task.stall_time === null || Number.isNaN(task.stall_time)) {
         add(`${prefix}: mark the end timestamp of the last word before the interruption.`);
@@ -531,9 +575,13 @@
         if (Number.isFinite(end) && task.stall_time > end) {
           add(`${prefix}: end timestamp of the last word before the interruption must be within the interrupted utterance.`);
         }
-        if (Number.isFinite(interruptionStart) && task.stall_time > interruptionStart) {
+        if (Number.isFinite(interruptionStart) && task.stall_time >= interruptionStart) {
           add(`${prefix}: end timestamp of the last word before the interruption must be before the interrupting utterance starts.`);
         }
+      }
+      if (task.interrupter_becomes_main_speaker !== true &&
+          task.interrupter_becomes_main_speaker !== false) {
+        add(`${prefix}: answer whether the interrupter becomes the main speaker.`);
       }
       if (task.speaker_stuck === true) {
         if (!task.interruption_type) add(`${prefix}: select the interruption type.`);
@@ -542,9 +590,8 @@
             task.word_phrase_fits !== false) {
           add(`${prefix}: answer whether the word/phrase correctly fits the speaker's intention.`);
         }
-        if (task.interrupter_becomes_main_speaker !== true &&
-            task.interrupter_becomes_main_speaker !== false) {
-          add(`${prefix}: answer whether the interrupter becomes the main speaker.`);
+        if (task.interruption_type === 'word_phrase' && !hasNonFillerWord(task.corrected_interrupting_transcript)) {
+          add(`${prefix}: word/phrase interruptions should include at least one non-filler word in the interrupting transcript.`);
         }
       }
     });
