@@ -1,4 +1,6 @@
 (() => {
+  const DRAFT_SCHEMA_VERSION = 2;
+
   const state = {
     assignment: null,
     worker: null,
@@ -44,6 +46,17 @@
 
   function setBoolValue(id, value) {
     byId(id).value = value === true ? 'yes' : value === false ? 'no' : '';
+  }
+
+  function draftKey() {
+    if (!state.worker || !state.assignment) return '';
+    return [
+      'ctcVerificationDraft',
+      state.worker.study_id,
+      state.worker.prolific_pid,
+      state.worker.session_id,
+      state.assignment.bundle_id,
+    ].join(':');
   }
 
   function normalizeTranscript(text) {
@@ -147,9 +160,10 @@
     state.completionUrl = assignment.completion_url;
     state.tasks = assignment.tasks;
     state.taskState = state.tasks.map(normalizeTask);
+    restoreDraft();
     byId('loading-card').hidden = true;
     byId('verification-form').hidden = false;
-    renderTask(0);
+    renderTask(state.index);
   }
 
   function showFatal(message) {
@@ -173,16 +187,21 @@
       interrupter_becomes_main_speaker: null,
       corrected_interrupted_transcript: prefilledInterruptedTranscript(task, interrupted),
       corrected_interrupting_transcript: prefilledInterruptingTranscript(task, interrupting),
+      transcript_checked: false,
       note: '',
     };
   }
 
   function defaultInterruptingStartTime(task, interrupting) {
+    const regionStart = interrupting && Number(interrupting.start);
+    if (Number.isFinite(regionStart)) {
+      return regionStart;
+    }
     const prelabelStart = task.prelabels && Number(task.prelabels.interrupting_start_time);
     if (Number.isFinite(prelabelStart)) {
       return prelabelStart;
     }
-    return interrupting && Number.isFinite(Number(interrupting.start)) ? Number(interrupting.start) : null;
+    return null;
   }
 
   function prefilledInterruptedTranscript(task, interrupted) {
@@ -201,6 +220,71 @@
       task.prelabel.interrupter_text ||
       ''
     );
+  }
+
+  function restoreDraft() {
+    const key = draftKey();
+    if (!key) return;
+    try {
+      const draft = JSON.parse(window.localStorage.getItem(key) || 'null');
+      if (!draft || !Array.isArray(draft.taskState)) return;
+      if (draft.version !== DRAFT_SCHEMA_VERSION) {
+        window.localStorage.removeItem(key);
+        return;
+      }
+      const currentIds = state.taskState.map((item) => item.task.candidate_id).join('|');
+      const draftIds = draft.taskState.map((item) => item.task && item.task.candidate_id).join('|');
+      if (currentIds !== draftIds) return;
+      state.taskState = state.taskState.map((item, index) => {
+        const defaultInterruptingStart = item.interrupting_start_time;
+        const restored = {
+          ...item,
+          ...draft.taskState[index],
+          task: item.task,
+        };
+        if (restored.interrupting_start_checked !== true) {
+          restored.interrupting_start_time = defaultInterruptingStart;
+        } else if (restored.interrupting_start_time === null || restored.interrupting_start_time === undefined) {
+          restored.interrupting_start_time = defaultInterruptingStart;
+        }
+        if (restored.stall_time === null || restored.stall_time === undefined) {
+          restored.stall_time = item.stall_time;
+        }
+        return restored;
+      });
+      state.index = Math.min(Math.max(Number(draft.index) || 0, 0), state.taskState.length - 1);
+      byId('save-status').textContent = 'Draft restored from this browser.';
+    } catch (error) {
+      console.warn('Unable to restore local draft', error);
+    }
+  }
+
+  function saveDraft() {
+    const key = draftKey();
+    if (!key) return;
+    try {
+      const taskState = state.taskState.map((item) => {
+        const {task, ...draftItem} = item;
+        return {
+          ...draftItem,
+          task: {candidate_id: task.candidate_id},
+        };
+      });
+      window.localStorage.setItem(key, JSON.stringify({
+        version: DRAFT_SCHEMA_VERSION,
+        index: state.index,
+        taskState,
+        updated_at: new Date().toISOString(),
+      }));
+      byId('save-status').textContent = 'Draft saved in this browser.';
+    } catch (error) {
+      console.warn('Unable to save local draft', error);
+    }
+  }
+
+  function clearDraft() {
+    const key = draftKey();
+    if (key) window.localStorage.removeItem(key);
   }
 
   function renderTask(index) {
@@ -227,6 +311,7 @@
     setBoolValue('speaker-shift', item.interrupter_becomes_main_speaker);
     byId('interrupted-transcript').value = item.corrected_interrupted_transcript;
     byId('interrupting-transcript').value = item.corrected_interrupting_transcript;
+    byId('transcript-checked').checked = item.transcript_checked === true;
     byId('note').value = item.note;
     syncFieldState();
 
@@ -239,22 +324,31 @@
 
   function syncFieldState() {
     const relevant = byId('relevant-interruption').value === 'yes';
+    const nonCtc = byId('relevant-interruption').value === 'no';
     const stuck = byId('speaker-stuck').value === 'yes';
+    const stuckAnswered = byId('speaker-stuck').value === 'yes' || byId('speaker-stuck').value === 'no';
     const wordPhrase = byId('interruption-type').value === 'word_phrase';
+    const intentionRequired = relevant && stuckAnswered && (!stuck || wordPhrase);
     byId('speaker-stuck').disabled = !relevant;
     byId('interruption-type').disabled = !relevant || !stuck;
-    byId('word-phrase-fits').disabled = !relevant || !stuck || !wordPhrase;
+    byId('word-phrase-fits').disabled = !intentionRequired;
     byId('stall-time').disabled = !relevant;
+    byId('interrupting-start-time').disabled = !relevant;
+    byId('interrupting-start-checked').disabled = !relevant;
     byId('speaker-shift').disabled = !relevant;
+    byId('interrupted-transcript').disabled = nonCtc;
+    byId('interrupting-transcript').disabled = nonCtc;
+    byId('transcript-checked').disabled = !relevant;
     if (!relevant) {
       byId('speaker-stuck').value = '';
       byId('interruption-type').value = '';
       byId('word-phrase-fits').value = '';
-      byId('stall-time').value = '';
+      byId('interrupting-start-checked').checked = false;
+      byId('transcript-checked').checked = false;
       byId('speaker-shift').value = '';
     } else if (!stuck) {
       byId('interruption-type').value = '';
-      byId('word-phrase-fits').value = '';
+      if (!stuckAnswered) byId('word-phrase-fits').value = '';
     } else if (!wordPhrase) {
       byId('word-phrase-fits').value = '';
     }
@@ -331,6 +425,16 @@
     });
   }
 
+  function reloadCurrentAudio() {
+    if (!current()) return;
+    persistCurrentTask();
+    destroyWave();
+    const task = currentTask();
+    byId('audio').src = task.audio_url;
+    wireWave(task);
+    syncOutput();
+  }
+
   function addStaticRegion(kind, region, channelIdx) {
     if (!region || !state.regions) return;
     const start = Number(region.start);
@@ -353,7 +457,11 @@
   function addInterruptingStartMarker() {
     if (!state.regions) return;
     const duration = state.wave.getDuration() || currentTask().duration || 0;
-    const start = Math.min(Math.max(Number(current().interrupting_start_time || 0), 0), duration);
+    const fallbackStart = defaultInterruptingStartTime(currentTask(), currentTask().regions && currentTask().regions.interrupting);
+    const markerStart = Number.isFinite(Number(current().interrupting_start_time)) ?
+      Number(current().interrupting_start_time) :
+      Number(fallbackStart || 0);
+    const start = Math.min(Math.max(markerStart, 0), duration);
     const markerWidth = 0.08;
     const marker = state.regions.addRegion({
       id: 'interrupting-start-marker',
@@ -440,19 +548,21 @@
     item.interrupter_becomes_main_speaker = boolValue('speaker-shift');
     item.corrected_interrupted_transcript = byId('interrupted-transcript').value;
     item.corrected_interrupting_transcript = byId('interrupting-transcript').value;
+    item.transcript_checked = byId('transcript-checked').checked;
     item.note = byId('note').value;
     if (item.relevant_interruption !== true) {
       item.speaker_stuck = null;
       item.interruption_type = '';
       item.word_phrase_fits = null;
-      item.stall_time = null;
+      item.interrupting_start_checked = false;
+      item.transcript_checked = false;
       item.interrupter_becomes_main_speaker = null;
     } else if (item.speaker_stuck !== true) {
       item.interruption_type = '';
-      item.word_phrase_fits = null;
     } else if (item.interruption_type !== 'word_phrase') {
       item.word_phrase_fits = null;
     }
+    saveDraft();
   }
 
   function taskPayload(item) {
@@ -476,6 +586,7 @@
       interrupter_becomes_main_speaker: item.interrupter_becomes_main_speaker,
       corrected_interrupted_transcript: item.corrected_interrupted_transcript.trim(),
       corrected_interrupting_transcript: item.corrected_interrupting_transcript.trim(),
+      transcript_checked: item.transcript_checked,
       note: item.note.trim(),
       ui_metadata: {
         started_at: item.started_at,
@@ -512,6 +623,7 @@
         add(`${prefix}: answer whether the second speaker's utterance completes the first speaker's unfinished sentence.`);
         return;
       }
+      if (task.relevant_interruption === false) return;
       if (typeof task.interrupting_start_time !== 'number' || Number.isNaN(task.interrupting_start_time)) {
         add(`${prefix}: mark the start timestamp of the interrupting utterance.`);
       } else if (task.duration !== null &&
@@ -532,7 +644,9 @@
       if (task.interrupting_start_checked !== true) {
         add(`${prefix}: confirm that you checked the start of the interrupting utterance.`);
       }
-      if (task.relevant_interruption === false) return;
+      if (task.transcript_checked !== true) {
+        add(`${prefix}: confirm that you checked the transcript and removed words after interruption.`);
+      }
       if (!task.corrected_interrupted_transcript) {
         add(`${prefix}: enter the interrupted utterance transcript and remove words after the interruption.`);
       }
@@ -556,8 +670,8 @@
         if (task.interruption_type) {
           add(`${prefix}: interruption type should be blank when the speaker is not stuck.`);
         }
-        if (task.word_phrase_fits !== null && task.word_phrase_fits !== '') {
-          add(`${prefix}: word/phrase correctness should be blank when the speaker is not stuck.`);
+        if (task.word_phrase_fits !== true && task.word_phrase_fits !== false) {
+          add(`${prefix}: answer whether the interrupting utterance correctly fits the speaker's intention.`);
         }
       }
       if (task.stall_time === null || Number.isNaN(task.stall_time)) {
@@ -588,7 +702,7 @@
         if (task.interruption_type === 'word_phrase' &&
             task.word_phrase_fits !== true &&
             task.word_phrase_fits !== false) {
-          add(`${prefix}: answer whether the word/phrase correctly fits the speaker's intention.`);
+          add(`${prefix}: answer whether the interrupting utterance correctly fits the speaker's intention.`);
         }
         if (task.interruption_type === 'word_phrase' && !hasNonFillerWord(task.corrected_interrupting_transcript)) {
           add(`${prefix}: word/phrase interruptions should include at least one non-filler word in the interrupting transcript.`);
@@ -631,6 +745,7 @@
       return;
     }
     byId('save-status').textContent = 'Saved. Redirecting to Prolific...';
+    clearDraft();
     window.location.href = result.completion_url;
   }
 
@@ -668,12 +783,17 @@
     persistCurrentTask();
     syncOutput();
   });
+  byId('transcript-checked').addEventListener('change', () => {
+    persistCurrentTask();
+    syncOutput();
+  });
   byId('play').addEventListener('click', () => {
     state.playbackMode = 'full';
     if (state.wave) state.wave.playPause();
   });
   byId('play-interrupted').addEventListener('click', () => playRegion('interrupted'));
   byId('play-interrupting').addEventListener('click', () => playRegion('interrupting'));
+  byId('reload-audio').addEventListener('click', reloadCurrentAudio);
   byId('zoom').addEventListener('input', (event) => {
     if (state.wave) state.wave.zoom(Number(event.target.value));
   });

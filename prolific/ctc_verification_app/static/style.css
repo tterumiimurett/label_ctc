@@ -119,6 +119,19 @@ label {
   flex: 0 0 auto;
 }
 
+.start-check-row {
+  align-items: center;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(96px, 150px) minmax(0, 1fr);
+}
+
+.compact-check {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
 input[type="number"],
 select,
 textarea {
@@ -219,6 +232,15 @@ fieldset {
   overflow: hidden;
 }
 
+.transcript-panel {
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 10px;
+  padding-top: 10px;
+}
+
 .channel-key {
   font-weight: 700;
   margin: 9px 0 5px;
@@ -300,7 +322,12 @@ pre {
   }
 
   .field-grid,
+  .transcript-panel,
   .example-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .start-check-row {
     grid-template-columns: 1fr;
   }
 }

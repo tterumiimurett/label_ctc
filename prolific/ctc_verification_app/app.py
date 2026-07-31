@@ -501,6 +501,8 @@ def validate_submission(payload: dict) -> list[str]:
                 f"{prefix}: answer whether the second speaker's utterance completes the first speaker's unfinished sentence."
             )
             continue
+        if relevant_interruption is False:
+            continue
         interrupting_start_time = task.get("interrupting_start_time")
         duration = task.get("duration")
         if not isinstance(interrupting_start_time, (int, float)):
@@ -535,8 +537,6 @@ def validate_submission(payload: dict) -> list[str]:
             errors.append(
                 f"{prefix}: confirm that you checked the start of the interrupting utterance."
             )
-        if relevant_interruption is False:
-            continue
         if not str(task.get("corrected_interrupted_transcript") or "").strip():
             errors.append(
                 f"{prefix}: enter the interrupted utterance transcript and remove words after the interruption."
@@ -571,14 +571,16 @@ def validate_submission(payload: dict) -> list[str]:
             errors.append(f"{prefix}: select a valid interruption type.")
         if relevant_interruption is True and speaker_stuck is False and interruption_type not in ("", None, "not_applicable"):
             errors.append(f"{prefix}: interruption type should be blank when the speaker is not stuck.")
-        if relevant_interruption is True and speaker_stuck is False and task.get("word_phrase_fits") not in ("", None, "not_applicable"):
-            errors.append(f"{prefix}: word/phrase correctness should be blank when the speaker is not stuck.")
+        if relevant_interruption is True and speaker_stuck is False and not isinstance(task.get("word_phrase_fits"), bool):
+            errors.append(
+                f"{prefix}: answer whether the interrupting utterance correctly fits the speaker's intention."
+            )
         if not isinstance(task.get("interrupter_becomes_main_speaker"), bool):
             errors.append(f"{prefix}: answer whether the interrupter becomes the main speaker.")
         if candidate_valid and speaker_stuck is True and interruption_type in word_phrase_types:
             if not isinstance(task.get("word_phrase_fits"), bool):
                 errors.append(
-                    f"{prefix}: answer whether the word/phrase correctly fits the speaker's intention."
+                    f"{prefix}: answer whether the interrupting utterance correctly fits the speaker's intention."
                 )
             if not has_non_filler_word(task.get("corrected_interrupting_transcript")):
                 errors.append(
