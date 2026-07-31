@@ -37,15 +37,44 @@
     return current().task;
   }
 
+  function fieldValue(id) {
+    const element = byId(id);
+    const checked = document.querySelector(`input[name="${id}"]:checked`);
+    if (checked) return checked.value;
+    return element && 'value' in element ? element.value : '';
+  }
+
+  function setFieldValue(id, value) {
+    const radios = document.querySelectorAll(`input[name="${id}"]`);
+    if (radios.length) {
+      radios.forEach((radio) => {
+        radio.checked = radio.value === value;
+      });
+      return;
+    }
+    byId(id).value = value;
+  }
+
+  function setFieldDisabled(id, disabled) {
+    const radios = document.querySelectorAll(`input[name="${id}"]`);
+    if (radios.length) {
+      radios.forEach((radio) => {
+        radio.disabled = disabled;
+      });
+      return;
+    }
+    byId(id).disabled = disabled;
+  }
+
   function boolValue(id) {
-    const value = byId(id).value;
+    const value = fieldValue(id);
     if (value === 'yes') return true;
     if (value === 'no') return false;
     return null;
   }
 
   function setBoolValue(id, value) {
-    byId(id).value = value === true ? 'yes' : value === false ? 'no' : '';
+    setFieldValue(id, value === true ? 'yes' : value === false ? 'no' : '');
   }
 
   function draftKey() {
@@ -303,7 +332,7 @@
 
     setBoolValue('relevant-interruption', item.relevant_interruption);
     setBoolValue('speaker-stuck', item.speaker_stuck);
-    byId('interruption-type').value = normalizeInterruptionType(item.interruption_type);
+    setFieldValue('interruption-type', normalizeInterruptionType(item.interruption_type));
     setBoolValue('word-phrase-fits', item.word_phrase_fits);
     byId('stall-time').value = item.stall_time ?? '';
     byId('interrupting-start-time').value = item.interrupting_start_time ?? '';
@@ -323,34 +352,32 @@
   }
 
   function syncFieldState() {
-    const relevant = byId('relevant-interruption').value === 'yes';
-    const nonCtc = byId('relevant-interruption').value === 'no';
-    const stuck = byId('speaker-stuck').value === 'yes';
-    const stuckAnswered = byId('speaker-stuck').value === 'yes' || byId('speaker-stuck').value === 'no';
-    const wordPhrase = byId('interruption-type').value === 'word_phrase';
-    const intentionRequired = relevant && stuckAnswered && (!stuck || wordPhrase);
-    byId('speaker-stuck').disabled = !relevant;
-    byId('interruption-type').disabled = !relevant || !stuck;
-    byId('word-phrase-fits').disabled = !intentionRequired;
+    const relevant = fieldValue('relevant-interruption') === 'yes';
+    const nonCtc = fieldValue('relevant-interruption') === 'no';
+    const stuck = fieldValue('speaker-stuck') === 'yes';
+    const stuckAnswered = fieldValue('speaker-stuck') === 'yes' || fieldValue('speaker-stuck') === 'no';
+    const intentionRequired = relevant && stuckAnswered;
+    setFieldDisabled('speaker-stuck', !relevant);
+    setFieldDisabled('interruption-type', !relevant || !stuck);
+    setFieldDisabled('word-phrase-fits', !intentionRequired);
     byId('stall-time').disabled = !relevant;
     byId('interrupting-start-time').disabled = !relevant;
     byId('interrupting-start-checked').disabled = !relevant;
-    byId('speaker-shift').disabled = !relevant;
+    setFieldDisabled('speaker-shift', !relevant);
     byId('interrupted-transcript').disabled = nonCtc;
     byId('interrupting-transcript').disabled = nonCtc;
     byId('transcript-checked').disabled = !relevant;
     if (!relevant) {
-      byId('speaker-stuck').value = '';
-      byId('interruption-type').value = '';
-      byId('word-phrase-fits').value = '';
+      setFieldValue('speaker-stuck', '');
+      setFieldValue('interruption-type', '');
+      setFieldValue('word-phrase-fits', '');
       byId('interrupting-start-checked').checked = false;
       byId('transcript-checked').checked = false;
-      byId('speaker-shift').value = '';
+      setFieldValue('speaker-shift', '');
     } else if (!stuck) {
-      byId('interruption-type').value = '';
-      if (!stuckAnswered) byId('word-phrase-fits').value = '';
-    } else if (!wordPhrase) {
-      byId('word-phrase-fits').value = '';
+      setFieldValue('interruption-type', '');
+    } else if (!stuckAnswered) {
+      setFieldValue('word-phrase-fits', '');
     }
   }
 
@@ -397,10 +424,8 @@
       addStaticRegion('interrupting', task.regions && task.regions.interrupting, 1);
       addInterruptingStartMarker();
       addStallMarker();
-      byId('time-display').textContent = `${fmt(0)} / ${fmt(wave.getDuration())}`;
     });
     wave.on('timeupdate', (time) => {
-      byId('time-display').textContent = `${fmt(time)} / ${fmt(wave.getDuration())}`;
       const region = activePlaybackRegion();
       if (region && time >= region.end) {
         wave.pause();
@@ -540,7 +565,7 @@
     item.relevant_interruption = boolValue('relevant-interruption');
     item.speaker_stuck = boolValue('speaker-stuck');
     item.candidate_valid = item.relevant_interruption === true && item.speaker_stuck === true;
-    item.interruption_type = normalizeInterruptionType(byId('interruption-type').value);
+    item.interruption_type = normalizeInterruptionType(fieldValue('interruption-type'));
     item.word_phrase_fits = boolValue('word-phrase-fits');
     item.stall_time = byId('stall-time').value === '' ? null : round(Number(byId('stall-time').value));
     item.interrupting_start_time = byId('interrupting-start-time').value === '' ? null : round(Number(byId('interrupting-start-time').value));
@@ -666,12 +691,12 @@
         add(`${prefix}: answer whether the interrupted speaker is stuck before the other speaker steps in.`);
         return;
       }
+      if (task.word_phrase_fits !== true && task.word_phrase_fits !== false) {
+        add(`${prefix}: answer whether the interrupting utterance correctly fits the speaker's intention.`);
+      }
       if (task.speaker_stuck === false) {
         if (task.interruption_type) {
           add(`${prefix}: interruption type should be blank when the speaker is not stuck.`);
-        }
-        if (task.word_phrase_fits !== true && task.word_phrase_fits !== false) {
-          add(`${prefix}: answer whether the interrupting utterance correctly fits the speaker's intention.`);
         }
       }
       if (task.stall_time === null || Number.isNaN(task.stall_time)) {
@@ -699,11 +724,6 @@
       }
       if (task.speaker_stuck === true) {
         if (!task.interruption_type) add(`${prefix}: select the interruption type.`);
-        if (task.interruption_type === 'word_phrase' &&
-            task.word_phrase_fits !== true &&
-            task.word_phrase_fits !== false) {
-          add(`${prefix}: answer whether the interrupting utterance correctly fits the speaker's intention.`);
-        }
         if (task.interruption_type === 'word_phrase' && !hasNonFillerWord(task.corrected_interrupting_transcript)) {
           add(`${prefix}: word/phrase interruptions should include at least one non-filler word in the interrupting transcript.`);
         }
@@ -787,12 +807,6 @@
     persistCurrentTask();
     syncOutput();
   });
-  byId('play').addEventListener('click', () => {
-    state.playbackMode = 'full';
-    if (state.wave) state.wave.playPause();
-  });
-  byId('play-interrupted').addEventListener('click', () => playRegion('interrupted'));
-  byId('play-interrupting').addEventListener('click', () => playRegion('interrupting'));
   byId('reload-audio').addEventListener('click', reloadCurrentAudio);
   byId('zoom').addEventListener('input', (event) => {
     if (state.wave) state.wave.zoom(Number(event.target.value));

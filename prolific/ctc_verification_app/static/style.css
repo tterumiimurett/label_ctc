@@ -109,6 +109,10 @@ label {
   font-weight: 700;
 }
 
+.question-label {
+  font-weight: 700;
+}
+
 .checkbox-field {
   align-items: center;
   display: flex;
@@ -117,6 +121,15 @@ label {
 
 .checkbox-field input {
   flex: 0 0 auto;
+}
+
+.numbered-checkbox {
+  align-items: flex-start;
+  line-height: 1.35;
+}
+
+.numbered-checkbox input {
+  margin-top: 2px;
 }
 
 .start-check-row {
@@ -130,6 +143,40 @@ label {
   font-size: 13px;
   font-weight: 600;
   line-height: 1.25;
+}
+
+.radio-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.radio-group label {
+  align-items: center;
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  cursor: pointer;
+  display: inline-flex;
+  font-weight: 600;
+  gap: 6px;
+  padding: 7px 10px;
+}
+
+.radio-group input {
+  margin: 0;
+}
+
+.radio-group label:has(input:checked) {
+  background: #eff6ff;
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.radio-group label:has(input:disabled) {
+  cursor: default;
+  opacity: .5;
 }
 
 input[type="number"],
@@ -217,12 +264,6 @@ fieldset {
   display: block;
   margin-bottom: 8px;
   width: 100%;
-}
-
-#time-display {
-  font-size: 16px;
-  font-variant-numeric: tabular-nums;
-  min-width: 130px;
 }
 
 #waveform {

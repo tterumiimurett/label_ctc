@@ -116,18 +116,14 @@
       <section class="card">
         <h2>Stereo playback</h2>
         <div class="controls">
-          <button id="play" type="button">Play / Pause</button>
-          <button id="play-interrupted" type="button">Play interrupted utterance</button>
-          <button id="play-interrupting" type="button">Play interrupting utterance</button>
           <button id="reload-audio" type="button">Reload audio (keeps labels)</button>
-          <span id="time-display">0.00s / 0.00s</span>
           <label>Zoom
             <input id="zoom" type="range" min="10" max="220" value="50">
           </label>
+          <span id="wave-status" class="muted">Waveform status: waiting.</span>
         </div>
         <audio id="audio" controls preload="metadata" crossorigin="anonymous"></audio>
         <div id="audio-url" class="muted"></div>
-        <div id="wave-status" class="muted">Waveform status: waiting.</div>
         <div class="channel-key">
           <span class="main-speaker"><i class="legend-box main-box"></i>Interrupted utterance</span>
           <span class="interrupter"><i class="legend-box interrupter-box"></i>Interrupting utterance</span>
@@ -151,42 +147,43 @@
       <section class="card">
         <h2>Interruption type annotation</h2>
         <fieldset class="field-grid">
-          <label class="wide-field">1. Does the second speaker's utterance complete the first speaker's unfinished sentence? <span class="required-star">*</span>
-            <select id="relevant-interruption">
-              <option value="">Select...</option>
-              <option value="yes">Yes</option>
-              <option value="no">No</option>
-            </select>
+          <div class="wide-field">
+            <div class="question-label">1. Does the second speaker's utterance complete the first speaker's unfinished sentence? <span class="required-star">*</span></div>
+            <div class="radio-group" id="relevant-interruption">
+              <label><input type="radio" name="relevant-interruption" value="yes"> Yes</label>
+              <label><input type="radio" name="relevant-interruption" value="no"> No</label>
+            </div>
             <span class="muted">Choose Yes only if the two utterances fit together into one complete, meaningful sentence or thought.</span>
-          </label>
-          <label class="wide-field">2. Is the interrupted speaker stuck before the other speaker steps in? <span class="required-star">*</span>
-            <select id="speaker-stuck">
-              <option value="">Select...</option>
-              <option value="yes">Yes</option>
-              <option value="no">No</option>
-            </select>
-          </label>
-          <label class="wide-field">3. Interruption type <span class="required-star">*</span>
-            <select id="interruption-type">
-              <option value="">Select...</option>
-              <option value="word_phrase">Word/phrase</option>
-              <option value="guiding_question">Guiding question</option>
-              <option value="other">Other</option>
-            </select>
-          </label>
-          <label class="wide-field">4. Does the interrupting utterance correctly fit the speaker's intention? <span class="required-star">*</span>
-            <select id="word-phrase-fits">
-              <option value="">Select...</option>
-              <option value="yes">Yes</option>
-              <option value="no">No</option>
-            </select>
-          </label>
+          </div>
+          <div class="wide-field">
+            <div class="question-label">2. Is the interrupted speaker stuck before the other speaker steps in? <span class="required-star">*</span></div>
+            <div class="radio-group" id="speaker-stuck">
+              <label><input type="radio" name="speaker-stuck" value="yes"> Yes</label>
+              <label><input type="radio" name="speaker-stuck" value="no"> No</label>
+            </div>
+          </div>
+          <div class="wide-field">
+            <div class="question-label">3. Interruption type <span class="required-star">*</span></div>
+            <div class="radio-group" id="interruption-type">
+              <label><input type="radio" name="interruption-type" value="word_phrase"> Word/phrase</label>
+              <label><input type="radio" name="interruption-type" value="guiding_question"> Guiding question</label>
+              <label><input type="radio" name="interruption-type" value="other"> Other</label>
+            </div>
+          </div>
+          <div class="wide-field">
+            <div class="question-label">4. Does the interrupting utterance correctly fit the speaker's intention? <span class="required-star">*</span></div>
+            <div class="radio-group" id="word-phrase-fits">
+              <label><input type="radio" name="word-phrase-fits" value="yes"> Yes</label>
+              <label><input type="radio" name="word-phrase-fits" value="no"> No</label>
+            </div>
+          </div>
           <label class="wide-field">5. End of last word before interruption (s) <span class="required-star">*</span> <span class="muted">drag the <strong class="red-cue">bold red line</strong></span>
             <input id="stall-time" type="number" min="0" step="0.01">
           </label>
-          <label class="checkbox-field wide-field">
+          <label class="checkbox-field numbered-checkbox wide-field">
+            <span>6.</span>
             <input id="transcript-checked" type="checkbox">
-            <span>6. I have checked the transcript and removed words after interruption. <span class="required-star">*</span></span>
+            <span>I have checked the interrupted utterance transcript in the left textbox below the audio waveform and removed words after interruption. <span class="required-star">*</span></span>
           </label>
           <div class="start-check-field wide-field">
             <label for="interrupting-start-time">7. Start of interrupting utterance (s) <span class="muted">drag the <strong class="orange-cue">orange line</strong> if needed</span></label>
@@ -198,13 +195,13 @@
               </label>
             </div>
           </div>
-          <label class="wide-field">8. Interrupter becomes main speaker? <span class="required-star">*</span>
-            <select id="speaker-shift">
-              <option value="">Select...</option>
-              <option value="yes">Yes</option>
-              <option value="no">No</option>
-            </select>
-          </label>
+          <div class="wide-field">
+            <div class="question-label">8. Interrupter becomes main speaker? <span class="required-star">*</span></div>
+            <div class="radio-group" id="speaker-shift">
+              <label><input type="radio" name="speaker-shift" value="yes"> Yes</label>
+              <label><input type="radio" name="speaker-shift" value="no"> No</label>
+            </div>
+          </div>
           <label class="wide-field">Optional note
             <textarea id="note" rows="2"></textarea>
           </label>
