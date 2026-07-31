@@ -649,47 +649,12 @@
         return;
       }
       if (task.relevant_interruption === false) return;
-      if (typeof task.interrupting_start_time !== 'number' || Number.isNaN(task.interrupting_start_time)) {
-        add(`${prefix}: mark the start timestamp of the interrupting utterance.`);
-      } else if (task.duration !== null &&
-          (task.interrupting_start_time < 0 || task.interrupting_start_time > task.duration)) {
-        add(`${prefix}: start timestamp of the interrupting utterance must be inside the audio clip.`);
-      } else {
-        const interrupting = task.regions && task.regions.interrupting;
-        const interrupted = task.regions && task.regions.interrupted;
-        const interruptedStart = interrupted && Number(interrupted.start);
-        const interruptingEnd = interrupting && Number(interrupting.end);
-        if (Number.isFinite(interruptedStart) && task.interrupting_start_time < interruptedStart) {
-          add(`${prefix}: start timestamp of the interrupting utterance must not be before the interrupted utterance starts.`);
-        }
-        if (Number.isFinite(interruptingEnd) && task.interrupting_start_time >= interruptingEnd) {
-          add(`${prefix}: start timestamp of the interrupting utterance must be before the end of that utterance.`);
-        }
-      }
-      if (task.interrupting_start_checked !== true) {
-        add(`${prefix}: confirm that you checked the start of the interrupting utterance.`);
-      }
-      if (task.transcript_checked !== true) {
-        add(`${prefix}: confirm that you checked the transcript and removed words after interruption.`);
-      }
-      if (!task.corrected_interrupted_transcript) {
-        add(`${prefix}: enter the interrupted utterance transcript and remove words after the interruption.`);
-      }
-      if (!task.corrected_interrupting_transcript) {
-        add(`${prefix}: enter the interrupting utterance transcript.`);
-      }
-      const interruptedRegion = task.regions && task.regions.interrupted;
-      if (interruptedRegion &&
-          Number.isFinite(Number(interruptedRegion.end)) &&
-          Number.isFinite(Number(task.interrupting_start_time)) &&
-          Number(interruptedRegion.end) > Number(task.interrupting_start_time) &&
-          normalizeTranscript(task.corrected_interrupted_transcript) &&
-          normalizeTranscript(task.corrected_interrupted_transcript) === normalizeTranscript(interruptedRegion.transcript)) {
-        add(`${prefix}: interrupted transcript appears unchanged; remove words after the interruption.`);
-      }
       if (task.speaker_stuck !== true && task.speaker_stuck !== false) {
         add(`${prefix}: answer whether the interrupted speaker is stuck before the other speaker steps in.`);
         return;
+      }
+      if (task.speaker_stuck === true && !task.interruption_type) {
+        add(`${prefix}: select the interruption type.`);
       }
       if (task.word_phrase_fits !== true && task.word_phrase_fits !== false) {
         add(`${prefix}: answer whether the interrupting utterance correctly fits the speaker's intention.`);
@@ -698,6 +663,11 @@
         if (task.interruption_type) {
           add(`${prefix}: interruption type should be blank when the speaker is not stuck.`);
         }
+      }
+      if (task.speaker_stuck === true &&
+          task.interruption_type === 'word_phrase' &&
+          !hasNonFillerWord(task.corrected_interrupting_transcript)) {
+        add(`${prefix}: word/phrase interruptions should include at least one non-filler word in the interrupting transcript.`);
       }
       if (task.stall_time === null || Number.isNaN(task.stall_time)) {
         add(`${prefix}: mark the end timestamp of the last word before the interruption.`);
@@ -718,15 +688,47 @@
           add(`${prefix}: end timestamp of the last word before the interruption must be before the interrupting utterance starts.`);
         }
       }
+      if (task.transcript_checked !== true) {
+        add(`${prefix}: confirm that you checked the transcript and removed words after interruption.`);
+      }
+      if (!task.corrected_interrupted_transcript) {
+        add(`${prefix}: enter the interrupted utterance transcript and remove words after the interruption.`);
+      }
+      if (!task.corrected_interrupting_transcript) {
+        add(`${prefix}: enter the interrupting utterance transcript.`);
+      }
+      const interruptedRegion = task.regions && task.regions.interrupted;
+      if (interruptedRegion &&
+          Number.isFinite(Number(interruptedRegion.end)) &&
+          Number.isFinite(Number(task.interrupting_start_time)) &&
+          Number(interruptedRegion.end) > Number(task.interrupting_start_time) &&
+          normalizeTranscript(task.corrected_interrupted_transcript) &&
+          normalizeTranscript(task.corrected_interrupted_transcript) === normalizeTranscript(interruptedRegion.transcript)) {
+        add(`${prefix}: interrupted transcript appears unchanged; remove words after the interruption.`);
+      }
+      if (typeof task.interrupting_start_time !== 'number' || Number.isNaN(task.interrupting_start_time)) {
+        add(`${prefix}: mark the start timestamp of the interrupting utterance.`);
+      } else if (task.duration !== null &&
+          (task.interrupting_start_time < 0 || task.interrupting_start_time > task.duration)) {
+        add(`${prefix}: start timestamp of the interrupting utterance must be inside the audio clip.`);
+      } else {
+        const interrupting = task.regions && task.regions.interrupting;
+        const interrupted = task.regions && task.regions.interrupted;
+        const interruptedStart = interrupted && Number(interrupted.start);
+        const interruptingEnd = interrupting && Number(interrupting.end);
+        if (Number.isFinite(interruptedStart) && task.interrupting_start_time < interruptedStart) {
+          add(`${prefix}: start timestamp of the interrupting utterance must not be before the interrupted utterance starts.`);
+        }
+        if (Number.isFinite(interruptingEnd) && task.interrupting_start_time >= interruptingEnd) {
+          add(`${prefix}: start timestamp of the interrupting utterance must be before the end of that utterance.`);
+        }
+      }
+      if (task.interrupting_start_checked !== true) {
+        add(`${prefix}: confirm that you checked the start of the interrupting utterance.`);
+      }
       if (task.interrupter_becomes_main_speaker !== true &&
           task.interrupter_becomes_main_speaker !== false) {
         add(`${prefix}: answer whether the interrupter becomes the main speaker.`);
-      }
-      if (task.speaker_stuck === true) {
-        if (!task.interruption_type) add(`${prefix}: select the interruption type.`);
-        if (task.interruption_type === 'word_phrase' && !hasNonFillerWord(task.corrected_interrupting_transcript)) {
-          add(`${prefix}: word/phrase interruptions should include at least one non-filler word in the interrupting transcript.`);
-        }
       }
     });
     return {errors, firstInvalidTask};
