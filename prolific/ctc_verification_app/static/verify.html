@@ -30,10 +30,6 @@
             <h2 id="task-title">Pre-labelled candidate</h2>
             <div id="task-meta" class="muted"></div>
           </div>
-          <div class="task-nav" id="task-nav">
-            <button id="prev-task" type="button">Previous</button>
-            <button id="next-task" type="button">Next</button>
-          </div>
         </div>
       </section>
 
@@ -215,7 +211,14 @@
 
       <div class="errors" id="errors"></div>
       <div class="submit-row card">
-        <button class="primary" id="submit" type="submit">Submit annotation</button>
+        <button class="primary" id="submit" type="submit">Save and submit</button>
+        <div class="bottom-nav" id="task-nav">
+          <button id="prev-task" type="button">Previous</button>
+          <button id="next-task" type="button">Next</button>
+          <label>Go to
+            <select id="task-jump"></select>
+          </label>
+        </div>
         <span id="save-status" class="muted"></span>
       </div>
 

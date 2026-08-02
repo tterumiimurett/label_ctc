@@ -208,12 +208,18 @@ fieldset {
 }
 
 .controls,
-.task-nav,
+.bottom-nav,
 .channel-key {
   align-items: center;
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
+}
+
+.bottom-nav label {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
 }
 
 .controls { margin-bottom: 10px; }

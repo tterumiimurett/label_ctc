@@ -431,6 +431,8 @@ class VerificationStore:
             errors = self._assignment_identity_errors(assignment, worker)
             if errors:
                 return {"status": "error", "errors": errors}
+            if assignment.get("submitted"):
+                return {"status": "ok", "draft": None}
             draft = read_json(self.drafts_dir / f"{safe_name(session_id)}.json", None)
             return {"status": "ok", "draft": draft}
 
@@ -445,6 +447,8 @@ class VerificationStore:
             errors = self._assignment_identity_errors(assignment, worker)
             if errors:
                 return {"status": "error", "errors": errors}
+            if assignment.get("submitted"):
+                return {"status": "error", "errors": ["Cannot save a draft after submission."]}
             expected = set(assignment.get("candidate_ids", []))
             draft_ids = {
                 item.get("task", {}).get("candidate_id")

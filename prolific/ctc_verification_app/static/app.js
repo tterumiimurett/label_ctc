@@ -194,6 +194,7 @@
     if (!restoredFromServer) restoreDraft();
     byId('loading-card').hidden = true;
     byId('verification-form').hidden = false;
+    populateTaskJump();
     renderTask(state.index);
   }
 
@@ -344,6 +345,7 @@
   function scheduleServerDraftSave(payload) {
     if (state.draftSaveTimer) window.clearTimeout(state.draftSaveTimer);
     state.draftSaveTimer = window.setTimeout(async () => {
+      state.draftSaveTimer = null;
       try {
         const response = await fetch('/api/draft', {
           method: 'POST',
@@ -357,11 +359,26 @@
     }, 800);
   }
 
+  function cancelPendingDraftSave() {
+    if (state.draftSaveTimer) window.clearTimeout(state.draftSaveTimer);
+    state.draftSaveTimer = null;
+  }
+
   function clearDraft() {
     const key = draftKey();
     if (key) window.localStorage.removeItem(key);
-    if (state.draftSaveTimer) window.clearTimeout(state.draftSaveTimer);
-    state.draftSaveTimer = null;
+    cancelPendingDraftSave();
+  }
+
+  function populateTaskJump() {
+    const select = byId('task-jump');
+    select.innerHTML = '';
+    state.tasks.forEach((task, index) => {
+      const option = document.createElement('option');
+      option.value = String(index);
+      option.textContent = `Candidate ${index + 1}`;
+      select.appendChild(option);
+    });
   }
 
   function renderTask(index) {
@@ -377,6 +394,7 @@
     byId('task-nav').hidden = state.tasks.length === 1;
     byId('prev-task').disabled = index === 0;
     byId('next-task').disabled = index === state.tasks.length - 1;
+    byId('task-jump').value = String(index);
 
     setBoolValue('relevant-interruption', item.relevant_interruption);
     setBoolValue('speaker-stuck', item.speaker_stuck);
@@ -801,10 +819,12 @@
     byId('errors').style.display = 'none';
     byId('submit').disabled = true;
     byId('save-status').textContent = 'Saving...';
+    const payload = submissionPayload();
+    cancelPendingDraftSave();
     const response = await fetch('/api/submit', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(submissionPayload()),
+      body: JSON.stringify(payload),
     });
     const result = await response.json();
     if (!response.ok || result.status !== 'ok') {
@@ -821,6 +841,9 @@
 
   byId('prev-task').addEventListener('click', () => renderTask(Math.max(0, state.index - 1)));
   byId('next-task').addEventListener('click', () => renderTask(Math.min(state.tasks.length - 1, state.index + 1)));
+  byId('task-jump').addEventListener('change', () => {
+    renderTask(Number(byId('task-jump').value) || 0);
+  });
   ['relevant-interruption', 'speaker-stuck'].forEach((id) => {
     byId(id).addEventListener('change', () => {
       syncFieldState();
