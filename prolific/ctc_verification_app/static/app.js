@@ -14,6 +14,7 @@
     playbackMode: 'full',
     startedAt: new Date().toISOString(),
     hasRenderedTask: false,
+    draftSaveTimer: null,
   };
 
   const byId = (id) => document.getElementById(id);
@@ -189,7 +190,8 @@
     state.completionUrl = assignment.completion_url;
     state.tasks = assignment.tasks;
     state.taskState = state.tasks.map(normalizeTask);
-    restoreDraft();
+    const restoredFromServer = await restoreServerDraft();
+    if (!restoredFromServer) restoreDraft();
     byId('loading-card').hidden = true;
     byId('verification-form').hidden = false;
     renderTask(state.index);
@@ -251,40 +253,78 @@
     );
   }
 
+  function draftPayload() {
+    const taskState = state.taskState.map((item) => {
+      const {task, ...draftItem} = item;
+      return {
+        ...draftItem,
+        task: {candidate_id: task.candidate_id},
+      };
+    });
+    return {
+      version: DRAFT_SCHEMA_VERSION,
+      worker: state.worker,
+      assignment: state.assignment,
+      index: state.index,
+      taskState,
+      updated_at: new Date().toISOString(),
+    };
+  }
+
+  function applyDraft(draft, sourceLabel) {
+    if (!draft || !Array.isArray(draft.taskState)) return false;
+    if (draft.version !== DRAFT_SCHEMA_VERSION) return false;
+    const currentIds = state.taskState.map((item) => item.task.candidate_id).join('|');
+    const draftIds = draft.taskState.map((item) => item.task && item.task.candidate_id).join('|');
+    if (currentIds !== draftIds) return false;
+    state.taskState = state.taskState.map((item, index) => {
+      const defaultInterruptingStart = item.interrupting_start_time;
+      const restored = {
+        ...item,
+        ...draft.taskState[index],
+        task: item.task,
+      };
+      if (restored.interrupting_start_checked !== true) {
+        restored.interrupting_start_time = defaultInterruptingStart;
+      } else if (restored.interrupting_start_time === null || restored.interrupting_start_time === undefined) {
+        restored.interrupting_start_time = defaultInterruptingStart;
+      }
+      if (restored.stall_time === null || restored.stall_time === undefined) {
+        restored.stall_time = item.stall_time;
+      }
+      return restored;
+    });
+    state.index = Math.min(Math.max(Number(draft.index) || 0, 0), state.taskState.length - 1);
+    byId('save-status').textContent = `Draft restored from ${sourceLabel}.`;
+    return true;
+  }
+
+  async function restoreServerDraft() {
+    try {
+      const query = params();
+      const response = await fetch(`/api/draft?${query.toString()}`);
+      const result = await response.json();
+      if (!response.ok || result.status !== 'ok' || !result.draft) return false;
+      return applyDraft(result.draft, 'server');
+    } catch (error) {
+      console.warn('Unable to restore server draft', error);
+      return false;
+    }
+  }
+
   function restoreDraft() {
     const key = draftKey();
-    if (!key) return;
+    if (!key) return false;
     try {
       const draft = JSON.parse(window.localStorage.getItem(key) || 'null');
-      if (!draft || !Array.isArray(draft.taskState)) return;
-      if (draft.version !== DRAFT_SCHEMA_VERSION) {
+      if (draft && draft.version !== DRAFT_SCHEMA_VERSION) {
         window.localStorage.removeItem(key);
-        return;
+        return false;
       }
-      const currentIds = state.taskState.map((item) => item.task.candidate_id).join('|');
-      const draftIds = draft.taskState.map((item) => item.task && item.task.candidate_id).join('|');
-      if (currentIds !== draftIds) return;
-      state.taskState = state.taskState.map((item, index) => {
-        const defaultInterruptingStart = item.interrupting_start_time;
-        const restored = {
-          ...item,
-          ...draft.taskState[index],
-          task: item.task,
-        };
-        if (restored.interrupting_start_checked !== true) {
-          restored.interrupting_start_time = defaultInterruptingStart;
-        } else if (restored.interrupting_start_time === null || restored.interrupting_start_time === undefined) {
-          restored.interrupting_start_time = defaultInterruptingStart;
-        }
-        if (restored.stall_time === null || restored.stall_time === undefined) {
-          restored.stall_time = item.stall_time;
-        }
-        return restored;
-      });
-      state.index = Math.min(Math.max(Number(draft.index) || 0, 0), state.taskState.length - 1);
-      byId('save-status').textContent = 'Draft restored from this browser.';
+      return applyDraft(draft, 'this browser');
     } catch (error) {
       console.warn('Unable to restore local draft', error);
+      return false;
     }
   }
 
@@ -292,28 +332,36 @@
     const key = draftKey();
     if (!key) return;
     try {
-      const taskState = state.taskState.map((item) => {
-        const {task, ...draftItem} = item;
-        return {
-          ...draftItem,
-          task: {candidate_id: task.candidate_id},
-        };
-      });
-      window.localStorage.setItem(key, JSON.stringify({
-        version: DRAFT_SCHEMA_VERSION,
-        index: state.index,
-        taskState,
-        updated_at: new Date().toISOString(),
-      }));
-      byId('save-status').textContent = 'Draft saved in this browser.';
+      const payload = draftPayload();
+      window.localStorage.setItem(key, JSON.stringify(payload));
+      scheduleServerDraftSave(payload);
+      byId('save-status').textContent = 'Draft saved.';
     } catch (error) {
       console.warn('Unable to save local draft', error);
     }
   }
 
+  function scheduleServerDraftSave(payload) {
+    if (state.draftSaveTimer) window.clearTimeout(state.draftSaveTimer);
+    state.draftSaveTimer = window.setTimeout(async () => {
+      try {
+        const response = await fetch('/api/draft', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(payload),
+        });
+        if (response.ok) byId('save-status').textContent = 'Draft saved on server.';
+      } catch (error) {
+        console.warn('Unable to save server draft', error);
+      }
+    }, 800);
+  }
+
   function clearDraft() {
     const key = draftKey();
     if (key) window.localStorage.removeItem(key);
+    if (state.draftSaveTimer) window.clearTimeout(state.draftSaveTimer);
+    state.draftSaveTimer = null;
   }
 
   function renderTask(index) {

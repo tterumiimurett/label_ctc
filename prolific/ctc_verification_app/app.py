@@ -320,6 +320,7 @@ class VerificationStore:
         self.data_dir = data_dir
         self.assignments_path = data_dir / "assignments.json"
         self.submissions_dir = data_dir / "submissions"
+        self.drafts_dir = data_dir / "drafts"
         self.bundle_size = bundle_size
         self.redundancy = redundancy
         self.completion_url = completion_url
@@ -422,6 +423,56 @@ class VerificationStore:
             "tasks": assigned_tasks,
         }
 
+    def load_draft(self, worker: dict[str, str]) -> dict:
+        session_id = worker["session_id"]
+        with TASK_LOCK:
+            assignments = read_json(self.assignments_path, {})
+            assignment = assignments.get(session_id)
+            errors = self._assignment_identity_errors(assignment, worker)
+            if errors:
+                return {"status": "error", "errors": errors}
+            draft = read_json(self.drafts_dir / f"{safe_name(session_id)}.json", None)
+            return {"status": "ok", "draft": draft}
+
+    def save_draft(self, payload: dict) -> dict:
+        worker = payload.get("worker") if isinstance(payload, dict) else None
+        session_id = worker.get("session_id") if isinstance(worker, dict) else ""
+        if not session_id:
+            return {"status": "error", "errors": ["Draft is missing worker.session_id."]}
+        with TASK_LOCK:
+            assignments = read_json(self.assignments_path, {})
+            assignment = assignments.get(session_id)
+            errors = self._assignment_identity_errors(assignment, worker)
+            if errors:
+                return {"status": "error", "errors": errors}
+            expected = set(assignment.get("candidate_ids", []))
+            draft_ids = {
+                item.get("task", {}).get("candidate_id")
+                for item in payload.get("taskState", [])
+                if isinstance(item, dict)
+            }
+            if expected != draft_ids:
+                return {
+                    "status": "error",
+                    "errors": ["Draft candidate_ids do not match assigned candidate_ids."],
+                }
+            payload["server_metadata"] = {
+                "saved_at": utc_now(),
+                "assignment": assignment,
+            }
+            atomic_write_json(self.drafts_dir / f"{safe_name(session_id)}.json", payload)
+        return {"status": "ok"}
+
+    def _assignment_identity_errors(self, assignment: dict | None, worker: dict) -> list[str]:
+        if not assignment:
+            return ["No assignment exists for this SESSION_ID."]
+        if any(
+            assignment.get(key) != worker.get(key)
+            for key in ("prolific_pid", "study_id", "session_id")
+        ):
+            return ["Worker identity does not match this assignment."]
+        return []
+
     def submit(self, payload: dict) -> dict:
         worker = payload.get("worker") if isinstance(payload, dict) else None
         session_id = worker.get("session_id") if isinstance(worker, dict) else ""
@@ -461,6 +512,9 @@ class VerificationStore:
                 "assignment": assignment,
             }
             atomic_write_json(self.submissions_dir / f"{safe_name(session_id)}.json", payload)
+            draft_path = self.drafts_dir / f"{safe_name(session_id)}.json"
+            if draft_path.exists():
+                draft_path.unlink()
             assignment["submitted"] = True
             assignment["submitted_at"] = payload["server_metadata"]["received_at"]
             assignments[session_id] = assignment
@@ -571,24 +625,21 @@ def validate_submission(payload: dict) -> list[str]:
             errors.append(f"{prefix}: select a valid interruption type.")
         if relevant_interruption is True and speaker_stuck is False and interruption_type not in ("", None, "not_applicable"):
             errors.append(f"{prefix}: interruption type should be blank when the speaker is not stuck.")
-        if relevant_interruption is True and speaker_stuck is False and not isinstance(task.get("word_phrase_fits"), bool):
+        if relevant_interruption is True and not isinstance(task.get("word_phrase_fits"), bool):
             errors.append(
                 f"{prefix}: answer whether the interrupting utterance correctly fits the speaker's intention."
+            )
+        if task.get("transcript_checked") is not True:
+            errors.append(
+                f"{prefix}: confirm that you checked the transcript and removed words after interruption."
             )
         if not isinstance(task.get("interrupter_becomes_main_speaker"), bool):
             errors.append(f"{prefix}: answer whether the interrupter becomes the main speaker.")
         if candidate_valid and speaker_stuck is True and interruption_type in word_phrase_types:
-            if not isinstance(task.get("word_phrase_fits"), bool):
-                errors.append(
-                    f"{prefix}: answer whether the interrupting utterance correctly fits the speaker's intention."
-                )
             if not has_non_filler_word(task.get("corrected_interrupting_transcript")):
                 errors.append(
                     f"{prefix}: word/phrase interruptions should include at least one non-filler word in the interrupting transcript."
                 )
-        if candidate_valid and speaker_stuck is True and interruption_type in {"guiding_question", "other"}:
-            if task.get("word_phrase_fits") not in ("", None, "not_applicable"):
-                errors.append(f"{prefix}: word/phrase correctness should be blank unless the type is word/phrase.")
         stall_time = task.get("stall_time")
         if relevant_interruption is True:
             if not isinstance(stall_time, (int, float)):
@@ -637,6 +688,15 @@ def make_handler(store: VerificationStore, static_dir: Path):
                     self.send_json({"status": "error", "errors": errors}, HTTPStatus.BAD_REQUEST)
                     return
                 self.send_json(store.assign(worker))
+            elif parsed.path == "/api/draft":
+                params = parse_qs(parsed.query)
+                worker, errors = validate_worker(params)
+                if errors:
+                    self.send_json({"status": "error", "errors": errors}, HTTPStatus.BAD_REQUEST)
+                    return
+                response = store.load_draft(worker)
+                status = HTTPStatus.OK if response["status"] == "ok" else HTTPStatus.BAD_REQUEST
+                self.send_json(response, status)
             elif parsed.path.startswith("/static/"):
                 self.send_static(static_dir / parsed.path.removeprefix("/static/"))
             else:
@@ -644,7 +704,7 @@ def make_handler(store: VerificationStore, static_dir: Path):
 
         def do_POST(self) -> None:
             parsed = urlparse(self.path)
-            if parsed.path != "/api/submit":
+            if parsed.path not in ("/api/submit", "/api/draft"):
                 self.send_error(HTTPStatus.NOT_FOUND)
                 return
             try:
@@ -656,7 +716,7 @@ def make_handler(store: VerificationStore, static_dir: Path):
                     HTTPStatus.BAD_REQUEST,
                 )
                 return
-            response = store.submit(payload)
+            response = store.submit(payload) if parsed.path == "/api/submit" else store.save_draft(payload)
             status = HTTPStatus.OK if response["status"] == "ok" else HTTPStatus.BAD_REQUEST
             self.send_json(response, status)
 

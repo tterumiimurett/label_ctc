@@ -56,6 +56,14 @@ h3 { font-size: 13px; margin: 0 0 5px; }
   color: #dc2626;
 }
 
+.quality-reminder {
+  background: #f0fdfa;
+  border: 1px solid #99f6e4;
+  border-radius: 6px;
+  color: #134e4a;
+  padding: 9px 10px;
+}
+
 .progress {
   color: var(--muted);
   font-variant-numeric: tabular-nums;
