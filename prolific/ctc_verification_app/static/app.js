@@ -78,6 +78,30 @@
     setFieldValue(id, value === true ? 'yes' : value === false ? 'no' : '');
   }
 
+  function intentionFitValue() {
+    const value = fieldValue('word-phrase-fits');
+    if (value === 'yes') return true;
+    if (value === 'no') return false;
+    if (value === 'unsure') return 'unsure';
+    return null;
+  }
+
+  function setIntentionFitValue(value) {
+    if (value === true) {
+      setFieldValue('word-phrase-fits', 'yes');
+    } else if (value === false) {
+      setFieldValue('word-phrase-fits', 'no');
+    } else if (value === 'unsure') {
+      setFieldValue('word-phrase-fits', 'unsure');
+    } else {
+      setFieldValue('word-phrase-fits', '');
+    }
+  }
+
+  function hasIntentionFitAnswer(value) {
+    return value === true || value === false || value === 'unsure';
+  }
+
   function draftKey() {
     if (!state.worker || !state.assignment) return '';
     return [
@@ -399,7 +423,7 @@
     setBoolValue('relevant-interruption', item.relevant_interruption);
     setBoolValue('speaker-stuck', item.speaker_stuck);
     setFieldValue('interruption-type', normalizeInterruptionType(item.interruption_type));
-    setBoolValue('word-phrase-fits', item.word_phrase_fits);
+    setIntentionFitValue(item.word_phrase_fits);
     byId('stall-time').value = item.stall_time ?? '';
     byId('interrupting-start-time').value = item.interrupting_start_time ?? '';
     byId('interrupting-start-checked').checked = item.interrupting_start_checked === true;
@@ -422,7 +446,8 @@
     const nonCtc = fieldValue('relevant-interruption') === 'no';
     const stuck = fieldValue('speaker-stuck') === 'yes';
     const stuckAnswered = fieldValue('speaker-stuck') === 'yes' || fieldValue('speaker-stuck') === 'no';
-    const intentionRequired = relevant && stuckAnswered;
+    const guidingQuestion = stuck && fieldValue('interruption-type') === 'guiding_question';
+    const intentionRequired = relevant && stuckAnswered && !guidingQuestion;
     setFieldDisabled('speaker-stuck', !relevant);
     setFieldDisabled('interruption-type', !relevant || !stuck);
     setFieldDisabled('word-phrase-fits', !intentionRequired);
@@ -442,6 +467,8 @@
       setFieldValue('speaker-shift', '');
     } else if (!stuck) {
       setFieldValue('interruption-type', '');
+    } else if (guidingQuestion) {
+      setFieldValue('word-phrase-fits', '');
     } else if (!stuckAnswered) {
       setFieldValue('word-phrase-fits', '');
     }
@@ -632,7 +659,7 @@
     item.speaker_stuck = boolValue('speaker-stuck');
     item.candidate_valid = item.relevant_interruption === true && item.speaker_stuck === true;
     item.interruption_type = normalizeInterruptionType(fieldValue('interruption-type'));
-    item.word_phrase_fits = boolValue('word-phrase-fits');
+    item.word_phrase_fits = intentionFitValue();
     item.stall_time = byId('stall-time').value === '' ? null : round(Number(byId('stall-time').value));
     item.interrupting_start_time = byId('interrupting-start-time').value === '' ? null : round(Number(byId('interrupting-start-time').value));
     item.interrupting_start_checked = byId('interrupting-start-checked').checked;
@@ -650,7 +677,7 @@
       item.interrupter_becomes_main_speaker = null;
     } else if (item.speaker_stuck !== true) {
       item.interruption_type = '';
-    } else if (item.interruption_type !== 'word_phrase') {
+    } else if (item.interruption_type === 'guiding_question') {
       item.word_phrase_fits = null;
     }
     saveDraft();
@@ -722,7 +749,8 @@
       if (task.speaker_stuck === true && !task.interruption_type) {
         add(`${prefix}: select the interruption type.`);
       }
-      if (task.word_phrase_fits !== true && task.word_phrase_fits !== false) {
+      const skipIntentionFit = task.speaker_stuck === true && task.interruption_type === 'guiding_question';
+      if (!skipIntentionFit && !hasIntentionFitAnswer(task.word_phrase_fits)) {
         add(`${prefix}: answer whether the interrupting utterance correctly fits the speaker's intention.`);
       }
       if (task.speaker_stuck === false) {

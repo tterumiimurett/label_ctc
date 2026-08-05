@@ -629,7 +629,14 @@ def validate_submission(payload: dict) -> list[str]:
             errors.append(f"{prefix}: select a valid interruption type.")
         if relevant_interruption is True and speaker_stuck is False and interruption_type not in ("", None, "not_applicable"):
             errors.append(f"{prefix}: interruption type should be blank when the speaker is not stuck.")
-        if relevant_interruption is True and not isinstance(task.get("word_phrase_fits"), bool):
+        skip_intention_fit = speaker_stuck is True and interruption_type == "guiding_question"
+        word_phrase_fits = task.get("word_phrase_fits")
+        if (
+            relevant_interruption is True
+            and not skip_intention_fit
+            and not isinstance(word_phrase_fits, bool)
+            and word_phrase_fits != "unsure"
+        ):
             errors.append(
                 f"{prefix}: answer whether the interrupting utterance correctly fits the speaker's intention."
             )
