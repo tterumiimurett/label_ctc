@@ -225,8 +225,13 @@
     });
   }
 
-  function scheduleWaveLabelRender() {
-    window.requestAnimationFrame(renderWaveLabels);
+  function scheduleWaveLabelRender(retries = 6) {
+    window.requestAnimationFrame(() => {
+      renderWaveLabels();
+      if (retries > 0) {
+        window.setTimeout(() => scheduleWaveLabelRender(retries - 1), 40);
+      }
+    });
   }
 
   async function init() {

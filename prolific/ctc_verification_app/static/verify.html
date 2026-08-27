@@ -60,7 +60,7 @@
             Choose Yes if the first speaker's incomplete phrase and the second speaker's response fit together
             into one complete, meaningful sentence or thought. Choose No for normal turn-taking, short expected replies,
             backchannels like "yeah" or "uh-huh", unrelated comments, or interruptions that do not complete the first speaker's sentence.
-            If you choose No, you do not need to answer the remaining questions for this item.
+            If you choose No, you do not need to correct timestamps or transcripts for this item.
           </li>
           <li>
             Decide whether the interrupted speaker is stuck before the other speaker steps in. Common signs include:
@@ -74,20 +74,28 @@
             </ul>
           </li>
           <li>
-            If the speaker is stuck, choose the interruption type. We are mainly interested in
-            word/phrase completions and guiding questions; see the examples below.
+            If this is a relevant interruption, choose the interruption type. We are mainly interested in
+            word/phrase completions and guiding questions; choose Other only when the interruption is relevant but does not fit either type.
           </li>
-          <li>Answer whether the interrupting utterance correctly fits the speaker's intention. You can skip this for guiding questions.</li>
+          <li>
+            Answer whether the interrupting utterance correctly fits the speaker's intention.
+            You can skip this for guiding questions.
+          </li>
           <li>
             Drag the <strong class="red-cue">bold red line</strong> on the audio waveform to the end timestamp of the last word before the other speaker steps in.
             If the speaker is stuck, mark the last word after the stuck portion and before the interruption.
             If the speaker is not stuck, mark the last complete word before the interruption.
+            The blue highlighted range is only an auto-generated reference, so the correct red-line position may be outside it.
           </li>
           <li>
-            Check the interrupted and interrupting transcripts. For the interrupted transcript, remove words after the interruption, then tick the transcript checkbox.
+            Check the interrupted utterance transcript in the left textbox below the audio waveform.
+            Remove words after the interruption and correct the text if needed, especially if you moved the red line outside the blue range.
+            Then tick the transcript checkbox.
           </li>
           <li>
-            Drag the <strong class="orange-cue">orange line</strong> to the true start of the interrupting utterance if the pre-labelled start is wrong, then confirm that you checked it.
+            Drag the <strong class="orange-cue">orange line</strong> to the true start of the interrupting utterance if the pre-labelled start is wrong.
+            The orange highlighted range is only an auto-generated reference, so the correct orange-line position may be outside it.
+            Update the interrupting transcript if needed, then confirm that you checked the start.
           </li>
           <li>Answer whether the interrupter becomes the main speaker after the interruption.</li>
         </ol>
@@ -141,8 +149,8 @@
           </label>
         </div>
         <p class="muted">Focus only on the highlighted interrupted and interrupting utterances. The highlighted ranges are auto-generated references and may be inaccurate; do not mark other possible interruptions elsewhere in the clip.</p>
-        <p class="muted">Please drag the <strong class="orange-cue">orange line</strong> to the true start of the interrupting utterance if the pre-labelled start is wrong. If you move it outside the orange range, update the interrupting transcript.</p>
-        <p class="muted">Please drag the <strong class="red-cue">bold red line</strong> to the end of the last word before the other speaker steps in. If you move it outside the blue range or after the orange line, carefully check the timestamp and update the interrupted transcript.</p>
+        <p class="muted">Drag the <strong class="red-cue">bold red line</strong> to the end of the last word before the other speaker steps in. It may fall outside the blue range; if so, carefully check the timestamp and update the interrupted transcript.</p>
+        <p class="muted">Drag the <strong class="orange-cue">orange line</strong> to the true start of the interrupting utterance if needed. It may fall outside the orange range; if so, check the timestamp and update the interrupting transcript.</p>
       </section>
 
       <section class="card">
@@ -230,6 +238,6 @@
       </details>
     </form>
   </main>
-  <script src="/static/app.js?v=20260827-wave-label-overlays"></script>
+  <script src="/static/app.js?v=20260827-wave-label-initial-render"></script>
 </body>
 </html>
