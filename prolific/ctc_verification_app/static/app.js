@@ -14,6 +14,8 @@
     playbackMode: 'full',
     startedAt: new Date().toISOString(),
     hasRenderedTask: false,
+    draftReady: false,
+    serverDraftBlocked: false,
     draftSaveTimer: null,
   };
 
@@ -215,7 +217,8 @@
     state.tasks = assignment.tasks;
     state.taskState = state.tasks.map(normalizeTask);
     const restoredFromServer = await restoreServerDraft();
-    if (!restoredFromServer) restoreDraft();
+    if (!restoredFromServer && !state.serverDraftBlocked) restoreDraft();
+    state.draftReady = true;
     byId('loading-card').hidden = true;
     byId('verification-form').hidden = false;
     populateTaskJump();
@@ -296,12 +299,32 @@
     };
   }
 
-  function applyDraft(draft, sourceLabel) {
-    if (!draft || !Array.isArray(draft.taskState)) return false;
-    if (draft.version !== DRAFT_SCHEMA_VERSION) return false;
+  function workerQueryString() {
+    const query = new URLSearchParams();
+    query.set('PROLIFIC_PID', state.worker.prolific_pid);
+    query.set('STUDY_ID', state.worker.study_id);
+    query.set('SESSION_ID', state.worker.session_id);
+    return query.toString();
+  }
+
+  function draftMismatchReason(draft) {
+    if (!draft) return 'draft is empty';
+    if (!Array.isArray(draft.taskState)) return 'draft.taskState is missing';
+    if (draft.version !== DRAFT_SCHEMA_VERSION) {
+      return `draft version ${draft.version || 'unknown'} does not match version ${DRAFT_SCHEMA_VERSION}`;
+    }
     const currentIds = state.taskState.map((item) => item.task.candidate_id).join('|');
     const draftIds = draft.taskState.map((item) => item.task && item.task.candidate_id).join('|');
-    if (currentIds !== draftIds) return false;
+    if (currentIds !== draftIds) return 'draft candidate order does not match the current assignment';
+    return '';
+  }
+
+  function applyDraft(draft, sourceLabel) {
+    const mismatch = draftMismatchReason(draft);
+    if (mismatch) {
+      byId('save-status').textContent = `Draft from ${sourceLabel} was not restored: ${mismatch}.`;
+      return false;
+    }
     state.taskState = state.taskState.map((item, index) => {
       const defaultInterruptingStart = item.interrupting_start_time;
       const restored = {
@@ -326,11 +349,12 @@
 
   async function restoreServerDraft() {
     try {
-      const query = params();
-      const response = await fetch(`/api/draft?${query.toString()}`);
+      const response = await fetch(`/api/draft?${workerQueryString()}`);
       const result = await response.json();
       if (!response.ok || result.status !== 'ok' || !result.draft) return false;
-      return applyDraft(result.draft, 'server');
+      const restored = applyDraft(result.draft, 'server');
+      if (!restored) state.serverDraftBlocked = true;
+      return restored;
     } catch (error) {
       console.warn('Unable to restore server draft', error);
       return false;
@@ -354,6 +378,7 @@
   }
 
   function saveDraft() {
+    if (!state.draftReady || state.serverDraftBlocked) return;
     const key = draftKey();
     if (!key) return;
     try {
@@ -713,8 +738,8 @@
     };
   }
 
-  function submissionPayload() {
-    persistCurrentTask();
+  function submissionPayload({persist = true} = {}) {
+    if (persist) persistCurrentTask();
     return {
       schema_version: 'ctc-verification-v1',
       worker: state.worker,
@@ -830,7 +855,7 @@
 
   function syncOutput() {
     if (!state.assignment) return;
-    byId('json-output').textContent = JSON.stringify(submissionPayload(), null, 2);
+    byId('json-output').textContent = JSON.stringify(submissionPayload({persist: false}), null, 2);
   }
 
   async function submit(event) {
