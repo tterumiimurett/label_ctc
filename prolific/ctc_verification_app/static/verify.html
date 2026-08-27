@@ -38,6 +38,7 @@
         <p>
           Audio clips have been pre-labelled with a possible interruption where the first speaker may be stuck.
           Your task is to verify the candidate and annotate the interruption type.
+          <a href="/static/examples/video/demonstration_overall.mp4" target="_blank" rel="noopener">Watch the task walkthrough</a>.
         </p>
         <p class="quality-reminder">
           Please annotate carefully: we manually review submissions and especially appreciate high-quality work,
@@ -56,14 +57,14 @@
         </p>
         <ol>
           <li>
-            Decide whether the second speaker's utterance completes the first speaker's unfinished sentence.
-            Choose Yes if the first speaker's incomplete phrase and the second speaker's response fit together
-            into one complete, meaningful sentence or thought. Choose No for normal turn-taking, short expected replies,
-            backchannels like "yeah" or "uh-huh", unrelated comments, or interruptions that do not complete the first speaker's sentence.
-            If you choose No, you do not need to correct timestamps or transcripts for this item.
+            Decide whether the second speaker completes the first speaker's unfinished sentence.
+            Choose No for normal turn-taking, short expected replies, backchannels like "yeah" or "uh-huh",
+            unrelated comments, or interruptions that do not complete the sentence.
+            If No, you do not need to correct timestamps or transcripts.
+            <a href="/static/examples/video/backchannel_vs_turn_completion.mp4" target="_blank" rel="noopener">Demo: backchannel vs. completion</a>.
           </li>
           <li>
-            Decide whether the interrupted speaker is stuck before the other speaker steps in. Common signs include:
+            Decide whether the interrupted speaker is stuck before the other speaker steps in. Common signs:
             <ul>
               <li>A long silent pause, e.g. &gt;0.5s.</li>
               <li>Repeated fillers such as "um", "uh", "well", or "you know".</li>
@@ -74,28 +75,24 @@
             </ul>
           </li>
           <li>
-            If this is a relevant interruption, choose the interruption type. We are mainly interested in
-            word/phrase completions and guiding questions; choose Other only when the interruption is relevant but does not fit either type.
+            Choose the interruption type. We are mainly interested in word/phrase completions and guiding questions.
+            Choose Other only when the interruption is relevant but does not fit either type.
+          </li>
+          <li>Answer whether the interrupting utterance fits the speaker's intention. Skip this for guiding questions.</li>
+          <li>
+            Drag the <strong class="red-cue">bold red line</strong> to the end of the last real word before the other speaker steps in.
+            Do not count fillers such as "um", "uh", "well", or "you know" as the last word.
+            The correct point may be outside the blue range.
+            <a href="/static/examples/video/filler_words_should_not_be_considered.mp4" target="_blank" rel="noopener">Demo: fillers</a>.
+            <a href="/static/examples/video/turn_completion_after_interrupted_utt.mp4" target="_blank" rel="noopener">Demo: inaccurate range</a>.
           </li>
           <li>
-            Answer whether the interrupting utterance correctly fits the speaker's intention.
-            You can skip this for guiding questions.
+            Check the interrupted transcript in the left textbox. Remove words after the interruption and correct the text if needed.
+            Then tick the checkbox.
           </li>
           <li>
-            Drag the <strong class="red-cue">bold red line</strong> on the audio waveform to the end timestamp of the last word before the other speaker steps in.
-            If the speaker is stuck, mark the last word after the stuck portion and before the interruption.
-            If the speaker is not stuck, mark the last complete word before the interruption.
-            The blue highlighted range is only an auto-generated reference, so the correct red-line position may be outside it.
-          </li>
-          <li>
-            Check the interrupted utterance transcript in the left textbox below the audio waveform.
-            Remove words after the interruption and correct the text if needed, especially if you moved the red line outside the blue range.
-            Then tick the transcript checkbox.
-          </li>
-          <li>
-            Drag the <strong class="orange-cue">orange line</strong> to the true start of the interrupting utterance if the pre-labelled start is wrong.
-            The orange highlighted range is only an auto-generated reference, so the correct orange-line position may be outside it.
-            Update the interrupting transcript if needed, then confirm that you checked the start.
+            Drag the <strong class="orange-cue">orange line</strong> to the true start of the interrupting utterance if needed.
+            The correct point may be outside the orange range. Update the interrupting transcript if needed, then tick the checkbox.
           </li>
           <li>Answer whether the interrupter becomes the main speaker after the interruption.</li>
         </ol>
@@ -103,7 +100,7 @@
 
       <details class="card foldable examples" open>
         <summary>Examples</summary>
-        <p class="muted">Listen to these examples before beginning the annotation task.</p>
+        <p class="muted">Listen to these examples before beginning the annotation task. Extra video demonstrations are linked in the Instruction section above.</p>
         <div class="example-grid">
           <div class="example">
             <strong>Word/phrase</strong>

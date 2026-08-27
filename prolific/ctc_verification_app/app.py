@@ -621,6 +621,10 @@ def validate_submission(payload: dict) -> list[str]:
                 errors.append(
                     f"{prefix}: end timestamp of the last word before the interruption must be within the audio clip."
                 )
+            elif isinstance(interrupting_start_time, (int, float)) and stall_time >= interrupting_start_time:
+                errors.append(
+                    f"{prefix}: end timestamp of the last word must be before the start timestamp of the interrupting utterance."
+                )
     return errors
 
 

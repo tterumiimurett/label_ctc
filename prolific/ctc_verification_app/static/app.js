@@ -855,7 +855,7 @@
           warn(`${prefix}: the red line is after the auto-generated interrupted range. This is allowed if the range is wrong; please check the timestamp and update the interrupted transcript.`);
         }
         if (Number.isFinite(interruptionStart) && task.stall_time >= interruptionStart) {
-          warn(`${prefix}: the red line is at or after the orange line. Please check both timestamps and make sure the transcripts match your corrected boundaries.`);
+          add(`${prefix}: the red line must be before the orange line. The end of the last word should happen before the interrupting utterance starts.`);
         }
       }
       if (task.transcript_checked !== true) {

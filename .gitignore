@@ -15,8 +15,11 @@ wheels/
 # Runtime annotation data
 prolific/conversation_annotation_app/data/assignments.json
 prolific/conversation_annotation_app/data/submissions/*.json
+prolific/ctc_verification_app/data/assignments.json
+prolific/ctc_verification_app/data/submissions/*.json
 
 # Generated annotation artifacts
 mturk/generated_mvp/
 label_studio/results/
 prolific/plan/*.html
+prolific/ctc_verification_app/static/examples/video/*.mp4
