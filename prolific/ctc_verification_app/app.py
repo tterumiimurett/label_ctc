@@ -569,28 +569,6 @@ def validate_submission(payload: dict) -> list[str]:
             errors.append(
                 f"{prefix}: start timestamp of the interrupting utterance must be within the audio clip."
             )
-        else:
-            regions = task.get("regions") or {}
-            interrupted = regions.get("interrupted") or {}
-            interrupting = regions.get("interrupting") or {}
-            interrupted_start = interrupted.get("start")
-            interrupting_end = interrupting.get("end")
-            if (
-                isinstance(interrupting_start_time, (int, float))
-                and isinstance(interrupted_start, (int, float))
-                and interrupting_start_time < interrupted_start
-            ):
-                errors.append(
-                    f"{prefix}: start timestamp of the interrupting utterance must not be before the interrupted utterance starts."
-                )
-            if (
-                isinstance(interrupting_start_time, (int, float))
-                and isinstance(interrupting_end, (int, float))
-                and interrupting_start_time >= interrupting_end
-            ):
-                errors.append(
-                    f"{prefix}: start timestamp of the interrupting utterance must be before the end of that utterance."
-                )
         if task.get("interrupting_start_checked") is not True:
             errors.append(
                 f"{prefix}: confirm that you checked the start of the interrupting utterance."
@@ -598,22 +576,6 @@ def validate_submission(payload: dict) -> list[str]:
         if not str(task.get("corrected_interrupted_transcript") or "").strip():
             errors.append(
                 f"{prefix}: enter the interrupted utterance transcript and remove words after the interruption."
-            )
-        if not str(task.get("corrected_interrupting_transcript") or "").strip():
-            errors.append(f"{prefix}: enter the interrupting utterance transcript.")
-        regions = task.get("regions") or {}
-        interrupted = regions.get("interrupted") or {}
-        interrupted_end = interrupted.get("end")
-        if (
-            isinstance(interrupted_end, (int, float))
-            and isinstance(interrupting_start_time, (int, float))
-            and interrupted_end > interrupting_start_time
-            and normalize_transcript(task.get("corrected_interrupted_transcript"))
-            and normalize_transcript(task.get("corrected_interrupted_transcript"))
-            == normalize_transcript(interrupted.get("transcript"))
-        ):
-            errors.append(
-                f"{prefix}: interrupted transcript appears unchanged; remove words after the interruption."
             )
         speaker_stuck = task.get("speaker_stuck")
         if not isinstance(speaker_stuck, bool):
@@ -659,24 +621,6 @@ def validate_submission(payload: dict) -> list[str]:
                 errors.append(
                     f"{prefix}: end timestamp of the last word before the interruption must be within the audio clip."
                 )
-            else:
-                regions = task.get("regions") or {}
-                interrupted = (regions.get("interrupted") or {})
-                interrupted_start = interrupted.get("start")
-                interrupted_end = interrupted.get("end")
-                tolerance = 0.01
-                if isinstance(interrupted_start, (int, float)) and stall_time <= interrupted_start + tolerance:
-                    errors.append(
-                        f"{prefix}: end timestamp of the last word before the interruption must be after the start of the interrupted utterance."
-                    )
-                if isinstance(interrupted_end, (int, float)) and stall_time > interrupted_end + tolerance:
-                    errors.append(
-                        f"{prefix}: end timestamp of the last word before the interruption must be within the interrupted utterance."
-                    )
-                if isinstance(interrupting_start_time, (int, float)) and stall_time >= interrupting_start_time:
-                    errors.append(
-                        f"{prefix}: end timestamp of the last word before the interruption must be before the interrupting utterance starts."
-                    )
     return errors
 
 

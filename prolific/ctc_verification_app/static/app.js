@@ -133,8 +133,8 @@
 
   function regionColor(kind) {
     return {
-      interrupted: 'rgba(31, 119, 180, 0.28)',
-      interrupting: 'rgba(255, 127, 14, 0.28)',
+      interrupted: 'rgba(31, 119, 180, 0.16)',
+      interrupting: 'rgba(255, 127, 14, 0.16)',
       interruptingStart: 'rgba(255, 127, 14, 0.78)',
       stall: 'rgba(220, 38, 38, 0.75)',
     }[kind];
@@ -752,14 +752,18 @@
     };
   }
 
-  function validationErrors() {
+  function validationIssues() {
     const payload = submissionPayload();
     const errors = [];
+    const warnings = [];
     let firstInvalidTask = null;
     payload.tasks.forEach((task, index) => {
       const add = (message) => {
         errors.push(message);
         if (firstInvalidTask === null) firstInvalidTask = index;
+      };
+      const warn = (message) => {
+        warnings.push(message);
       };
       const prefix = `Item ${index + 1}`;
       if (task.relevant_interruption !== true && task.relevant_interruption !== false) {
@@ -798,13 +802,13 @@
         const end = interrupted && Number(interrupted.end);
         const interruptionStart = Number(task.interrupting_start_time);
         if (Number.isFinite(start) && task.stall_time <= start) {
-          add(`${prefix}: end timestamp of the last word before the interruption must be after the start of the interrupted utterance.`);
+          warn(`${prefix}: the red line is before or at the auto-generated interrupted range. Please check the timestamp and update the interrupted transcript if needed.`);
         }
         if (Number.isFinite(end) && task.stall_time > end) {
-          add(`${prefix}: end timestamp of the last word before the interruption must be within the interrupted utterance.`);
+          warn(`${prefix}: the red line is after the auto-generated interrupted range. This is allowed if the range is wrong; please check the timestamp and update the interrupted transcript.`);
         }
         if (Number.isFinite(interruptionStart) && task.stall_time >= interruptionStart) {
-          add(`${prefix}: end timestamp of the last word before the interruption must be before the interrupting utterance starts.`);
+          warn(`${prefix}: the red line is at or after the orange line. Please check both timestamps and make sure the transcripts match your corrected boundaries.`);
         }
       }
       if (task.transcript_checked !== true) {
@@ -813,9 +817,6 @@
       if (!task.corrected_interrupted_transcript) {
         add(`${prefix}: enter the interrupted utterance transcript and remove words after the interruption.`);
       }
-      if (!task.corrected_interrupting_transcript) {
-        add(`${prefix}: enter the interrupting utterance transcript.`);
-      }
       const interruptedRegion = task.regions && task.regions.interrupted;
       if (interruptedRegion &&
           Number.isFinite(Number(interruptedRegion.end)) &&
@@ -823,7 +824,11 @@
           Number(interruptedRegion.end) > Number(task.interrupting_start_time) &&
           normalizeTranscript(task.corrected_interrupted_transcript) &&
           normalizeTranscript(task.corrected_interrupted_transcript) === normalizeTranscript(interruptedRegion.transcript)) {
-        add(`${prefix}: interrupted transcript appears unchanged; remove words after the interruption.`);
+        warn(`${prefix}: interrupted transcript appears unchanged even though the auto-generated range continues after the interruption start. Please remove words after the interruption if needed.`);
+      }
+      const interruptingRegion = task.regions && task.regions.interrupting;
+      if (!task.corrected_interrupting_transcript) {
+        warn(`${prefix}: interrupting utterance transcript is blank. Please update it if the interrupting speech is audible.`);
       }
       if (typeof task.interrupting_start_time !== 'number' || Number.isNaN(task.interrupting_start_time)) {
         add(`${prefix}: mark the start timestamp of the interrupting utterance.`);
@@ -831,15 +836,18 @@
           (task.interrupting_start_time < 0 || task.interrupting_start_time > task.duration)) {
         add(`${prefix}: start timestamp of the interrupting utterance must be inside the audio clip.`);
       } else {
-        const interrupting = task.regions && task.regions.interrupting;
         const interrupted = task.regions && task.regions.interrupted;
         const interruptedStart = interrupted && Number(interrupted.start);
-        const interruptingEnd = interrupting && Number(interrupting.end);
+        const interruptingStart = interruptingRegion && Number(interruptingRegion.start);
+        const interruptingEnd = interruptingRegion && Number(interruptingRegion.end);
         if (Number.isFinite(interruptedStart) && task.interrupting_start_time < interruptedStart) {
-          add(`${prefix}: start timestamp of the interrupting utterance must not be before the interrupted utterance starts.`);
+          warn(`${prefix}: the orange line is before the auto-generated interrupted range. This is allowed if the true completion starts earlier; please check the timestamp and update the interrupting transcript.`);
+        }
+        if (Number.isFinite(interruptingStart) && task.interrupting_start_time < interruptingStart) {
+          warn(`${prefix}: the orange line is before the auto-generated interrupting range. This is allowed if the range is late; please check the timestamp and update the interrupting transcript.`);
         }
         if (Number.isFinite(interruptingEnd) && task.interrupting_start_time >= interruptingEnd) {
-          add(`${prefix}: start timestamp of the interrupting utterance must be before the end of that utterance.`);
+          warn(`${prefix}: the orange line is at or after the end of the auto-generated interrupting range. Please check the timestamp and update the interrupting transcript if needed.`);
         }
       }
       if (task.interrupting_start_checked !== true) {
@@ -850,7 +858,7 @@
         add(`${prefix}: answer whether the interrupter becomes the main speaker.`);
       }
     });
-    return {errors, firstInvalidTask};
+    return {errors, warnings, firstInvalidTask};
   }
 
   function syncOutput() {
@@ -858,9 +866,20 @@
     byId('json-output').textContent = JSON.stringify(submissionPayload({persist: false}), null, 2);
   }
 
+  function renderWarnings(warnings) {
+    if (!warnings.length) {
+      byId('warnings').style.display = 'none';
+      byId('warnings').innerHTML = '';
+      return;
+    }
+    byId('warnings').style.display = 'block';
+    byId('warnings').innerHTML = '<strong>Please double-check:</strong><br>' + warnings.map(escapeText).join('<br>');
+  }
+
   async function submit(event) {
     event.preventDefault();
-    const {errors, firstInvalidTask} = validationErrors();
+    const {errors, warnings, firstInvalidTask} = validationIssues();
+    renderWarnings(warnings);
     if (errors.length) {
       if (firstInvalidTask !== null && firstInvalidTask !== state.index) {
         renderTask(firstInvalidTask);
@@ -870,6 +889,10 @@
       return;
     }
     byId('errors').style.display = 'none';
+    byId('errors').innerHTML = '';
+    if (warnings.length && !window.confirm(`Please double-check these warning(s) before submitting:\n\n${warnings.join('\n')}\n\nSubmit anyway?`)) {
+      return;
+    }
     byId('submit').disabled = true;
     byId('save-status').textContent = 'Saving...';
     const payload = submissionPayload();

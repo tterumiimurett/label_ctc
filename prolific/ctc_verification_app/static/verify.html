@@ -126,8 +126,8 @@
         <audio id="audio" controls preload="metadata" crossorigin="anonymous"></audio>
         <div id="audio-url" class="muted"></div>
         <div class="channel-key">
-          <span class="main-speaker"><i class="legend-box main-box"></i>Interrupted utterance</span>
-          <span class="interrupter"><i class="legend-box interrupter-box"></i>Interrupting utterance</span>
+          <span class="main-speaker"><i class="legend-box main-box"></i>Auto-generated interrupted utterance range</span>
+          <span class="interrupter"><i class="legend-box interrupter-box"></i>Auto-generated interrupting utterance range</span>
           <span class="interrupter"><i class="legend-dash interrupter-dash"></i>Start of interrupting utterance</span>
           <span class="stall"><i class="legend-dash stall-dash"></i>End of last word before interruption</span>
         </div>
@@ -140,9 +140,9 @@
             <textarea id="interrupting-transcript" rows="3"></textarea>
           </label>
         </div>
-        <p class="muted">Focus only on the highlighted interrupted and interrupting utterances. Do not mark other possible interruptions elsewhere in the clip.</p>
-        <p class="muted">Please drag the <strong class="orange-cue">orange line</strong> to the true start of the interrupting utterance if the pre-labelled start is wrong.</p>
-        <p class="muted">Please drag the <strong class="red-cue">bold red line</strong> to the end of the last word before the other speaker steps in. It should be inside the interrupted utterance, not at its beginning or after the interruption starts.</p>
+        <p class="muted">Focus only on the highlighted interrupted and interrupting utterances. The highlighted ranges are auto-generated references and may be inaccurate; do not mark other possible interruptions elsewhere in the clip.</p>
+        <p class="muted">Please drag the <strong class="orange-cue">orange line</strong> to the true start of the interrupting utterance if the pre-labelled start is wrong. If you move it outside the orange range, update the interrupting transcript.</p>
+        <p class="muted">Please drag the <strong class="red-cue">bold red line</strong> to the end of the last word before the other speaker steps in. If you move it outside the blue range or after the orange line, carefully check the timestamp and update the interrupted transcript.</p>
       </section>
 
       <section class="card">
@@ -211,6 +211,7 @@
       </section>
 
       <div class="errors" id="errors"></div>
+      <div class="warnings" id="warnings"></div>
       <div class="submit-row card">
         <button class="primary" id="submit" type="submit">Save and submit</button>
         <div class="bottom-nav" id="task-nav">
