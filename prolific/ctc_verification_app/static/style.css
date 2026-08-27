@@ -284,7 +284,36 @@ fieldset {
   border: 1px solid var(--line);
   border-radius: 6px;
   min-height: 222px;
-  overflow: hidden;
+  overflow: visible;
+  position: relative;
+}
+
+.wave-region-label {
+  background: rgba(255, 255, 255, 0.92);
+  border-radius: 4px;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.18);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1;
+  max-width: none;
+  padding: 3px 6px;
+  pointer-events: none;
+  position: absolute;
+  white-space: nowrap;
+  z-index: 50;
+}
+
+.interrupted-label {
+  color: #1f77b4;
+}
+
+.interrupting-label,
+.interrupting-start-marker-label {
+  color: #c2410c;
+}
+
+.stall-label {
+  color: #dc2626;
 }
 
 .transcript-panel {

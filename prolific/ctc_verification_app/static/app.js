@@ -11,6 +11,7 @@
     wave: null,
     regions: null,
     regionById: new Map(),
+    waveLabelById: new Map(),
     playbackMode: 'full',
     startedAt: new Date().toISOString(),
     hasRenderedTask: false,
@@ -149,43 +150,83 @@
     }[kind];
   }
 
-  function regionLabelElement(text, kind) {
-    const label = document.createElement('span');
-    label.textContent = text;
-    label.className = `wave-region-label ${kind}-label`;
-    Object.assign(label.style, {
-      background: 'rgba(255, 255, 255, 0.88)',
-      borderRadius: '3px',
-      boxShadow: '0 1px 2px rgba(15, 23, 42, 0.12)',
-      fontSize: '11px',
-      fontWeight: '700',
-      left: '4px',
-      lineHeight: '1',
-      maxWidth: 'none',
-      padding: '2px 4px',
-      pointerEvents: 'none',
-      position: 'absolute',
-      top: '4px',
-      whiteSpace: 'nowrap',
-      zIndex: '10',
-    });
-    if (kind === 'interrupting-start-marker') {
-      label.style.color = '#c2410c';
-      label.style.top = '176px';
-    } else if (kind === 'stall-marker') {
-      label.style.color = '#dc2626';
-      label.style.top = '70px';
-    } else if (kind === 'interrupted') {
-      label.style.color = '#1f77b4';
-    } else if (kind === 'interrupting') {
-      label.style.color = '#c2410c';
+  function clearWaveLabels() {
+    state.waveLabelById.forEach((label) => label.remove());
+    state.waveLabelById.clear();
+  }
+
+  function waveLabel(id, text, kind) {
+    let label = state.waveLabelById.get(id);
+    if (!label) {
+      label = document.createElement('span');
+      label.className = `wave-region-label ${kind}-label`;
+      byId('waveform').appendChild(label);
+      state.waveLabelById.set(id, label);
     }
+    label.textContent = text;
     return label;
   }
 
-  function keepRegionLabelVisible(region) {
-    if (!region || !region.element) return;
-    region.element.style.overflow = 'visible';
+  function clamp(value, min, max) {
+    return Math.min(Math.max(value, min), max);
+  }
+
+  function regionLeft(region, anchor = 'start') {
+    if (!region || !region.element) return null;
+    const regionRect = region.element.getBoundingClientRect();
+    const waveRect = byId('waveform').getBoundingClientRect();
+    if (!regionRect.width && !regionRect.height) return null;
+    const base = regionRect.left - waveRect.left;
+    if (anchor === 'center') return base + regionRect.width / 2;
+    return base;
+  }
+
+  function positionWaveLabel(id, text, kind, region, options) {
+    const anchorLeft = regionLeft(region, options.anchor || 'start');
+    if (anchorLeft === null) return;
+    const label = waveLabel(id, text, kind);
+    const wave = byId('waveform');
+    const waveWidth = wave.clientWidth || 0;
+    const trackHeight = (wave.clientHeight || 222) / 2;
+    const top = options.track === 1 ?
+      trackHeight + trackHeight * options.trackRatio :
+      trackHeight * options.trackRatio;
+    const labelWidth = label.offsetWidth || 120;
+    const left = clamp(anchorLeft + options.offsetX, 6, Math.max(6, waveWidth - labelWidth - 6));
+    label.style.left = `${Math.round(left)}px`;
+    label.style.top = `${Math.round(top)}px`;
+  }
+
+  function renderWaveLabels() {
+    if (!state.wave) return;
+    positionWaveLabel('interrupted', regionLabel('interrupted'), 'interrupted', state.regionById.get('interrupted'), {
+      anchor: 'start',
+      offsetX: 12,
+      track: 0,
+      trackRatio: 0.16,
+    });
+    positionWaveLabel('stall-marker', regionLabel('stall'), 'stall', state.regionById.get('stall-marker'), {
+      anchor: 'center',
+      offsetX: 10,
+      track: 0,
+      trackRatio: 0.68,
+    });
+    positionWaveLabel('interrupting', regionLabel('interrupting'), 'interrupting', state.regionById.get('interrupting'), {
+      anchor: 'start',
+      offsetX: 12,
+      track: 1,
+      trackRatio: 0.16,
+    });
+    positionWaveLabel('interrupting-start-marker', regionLabel('interruptingStart'), 'interrupting-start-marker', state.regionById.get('interrupting-start-marker'), {
+      anchor: 'center',
+      offsetX: 10,
+      track: 1,
+      trackRatio: 0.68,
+    });
+  }
+
+  function scheduleWaveLabelRender() {
+    window.requestAnimationFrame(renderWaveLabels);
   }
 
   async function init() {
@@ -506,6 +547,7 @@
 
   function destroyWave() {
     state.regionById.clear();
+    clearWaveLabels();
     if (state.wave) state.wave.destroy();
     state.wave = null;
     state.regions = null;
@@ -542,7 +584,10 @@
       addStaticRegion('interrupting', task.regions && task.regions.interrupting, 1);
       addInterruptingStartMarker();
       addStallMarker();
+      scheduleWaveLabelRender();
     });
+    wave.on('redraw', scheduleWaveLabelRender);
+    wave.on('scroll', scheduleWaveLabelRender);
     wave.on('timeupdate', (time) => {
       const region = activePlaybackRegion();
       if (region && time >= region.end) {
@@ -564,6 +609,7 @@
       } else {
         return;
       }
+      scheduleWaveLabelRender();
       syncOutput();
     });
   }
@@ -589,11 +635,9 @@
       end,
       channelIdx,
       color: regionColor(kind),
-      content: regionLabelElement(regionLabel(kind), kind),
       drag: false,
       resize: false,
     });
-    keepRegionLabelVisible(waveRegion);
     state.regionById.set(kind, waveRegion);
   }
 
@@ -611,12 +655,10 @@
       start,
       end: Math.min(start + markerWidth, duration || start + markerWidth),
       color: regionColor('interruptingStart'),
-      content: regionLabelElement(regionLabel('interruptingStart'), 'interrupting-start-marker'),
       drag: true,
       resize: false,
       minLength: 0.03,
     });
-    keepRegionLabelVisible(marker);
     state.regionById.set('interrupting-start-marker', marker);
   }
 
@@ -630,12 +672,10 @@
       start,
       end: Math.min(start + markerWidth, duration || start + markerWidth),
       color: regionColor('stall'),
-      content: regionLabelElement(regionLabel('stall'), 'stall-marker'),
       drag: true,
       resize: false,
       minLength: 0.03,
     });
-    keepRegionLabelVisible(marker);
     state.regionById.set('stall-marker', marker);
   }
 
@@ -649,6 +689,7 @@
       start: time,
       end: Math.min(time + markerWidth, duration || time + markerWidth),
     });
+    scheduleWaveLabelRender();
   }
 
   function updateStallMarkerFromInput() {
@@ -661,6 +702,7 @@
       start: time,
       end: Math.min(time + markerWidth, duration || time + markerWidth),
     });
+    scheduleWaveLabelRender();
   }
 
   function activePlaybackRegion() {
@@ -958,7 +1000,10 @@
   });
   byId('reload-audio').addEventListener('click', reloadCurrentAudio);
   byId('zoom').addEventListener('input', (event) => {
-    if (state.wave) state.wave.zoom(Number(event.target.value));
+    if (state.wave) {
+      state.wave.zoom(Number(event.target.value));
+      scheduleWaveLabelRender();
+    }
   });
   byId('audio').addEventListener('error', () => {
     const media = byId('audio');
