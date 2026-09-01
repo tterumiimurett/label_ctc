@@ -58,8 +58,8 @@
         <ol>
           <li>
             Decide whether the second speaker completes the first speaker's unfinished sentence.
-            Choose No for normal turn-taking, short expected replies, backchannels like "yeah" or "uh-huh",
-            unrelated comments, or interruptions that do not complete the sentence.
+            Choose No for normal turn-taking, short expected replies, unrelated comments, or interruptions that do not complete the sentence.
+            If the second speaker only gives a backchannel, such as "yeah" or "uh-huh", choose No.
             If No, you do not need to correct timestamps or transcripts.
             <a href="/static/examples/video/backchannel_vs_turn_completion.mp4" target="_blank" rel="noopener">Demo: backchannel vs. completion</a>.
           </li>
@@ -81,10 +81,11 @@
           <li>Answer whether the interrupting utterance fits the speaker's intention. Skip this for guiding questions.</li>
           <li>
             Drag the <strong class="red-cue">bold red line</strong> to the end of the last real word before the other speaker steps in.
-            Do not count fillers such as "um", "uh", "well", or "you know" as the last word.
-            The correct point may be outside the blue range.
-            <a href="/static/examples/video/filler_words_should_not_be_considered.mp4" target="_blank" rel="noopener">Demo: fillers</a>.
-            <a href="/static/examples/video/turn_completion_after_interrupted_utt.mp4" target="_blank" rel="noopener">Demo: inaccurate range</a>.
+            <a href="/static/examples/video/filler_words_should_not_be_considered.mp4" target="_blank" rel="noopener">Do not count fillers</a>
+            as the last word, including hesitation sounds like "um", "uh", "hmm", "erm", "er"; planning words like "well", "so", "like", "I mean";
+            interactive fillers like "you know", "you see", "right"; thinking phrases like "let me see", "let me think", "how should I put it";
+            and uncertain phrases like "kind of", "sort of", "I guess", "maybe".
+            <a href="/static/examples/video/turn_completion_after_interrupted_utt.mp4" target="_blank" rel="noopener">The correct word end point may be after the blue range</a>.
           </li>
           <li>
             Check the interrupted transcript in the left textbox. Remove words after the interruption and correct the text if needed.
@@ -92,7 +93,8 @@
           </li>
           <li>
             Drag the <strong class="orange-cue">orange line</strong> to the true start of the interrupting utterance if needed.
-            The correct point may be outside the orange range. Update the interrupting transcript if needed, then tick the checkbox.
+            If there is a backchannel before the actual completion, do not include the backchannel in the start time.
+            The correct start may be before the orange range. Update the interrupting transcript if needed, then tick the checkbox.
           </li>
           <li>Answer whether the interrupter becomes the main speaker after the interruption.</li>
         </ol>
