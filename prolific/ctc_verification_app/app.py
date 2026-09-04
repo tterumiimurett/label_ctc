@@ -694,14 +694,50 @@ def make_handler(store: VerificationStore, static_dir: Path):
             ):
                 self.send_error(HTTPStatus.NOT_FOUND)
                 return
-            body = resolved.read_bytes()
             content_type = mimetypes.guess_type(resolved.name)[0] or "application/octet-stream"
-            self.send_response(HTTPStatus.OK)
+            file_size = resolved.stat().st_size
+            range_header = self.headers.get("Range")
+            start = 0
+            end = file_size - 1
+            status = HTTPStatus.OK
+            if range_header:
+                match = re.fullmatch(r"bytes=(\d*)-(\d*)", range_header.strip())
+                if not match:
+                    self.send_error(HTTPStatus.REQUESTED_RANGE_NOT_SATISFIABLE)
+                    return
+                start_text, end_text = match.groups()
+                if start_text:
+                    start = int(start_text)
+                    end = int(end_text) if end_text else file_size - 1
+                elif end_text:
+                    suffix_length = int(end_text)
+                    start = max(file_size - suffix_length, 0)
+                    end = file_size - 1
+                if start >= file_size or end < start:
+                    self.send_response(HTTPStatus.REQUESTED_RANGE_NOT_SATISFIABLE)
+                    self.send_header("Content-Range", f"bytes */{file_size}")
+                    self.end_headers()
+                    return
+                end = min(end, file_size - 1)
+                status = HTTPStatus.PARTIAL_CONTENT
+            content_length = end - start + 1
+            self.send_response(status)
             self.send_header("Content-Type", content_type)
-            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Accept-Ranges", "bytes")
+            self.send_header("Content-Length", str(content_length))
+            if status == HTTPStatus.PARTIAL_CONTENT:
+                self.send_header("Content-Range", f"bytes {start}-{end}/{file_size}")
             self.send_header("Cache-Control", "no-store")
             self.end_headers()
-            self.wfile.write(body)
+            with resolved.open("rb") as handle:
+                handle.seek(start)
+                remaining = content_length
+                while remaining > 0:
+                    chunk = handle.read(min(1024 * 1024, remaining))
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
+                    remaining -= len(chunk)
 
         def log_message(self, format: str, *args) -> None:
             print(f"{self.address_string()} - {format % args}", file=sys.stderr)
