@@ -5,6 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
 COMPLETION_CODE="${COMPLETION_CODE:?Set COMPLETION_CODE to the code from your Prolific study.}"
+PYTHON_BIN="${PYTHON_BIN:-python3}"
 HOST="${HOST:-127.0.0.1}"
 PORT="${PORT:-8002}"
 SOURCE_TASKS="${SOURCE_TASKS:-label_studio/data/seamless_ctc_train_upload_checkpoint.jsonl}"
@@ -31,6 +32,7 @@ if [[ "${#auto_label_files[@]}" -eq 0 ]]; then
 fi
 
 mkdir -p "$DATA_DIR" "$LOG_DIR"
+read -r -a python_cmd <<< "$PYTHON_BIN"
 
 if [[ -f "$PID_FILE" ]]; then
   existing_pid="$(<"$PID_FILE")"
@@ -40,7 +42,7 @@ if [[ -f "$PID_FILE" ]]; then
   fi
 fi
 
-nohup uv run python prolific/ctc_verification_app/app.py \
+nohup "${python_cmd[@]}" prolific/ctc_verification_app/app.py \
   --host "$HOST" \
   --port "$PORT" \
   --source-tasks "$SOURCE_TASKS" \
