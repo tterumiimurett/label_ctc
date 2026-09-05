@@ -18,7 +18,7 @@ LOG_DIR="${LOG_DIR:-logs}"
 LOG_FILE="${LOG_FILE:-$LOG_DIR/prolific_ctc_verification_first100.log}"
 PID_FILE="${PID_FILE:-$LOG_DIR/prolific_ctc_verification_first100.pid}"
 
-if [[ ! -f "$SOURCE_TASKS" ]]; then
+if [[ -n "$SOURCE_TASKS" && ! -f "$SOURCE_TASKS" ]]; then
   echo "Source task file not found: $SOURCE_TASKS" >&2
   exit 1
 fi
@@ -42,17 +42,23 @@ if [[ -f "$PID_FILE" ]]; then
   fi
 fi
 
-nohup "${python_cmd[@]}" prolific/ctc_verification_app/app.py \
+cmd=(
+  "${python_cmd[@]}" prolific/ctc_verification_app/app.py
   --host "$HOST" \
   --port "$PORT" \
-  --source-tasks "$SOURCE_TASKS" \
   --auto-labels "$AUTO_LABELS" \
   --data-dir "$DATA_DIR" \
   --bundle-size "$BUNDLE_SIZE" \
   --redundancy "$REDUNDANCY" \
   --assignment-timeout-minutes "$ASSIGNMENT_TIMEOUT_MINUTES" \
-  --completion-url "https://app.prolific.com/submissions/complete?cc=$COMPLETION_CODE" \
-  >"$LOG_FILE" 2>&1 &
+  --completion-url "https://app.prolific.com/submissions/complete?cc=$COMPLETION_CODE"
+)
+
+if [[ -n "$SOURCE_TASKS" ]]; then
+  cmd+=(--source-tasks "$SOURCE_TASKS")
+fi
+
+nohup "${cmd[@]}" >"$LOG_FILE" 2>&1 &
 
 pid="$!"
 echo "$pid" >"$PID_FILE"
