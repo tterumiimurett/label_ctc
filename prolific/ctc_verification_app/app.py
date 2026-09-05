@@ -26,10 +26,23 @@ SCHEMA_VERSION = "ctc-verification-v1"
 TASK_LOCK = threading.Lock()
 FILLER_WORDS = {"ah", "eh", "er", "hm", "hmm", "mhm", "mm", "oh", "ok", "okay", "uh", "uhh", "um", "umm", "yeah", "yep"}
 FILLER_PHRASES = {"uh huh", "uh-huh", "mhm", "mm hmm", "you know"}
+DEFAULT_ASSIGNMENT_TIMEOUT_MINUTES = 240
 
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def parse_utc_timestamp(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
 
 
 def normalize_transcript(text: str | None) -> str:
@@ -310,6 +323,7 @@ class VerificationStore:
         completion_url: str,
         include_audio_unverified: bool,
         include_non_ctc: bool = False,
+        assignment_timeout_minutes: int = DEFAULT_ASSIGNMENT_TIMEOUT_MINUTES,
     ) -> None:
         self.tasks = load_verification_tasks(
             source_task_paths,
@@ -324,6 +338,7 @@ class VerificationStore:
         self.bundle_size = bundle_size
         self.redundancy = redundancy
         self.completion_url = completion_url
+        self.assignment_timeout_minutes = assignment_timeout_minutes
 
     def assign(self, worker: dict[str, str]) -> dict:
         session_id = worker["session_id"]
@@ -356,6 +371,9 @@ class VerificationStore:
                 if assignment.get("prolific_pid") == worker["prolific_pid"]
                 for candidate_id in assignment.get("candidate_ids", [])
             }
+            existing_worker_candidates.update(
+                self._submitted_candidate_ids_for_worker(worker["prolific_pid"])
+            )
             candidates = [
                 task
                 for task in self.tasks
@@ -386,26 +404,58 @@ class VerificationStore:
             return self._assignment_response(assignment, worker)
 
     def _claim_counts(self, assignments: dict) -> dict[str, int]:
-        counts = self._submitted_counts()
+        counts = {
+            candidate_id: len(prolific_pids)
+            for candidate_id, prolific_pids in self._submitted_participants_by_candidate().items()
+        }
         for assignment in assignments.values():
-            if assignment.get("submitted"):
+            if assignment.get("submitted") or self._assignment_is_expired(assignment):
                 continue
             for candidate_id in assignment.get("candidate_ids", []):
                 counts[candidate_id] = counts.get(candidate_id, 0) + 1
         return counts
 
-    def _submitted_counts(self) -> dict[str, int]:
-        counts: dict[str, int] = {}
+    def _assignment_is_expired(self, assignment: dict) -> bool:
+        if self.assignment_timeout_minutes <= 0:
+            return False
+        assigned_at = parse_utc_timestamp(assignment.get("assigned_at"))
+        if assigned_at is None:
+            return False
+        age_seconds = (datetime.now(timezone.utc) - assigned_at).total_seconds()
+        return age_seconds > self.assignment_timeout_minutes * 60
+
+    def _submitted_participants_by_candidate(self) -> dict[str, set[str]]:
+        participants: dict[str, set[str]] = {}
         for path in self.submissions_dir.glob("*.json"):
             try:
                 payload = read_json(path, {})
             except (OSError, json.JSONDecodeError):
                 continue
+            worker = payload.get("worker") or {}
+            prolific_pid = worker.get("prolific_pid")
+            if not prolific_pid:
+                continue
             for task in payload.get("tasks", []):
                 candidate_id = task.get("candidate_id")
                 if candidate_id:
-                    counts[candidate_id] = counts.get(candidate_id, 0) + 1
-        return counts
+                    participants.setdefault(candidate_id, set()).add(prolific_pid)
+        return participants
+
+    def _submitted_candidate_ids_for_worker(self, prolific_pid: str) -> set[str]:
+        candidate_ids: set[str] = set()
+        for path in self.submissions_dir.glob("*.json"):
+            try:
+                payload = read_json(path, {})
+            except (OSError, json.JSONDecodeError):
+                continue
+            worker = payload.get("worker") or {}
+            if worker.get("prolific_pid") != prolific_pid:
+                continue
+            for task in payload.get("tasks", []):
+                candidate_id = task.get("candidate_id")
+                if candidate_id:
+                    candidate_ids.add(candidate_id)
+        return candidate_ids
 
     def _assignment_response(self, assignment: dict, worker: dict[str, str]) -> dict:
         task_by_id = {task["candidate_id"]: task for task in self.tasks}
@@ -505,12 +555,29 @@ class VerificationStore:
             if errors:
                 return {"status": "error", "errors": errors}
             expected = set(assignment.get("candidate_ids", []))
-            received = {task.get("candidate_id", "") for task in payload.get("tasks", [])}
+            received_task_ids = [task.get("candidate_id", "") for task in payload.get("tasks", [])]
+            received = set(received_task_ids)
             if expected != received:
                 return {
                     "status": "error",
                     "errors": ["Submitted candidate_ids do not match assigned candidate_ids."],
                 }
+            if len(received) != len(received_task_ids):
+                return {"status": "error", "errors": ["Submission contains duplicate candidate_ids."]}
+            submitted_participants = self._submitted_participants_by_candidate()
+            capacity_errors = []
+            for candidate_id in received:
+                previous_participants = submitted_participants.get(candidate_id, set())
+                if worker["prolific_pid"] in previous_participants:
+                    capacity_errors.append(
+                        "This participant has already submitted this candidate in another session."
+                    )
+                elif len(previous_participants) >= self.redundancy:
+                    capacity_errors.append(
+                        "This candidate already has the required number of submitted annotations."
+                    )
+            if capacity_errors:
+                return {"status": "error", "errors": sorted(set(capacity_errors))}
             payload["server_metadata"] = {
                 "received_at": utc_now(),
                 "assignment": assignment,
@@ -765,6 +832,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--port", type=int, default=8002)
     parser.add_argument("--bundle-size", type=int, default=1)
     parser.add_argument("--redundancy", type=int, default=1)
+    parser.add_argument(
+        "--assignment-timeout-minutes",
+        type=int,
+        default=DEFAULT_ASSIGNMENT_TIMEOUT_MINUTES,
+        help=(
+            "Pending assignment claim timeout. Expired unsubmitted assignments stop "
+            "counting toward redundancy; use 0 to disable."
+        ),
+    )
     parser.add_argument("--completion-url", default=DEFAULT_COMPLETION_URL)
     parser.add_argument(
         "--include-audio-unverified",
@@ -797,6 +873,7 @@ def main() -> None:
         completion_url=args.completion_url,
         include_audio_unverified=args.include_audio_unverified,
         include_non_ctc=args.include_non_ctc,
+        assignment_timeout_minutes=args.assignment_timeout_minutes,
     )
     handler = make_handler(store, Path(__file__).with_name("static"))
     server = ThreadingHTTPServer((args.host, args.port), handler)

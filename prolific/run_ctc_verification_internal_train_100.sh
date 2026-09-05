@@ -11,6 +11,7 @@ AUTO_LABELS="${AUTO_LABELS:-tables/ctc_verification_internal_train_100.jsonl}"
 DATA_DIR="${DATA_DIR:-prolific/ctc_verification_app/data_internal_train_100}"
 BUNDLE_SIZE="${BUNDLE_SIZE:-100}"
 REDUNDANCY="${REDUNDANCY:-1}"
+ASSIGNMENT_TIMEOUT_MINUTES="${ASSIGNMENT_TIMEOUT_MINUTES:-0}"
 COMPLETION_URL="${COMPLETION_URL:-http://127.0.0.1:$PORT/verify}"
 
 cmd=(
@@ -21,6 +22,7 @@ cmd=(
   --data-dir "$DATA_DIR"
   --bundle-size "$BUNDLE_SIZE"
   --redundancy "$REDUNDANCY"
+  --assignment-timeout-minutes "$ASSIGNMENT_TIMEOUT_MINUTES"
   --completion-url "$COMPLETION_URL"
 )
 
