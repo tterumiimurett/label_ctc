@@ -70,7 +70,23 @@ App 也可以使用下面这个 source-task / upload mapping 文件：
 label_studio/data/seamless_ctc_train_upload_checkpoint.jsonl
 ```
 
-对于当前 800 条正式数据，`tables/ctc_verification_train_balanced_800.jsonl` 本身已经包含 `tos_audio`，因此 app 可以直接从 auto-label 文件中读取可播放音频。正式启动脚本仍然传入 `seamless_ctc_train_upload_checkpoint.jsonl`，主要是为了兼容和未来 fallback。
+`SOURCE_TASKS` / `--source-tasks` 是历史兼容参数：旧版 candidate 文件没有稳定的公网音频 URL 时，app 会从 source-task / upload mapping 文件里补 `audio_url`。
+
+当前 train first100 / balanced 800 不需要 `SOURCE_TASKS`，因为下面两个文件本身已经包含可播放的 `tos_audio.outer_url`：
+
+```text
+tables/ctc_verification_train_balanced_first100.jsonl
+tables/ctc_verification_train_balanced_800.jsonl
+```
+
+app 的取音频逻辑是：
+
+```text
+优先使用 source_tasks 中的 audio_url
+如果没有 source_tasks，则使用 candidate 自带的 tos_audio.outer_url / audio_url
+```
+
+因此当前 launch 脚本建议保持 `SOURCE_TASKS=` 为空。只有在换回旧数据、或 candidate 文件本身没有音频 URL 时，才需要显式传入 `SOURCE_TASKS`。
 
 之前使用过的内部测试 / calibration 数据：
 
@@ -79,6 +95,20 @@ tables/ctc_verification_internal_test_2.jsonl
 tables/ctc_verification_internal_test_50.jsonl
 tables/ctc_verification_internal_train_100.jsonl
 ```
+
+当前 internal train 100 脚本使用的是：
+
+```text
+tables/ctc_verification_internal_train_100.jsonl
+```
+
+对应启动脚本：
+
+```text
+prolific/run_ctc_verification_internal_train_100.sh
+```
+
+这个脚本默认不传 `--source-tasks`，因为 `ctc_verification_internal_train_100.jsonl` 本身已经包含可播放的 `tos_audio.outer_url` / `audio_url` 信息。
 
 ## 3. 重要配置参数
 
@@ -94,6 +124,8 @@ Verification server 通过命令行参数配置：
 --host              server 绑定的 host
 --port              server 端口
 ```
+
+当前 train first100 / balanced 800 的 `--auto-labels` 文件已经带音频 URL，所以 `--source-tasks` 可以不传。`prolific/run_ctc_verification_first100_nohup.sh` 默认 `SOURCE_TASKS=`，只有手动设置了非空 `SOURCE_TASKS` 才会传给 app。
 
 推荐的正式 Prolific 配置：
 
@@ -120,6 +152,22 @@ Assignment 逻辑：
 已经分配但尚未提交的 assignment 会暂时占用名额，直到提交或手动清理 assignments.json
 ```
 
+Internal train 100 脚本的默认配置：
+
+```text
+HOST=0.0.0.0
+PORT=8002
+SOURCE_TASKS=
+AUTO_LABELS=tables/ctc_verification_internal_train_100.jsonl
+DATA_DIR=prolific/ctc_verification_app/data_internal_train_100
+BUNDLE_SIZE=100
+REDUNDANCY=1
+ASSIGNMENT_TIMEOUT_MINUTES=0
+COMPLETION_URL=http://127.0.0.1:8002/verify
+```
+
+这些默认值表示：一个本地 annotator 打开一次任务会拿到 100 条 candidate，适合内部完整 trial；`REDUNDANCY=1` 是因为三个人通常在三台电脑/三个 session 上各自跑一份，而不是让 server 在同一个 Prolific study 里自动收三份。
+
 ## 4. 在 Server 上启动任务
 
 正式/生产式启动推荐使用 nohup 脚本：
@@ -131,9 +179,29 @@ REDUNDANCY=3 \
 HOST=127.0.0.1 \
 PORT=8002 \
 AUTO_LABELS='tables/ctc_verification_train_balanced_800.jsonl' \
-SOURCE_TASKS='label_studio/data/seamless_ctc_train_upload_checkpoint.jsonl' \
+SOURCE_TASKS='' \
 DATA_DIR='prolific/ctc_verification_app/data' \
 prolific/run_ctc_verification_nohup.sh
+```
+
+Internal train 100 本地运行：
+
+```bash
+prolific/run_ctc_verification_internal_train_100.sh
+```
+
+然后打开：
+
+```text
+http://127.0.0.1:8002/verify?PROLIFIC_PID=internal_a&STUDY_ID=train100&SESSION_ID=internal_a_train100
+```
+
+三个人内部标注时，建议每个人使用不同的 `PROLIFIC_PID` 和 `SESSION_ID`，例如：
+
+```text
+internal_a / internal_a_train100
+internal_b / internal_b_train100
+internal_c / internal_c_train100
 ```
 
 脚本会写入：
@@ -252,6 +320,12 @@ Prolific places 数量应该按照“需要多少条 labels”设置，而不是
 
 ```text
 prolific/ctc_verification_app/data/
+```
+
+Internal train 100 脚本默认输出到：
+
+```text
+prolific/ctc_verification_app/data_internal_train_100/
 ```
 
 目录结构：
