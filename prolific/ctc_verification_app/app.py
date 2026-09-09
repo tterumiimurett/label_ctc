@@ -376,6 +376,7 @@ class VerificationStore:
             assignments = read_json(self.assignments_path, {})
             existing = assignments.get(session_id)
             lifecycle = read_json(self.lifecycle_path, {})
+            self._recover_timed_out_intents(lifecycle, assignments)
             if session_id in lifecycle and lifecycle[session_id].get("status") in {"RETURNED", "TIMED_OUT"}:
                 return {"status": "error", "errors": ["This returned session cannot be assigned again."]}
             if existing:
@@ -452,7 +453,8 @@ class VerificationStore:
             lifecycle = read_json(self.lifecycle_path, {}); prior = lifecycle.get(session_id)
             if prior and prior.get("status") == "RETURNED": return {"status": "already_processed", "session_id": session_id}
             if prior: return self._resume_returned(session_id, lifecycle)
-            assignments = read_json(self.assignments_path, {}); assignment = assignments.get(session_id)
+            assignments = read_json(self.assignments_path, {})
+            assignment = assignments.get(session_id)
             if assignment and any(assignment.get(k) != v for k, v in (("session_id", session_id), ("study_id", study_id), ("prolific_pid", participant_id))):
                 return {"status": "manual_review", "reason": "assignment identity mismatch"}
             result_path = self.submissions_dir / f"{safe_name(session_id)}.json"; result = read_json(result_path, None) if result_path.exists() else None
@@ -481,19 +483,20 @@ class VerificationStore:
             return {"status": "manual_review", "reason": "timeout observation lacks identity"}
         with TASK_LOCK, store_lock(self.lifecycle_lock_path):
             lifecycle = read_json(self.lifecycle_path, {})
+            assignments = read_json(self.assignments_path, {})
+            self._recover_timed_out_intents(lifecycle, assignments)
             prior = lifecycle.get(session_id)
             if prior and prior.get("status") == "TIMED_OUT":
                 return {"status": "already_processed", "session_id": session_id}
             if prior:
                 return {"status": "manual_review", "reason": "session has an incompatible lifecycle"}
-            assignments = read_json(self.assignments_path, {})
             assignment = assignments.get(session_id)
             if assignment and any(assignment.get(k) != v for k, v in (("session_id", session_id), ("study_id", study_id), ("prolific_pid", participant_id))):
                 return {"status": "manual_review", "reason": "assignment identity mismatch"}
             result_path = self.submissions_dir / f"{safe_name(session_id)}.json"
             if result_path.exists():
                 return {"status": "manual_review", "reason": "timed-out session has a final result"}
-            record = {"status": "TIMED_OUT", "stage": "claim_release", "session_id": session_id, "study_id": study_id,
+            record = {"kind": "timeout", "status": "TIMED_OUT", "stage": "claim_release", "session_id": session_id, "study_id": study_id,
                       "participant_id": participant_id, "assignment": assignment, "reason": "platform TIMED-OUT",
                       "processed_at": processed_at or utc_now(), "action": "released_claim"}
             lifecycle[session_id] = record
@@ -501,7 +504,7 @@ class VerificationStore:
             if assignment is not None:
                 current = read_json(self.assignments_path, {}).get(session_id)
                 if current != assignment:
-                    record["status"] = "PENDING"; record["stage"] = "claim_release_conflict"
+                    record["status"] = "TIMED_OUT_MANUAL"; record["stage"] = "claim_release_conflict"
                     atomic_write_json(self.lifecycle_path, lifecycle)
                     return {"status": "manual_review", "reason": "assignment changed during timeout"}
                 assignments.pop(session_id, None)
@@ -528,6 +531,36 @@ class VerificationStore:
         if current is not None: del assignments[session_id]; atomic_write_json(self.assignments_path, assignments)
         record["stage"] = "assignment_removed"; record["status"] = "RETURNED"; lifecycle[session_id] = record; atomic_write_json(self.lifecycle_path, lifecycle)
         return {"status": "processed", "session_id": session_id, "action": record["action"]}
+
+    def _recover_timed_out_intents(self, lifecycle: dict, assignments: dict) -> None:
+        """Drain timeout releases globally while holding the lifecycle lock."""
+        changed = False
+        for session_id, record in list(lifecycle.items()):
+            if record.get("kind") != "timeout" or record.get("status") != "TIMED_OUT" or record.get("stage") != "claim_release":
+                continue
+            result_path = self.submissions_dir / f"{safe_name(session_id)}.json"
+            if result_path.exists():
+                record["status"] = "TIMED_OUT_MANUAL"
+                record["stage"] = "final_result_conflict"
+                lifecycle[session_id] = record
+                changed = True
+                continue
+            expected = record.get("assignment")
+            current = assignments.get(session_id)
+            if current is not None and current != expected:
+                record["status"] = "TIMED_OUT_MANUAL"
+                record["stage"] = "claim_release_conflict"
+                lifecycle[session_id] = record
+                changed = True
+                continue
+            if current is not None:
+                assignments.pop(session_id, None)
+                atomic_write_json(self.assignments_path, assignments)
+            record["stage"] = "complete"
+            lifecycle[session_id] = record
+            changed = True
+        if changed:
+            atomic_write_json(self.lifecycle_path, lifecycle)
 
     def _recover_returned_intents(self) -> None:
         lifecycle = read_json(self.lifecycle_path, {})
@@ -610,12 +643,9 @@ class VerificationStore:
         except (OSError, ValueError, json.JSONDecodeError) as error:
             return {"status": "error", "errors": [f"Returned lifecycle recovery requires manual review: {error}"]}
         lifecycle = read_json(self.lifecycle_path, {})
+        assignments = read_json(self.assignments_path, {})
+        self._recover_timed_out_intents(lifecycle, assignments)
         record = lifecycle.get(session_id)
-        if record and record.get("status") == "TIMED_OUT" and record.get("stage") == "claim_release":
-            assignments = read_json(self.assignments_path, {})
-            if assignments.get(session_id) == record.get("assignment"):
-                assignments.pop(session_id, None); atomic_write_json(self.assignments_path, assignments)
-                record["stage"] = "complete"; lifecycle[session_id] = record; atomic_write_json(self.lifecycle_path, lifecycle)
         if record and record.get("status") not in {"RETURNED", "TIMED_OUT"}:
             return {"status": "error", "errors": ["This session has an unresolved returned lifecycle; manual review is required."]}
         if record and record.get("status") in {"RETURNED", "TIMED_OUT"}:
