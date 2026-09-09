@@ -52,3 +52,12 @@ Offline wiring prerequisites: expose `make_webhook_server` through a publicly
 reachable HTTPS reverse proxy and run `run_periodic` from an external scheduler
 process with a configured interval. No subscription, secret, deployment, or live
 API setup was performed.
+
+
+Final Spec fixes: public trigger/store entrypoints retain Python type annotations.
+Current submission details must have the exact requested ID, configured study,
+participant, and non-empty status; malformed or mismatched details remain pending,
+while a valid other-study submission is terminally ignored and deduplicated.
+Event ordering uses Prolific `X-Timestamp`; `X-Prolific-Request-Timestamp` is used
+only for HMAC verification. Periodic runs are persisted in `periodic_runs` even
+when no webhook event exists. Evidence: https://docs.prolific.com/api-reference/webhooks/handling-event-order-with-x-timestamp

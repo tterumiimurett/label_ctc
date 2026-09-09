@@ -16,7 +16,7 @@ class TriggerTest(unittest.TestCase):
     def signed(self, payload, event_id="E1", timestamp="100"):
         body = json.dumps(payload, separators=(",", ":")).encode()
         signature = base64.b64encode(hmac.new(b"secret", timestamp.encode() + body, hashlib.sha256).digest()).decode()
-        return body, {"X-Prolific-Request-Signature": signature, "X-Prolific-Request-Timestamp": timestamp, "X-Event-ID": event_id}
+        return body, {"X-Prolific-Request-Signature": signature, "X-Prolific-Request-Timestamp": timestamp, "X-Timestamp": timestamp, "X-Event-ID": event_id}
 
     def trigger(self, directory, reader):
         data = Path(directory) / "data"; data.mkdir(exist_ok=True)
@@ -24,7 +24,7 @@ class TriggerTest(unittest.TestCase):
 
     def test_restart_after_api_failure_retries_pending_event(self):
         with tempfile.TemporaryDirectory() as directory:
-            reader = Mock(); reader.get_submission.side_effect = [ConnectionError("offline"), {"id": "S1", "study_id": "STUDY"}]
+            reader = Mock(); reader.get_submission.side_effect = [ConnectionError("offline"), {"id": "S1", "study_id": "STUDY", "participant": "P1", "status": "AWAITING_REVIEW"}]
             reader.list_submissions.return_value = {"results": [], "next": None}
             body, headers = self.signed({"event_type": "submission.status.change", "resource_id": "S1", "status": "RETURNED"})
             first = self.trigger(directory, reader).handle(body, headers, "secret")
@@ -35,14 +35,14 @@ class TriggerTest(unittest.TestCase):
 
     def test_wrong_study_isolation_is_terminal_and_does_not_reconcile(self):
         with tempfile.TemporaryDirectory() as directory:
-            reader = Mock(); reader.get_submission.return_value = {"id": "S1", "study_id": "OTHER"}
+            reader = Mock(); reader.get_submission.return_value = {"id": "S1", "study_id": "OTHER", "participant": "P1", "status": "AWAITING_REVIEW"}
             body, headers = self.signed({"event_type": "submission.status.change", "resource_id": "S1"})
             result = self.trigger(directory, reader).handle(body, headers, "secret")
             self.assertEqual(result.status, "ignored_wrong_study"); reader.list_submissions.assert_not_called()
 
     def test_http_contract_verifies_headers_and_returns_ack(self):
         with tempfile.TemporaryDirectory() as directory:
-            reader = Mock(); reader.get_submission.return_value = {"id": "S1", "study_id": "STUDY"}; reader.list_submissions.return_value = {"results": [], "next": None}
+            reader = Mock(); reader.get_submission.return_value = {"id": "S1", "study_id": "STUDY", "participant": "P1", "status": "AWAITING_REVIEW"}; reader.list_submissions.return_value = {"results": [], "next": None}
             server = make_webhook_server(self.trigger(directory, reader), "secret")
             thread = threading.Thread(target=server.serve_forever); thread.start()
             try:
@@ -55,7 +55,7 @@ class TriggerTest(unittest.TestCase):
 
     def test_concurrent_duplicate_requests_reconcile_once(self):
         with tempfile.TemporaryDirectory() as directory:
-            reader = Mock(); reader.get_submission.return_value = {"id": "S1", "study_id": "STUDY"}; reader.list_submissions.return_value = {"results": [], "next": None}
+            reader = Mock(); reader.get_submission.return_value = {"id": "S1", "study_id": "STUDY", "participant": "P1", "status": "AWAITING_REVIEW"}; reader.list_submissions.return_value = {"results": [], "next": None}
             trigger = self.trigger(directory, reader); body, headers = self.signed({"event_type": "submission.status.change", "resource_id": "S1"})
             results = []; threads = [threading.Thread(target=lambda: results.append(trigger.handle(body, headers, "secret"))) for _ in range(6)]
             for thread in threads: thread.start()
@@ -64,7 +64,7 @@ class TriggerTest(unittest.TestCase):
 
     def test_out_of_order_event_is_recorded_but_not_processed(self):
         with tempfile.TemporaryDirectory() as directory:
-            reader = Mock(); reader.get_submission.return_value = {"id": "S1", "study_id": "STUDY"}; reader.list_submissions.return_value = {"results": [], "next": None}
+            reader = Mock(); reader.get_submission.return_value = {"id": "S1", "study_id": "STUDY", "participant": "P1", "status": "AWAITING_REVIEW"}; reader.list_submissions.return_value = {"results": [], "next": None}
             trigger = self.trigger(directory, reader)
             body, headers = self.signed({"event_type": "submission.status.change", "resource_id": "S1"}, "new", "200"); self.assertEqual(trigger.handle(body, headers, "secret").status, "reconciled")
             body, headers = self.signed({"event_type": "submission.status.change", "resource_id": "S1"}, "old", "100"); self.assertEqual(trigger.handle(body, headers, "secret").status, "stale")
@@ -72,7 +72,7 @@ class TriggerTest(unittest.TestCase):
 
     def test_processing_lease_recovers_crashed_worker(self):
         with tempfile.TemporaryDirectory() as directory:
-            reader = Mock(); reader.get_submission.return_value = {"id": "S1", "study_id": "STUDY"}; reader.list_submissions.return_value = {"results": [], "next": None}
+            reader = Mock(); reader.get_submission.return_value = {"id": "S1", "study_id": "STUDY", "participant": "P1", "status": "AWAITING_REVIEW"}; reader.list_submissions.return_value = {"results": [], "next": None}
             path = Path(directory) / "events.json"; store = JsonTriggerStore(path, processing_lease_seconds=0)
             body, headers = self.signed({"event_type": "submission.status.change", "resource_id": "S1"})
             self.assertEqual(store.begin("E1", 100, json.loads(body))[0], "new")
@@ -91,7 +91,7 @@ class TriggerTest(unittest.TestCase):
 
     def test_report_failure_stays_pending_and_persists_evidence(self):
         with tempfile.TemporaryDirectory() as directory:
-            reader = Mock(); reader.get_submission.return_value = {"id": "S1", "study_id": "STUDY"}
+            reader = Mock(); reader.get_submission.return_value = {"id": "S1", "study_id": "STUDY", "participant": "P1", "status": "AWAITING_REVIEW"}
             trigger = self.trigger(directory, reader); trigger._run = lambda: {"status": "platform_query_failed", "error": "synthetic outage", "writes_performed": False}
             body, headers = self.signed({"event_type": "submission.status.change", "resource_id": "S1"})
             result = trigger.handle(body, headers, "secret")
@@ -101,7 +101,7 @@ class TriggerTest(unittest.TestCase):
 
     def test_periodic_drains_pending_without_webhook_replay(self):
         with tempfile.TemporaryDirectory() as directory:
-            reader = Mock(); reader.get_submission.return_value = {"id": "S1", "study_id": "STUDY"}; reader.list_submissions.return_value = {"results": [], "next": None}
+            reader = Mock(); reader.get_submission.return_value = {"id": "S1", "study_id": "STUDY", "participant": "P1", "status": "AWAITING_REVIEW"}; reader.list_submissions.return_value = {"results": [], "next": None}
             trigger = self.trigger(directory, reader); body, headers = self.signed({"event_type": "submission.status.change", "resource_id": "S1"})
             trigger._run = lambda: {"status": "platform_query_failed", "error": "offline"}
             trigger.handle(body, headers, "secret"); trigger._run = lambda: {"status": "ok", "writes_performed": False}
@@ -110,7 +110,7 @@ class TriggerTest(unittest.TestCase):
 
     def test_lowercase_headers_and_terminal_wrong_study_deduplicate(self):
         with tempfile.TemporaryDirectory() as directory:
-            reader = Mock(); reader.get_submission.return_value = {"id": "S1", "study_id": "OTHER"}; trigger = self.trigger(directory, reader)
+            reader = Mock(); reader.get_submission.return_value = {"id": "S1", "study_id": "OTHER", "participant": "P1", "status": "AWAITING_REVIEW"}; trigger = self.trigger(directory, reader)
             body, headers = self.signed({"event_type": "submission.status.change", "resource_id": "S1"}); lower = {key.lower(): value for key, value in headers.items()}
             self.assertEqual(trigger.handle(body, lower, "secret").status, "ignored_wrong_study"); self.assertEqual(trigger.handle(body, lower, "secret").status, "ignored_wrong_study"); self.assertEqual(reader.get_submission.call_count, 1)
 
@@ -119,6 +119,29 @@ class TriggerTest(unittest.TestCase):
             store = JsonTriggerStore(Path(directory) / "events.json", processing_lease_seconds=0); payload = {"resource_id": "S1"}
             first, owner1 = store.begin("E1", 1, payload); second, owner2 = store.begin("E1", 1, payload)
             self.assertEqual((first, second), ("new", "retry")); self.assertNotEqual(owner1, owner2); self.assertFalse(store.finish("E1", owner1, "completed")); self.assertTrue(store.finish("E1", owner2, "completed"))
+
+    def test_event_timestamp_orders_delayed_delivery_not_request_timestamp(self):
+        with tempfile.TemporaryDirectory() as directory:
+            reader = Mock(); reader.get_submission.return_value = {"id": "S1", "study_id": "STUDY", "participant": "P1", "status": "AWAITING_REVIEW"}; reader.list_submissions.return_value = {"results": [], "next": None}
+            trigger = self.trigger(directory, reader)
+            body, headers = self.signed({"event_type": "submission.status.change", "resource_id": "S1"}, "new", "100")
+            headers["X-Timestamp"] = "200"; self.assertEqual(trigger.handle(body, headers, "secret").status, "reconciled")
+            body, headers = self.signed({"event_type": "submission.status.change", "resource_id": "S1"}, "old", "101")
+            headers["X-Timestamp"] = "100"; self.assertEqual(trigger.handle(body, headers, "secret").status, "stale")
+
+    def test_malformed_or_wrong_resource_detail_retries_not_terminal(self):
+        with tempfile.TemporaryDirectory() as directory:
+            reader = Mock(); reader.get_submission.side_effect = [{}, {"id": "OTHER", "study_id": "OTHER", "participant": "P1", "status": "AWAITING_REVIEW"}]
+            trigger = self.trigger(directory, reader); body, headers = self.signed({"event_type": "submission.status.change", "resource_id": "S1"})
+            self.assertEqual(trigger.handle(body, headers, "secret").status, "pending_retry")
+            body, headers = self.signed({"event_type": "submission.status.change", "resource_id": "S2"}, "E2")
+            self.assertEqual(trigger.handle(body, headers, "secret").status, "pending_retry")
+
+    def test_periodic_without_events_persists_inspectable_run(self):
+        with tempfile.TemporaryDirectory() as directory:
+            reader = Mock(); reader.list_submissions.return_value = {"results": [], "next": None}
+            result = self.trigger(directory, reader).periodic(); ledger = json.loads((Path(directory) / "events.json").read_text())
+            self.assertEqual(result["status"], "ok"); self.assertEqual(ledger["periodic_runs"][-1]["source"], "periodic")
 
 
 if __name__ == "__main__": unittest.main()
