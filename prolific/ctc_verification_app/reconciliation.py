@@ -73,6 +73,10 @@ def _record(path: Path, kind: str, *, session_hint: str | None = None, payload: 
 
 
 def _local_snapshot(data_dir: Path) -> LocalSnapshot:
+    if not data_dir.exists():
+        return LocalSnapshot([], "local data directory does not exist")
+    if not data_dir.is_dir():
+        return LocalSnapshot([], "local data path is not a directory")
     records: list[LocalRecord] = []
     roots = (("final_result", data_dir / "submissions"), ("draft", data_dir / "drafts"),
              ("archived_result", data_dir / "excluded-results"), ("archived_result", data_dir / "excluded_submissions"))
@@ -110,7 +114,9 @@ def _pages(reader: SubmissionReader, study_id: str, page_size: int = 100) -> lis
         response = reader.list_submissions(study=study_id, page=page, page_size=page_size)
         if not isinstance(response, dict) or "results" not in response or not isinstance(response["results"], list):
             raise ValueError("submission response must contain a results list")
-        result.extend(item for item in response["results"] if isinstance(item, dict))
+        if any(not isinstance(item, dict) for item in response["results"]):
+            raise ValueError("submission results contain a non-object entry")
+        result.extend(response["results"])
         next_value = response.get("next")
         if not next_value:
             return result
@@ -151,7 +157,17 @@ def reconcile_current_state(reader: SubmissionReader, data_dir: Path, study_id: 
         return {"status": "local_storage_failed", "error": snapshot.fatal_error, "counts": {}, "submissions": [], "writes_performed": False}
     try:
         summaries = _pages(reader, study_id)
-        platform = [dict(summary, **reader.get_submission(str(summary.get("id")))) for summary in summaries]
+        platform = []
+        for summary in summaries:
+            submission_id = summary.get("id")
+            if not isinstance(submission_id, str) or not submission_id:
+                raise ValueError("submission summary has no string id")
+            detail = reader.get_submission(submission_id)
+            if not isinstance(detail, dict) or not isinstance(detail.get("id"), str):
+                raise ValueError("submission detail is not an object with an id")
+            if detail["id"] != submission_id or not detail.get("study_id") or not detail.get("participant") or not detail.get("status"):
+                raise ValueError("submission detail is missing required identity or status")
+            platform.append(detail)
     except (OSError, ValueError, HTTPError, URLError, json.JSONDecodeError) as error:
         return {"status": "platform_query_failed", "error": str(error), "counts": {}, "submissions": [], "writes_performed": False}
     by_session: dict[str, list[LocalRecord]] = {}

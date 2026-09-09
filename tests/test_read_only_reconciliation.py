@@ -113,5 +113,27 @@ class ReadOnlyReconciliationTest(unittest.TestCase):
         self.assertIn("study=STUDY", calls[0][1]); self.assertIn("page=3", calls[0][1]); self.assertNotIn("cursor", calls[0][1])
         self.assertTrue(all(call[0] == "GET" and call[2] == "Token synthetic" for call in calls))
 
+    def test_missing_or_non_directory_data_root_is_storage_failure(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            platform = PagedPlatform([{"results": [], "next": None}])
+            missing = reconcile_current_state(platform, root / "missing", "STUDY")
+            self.assertEqual(missing["status"], "local_storage_failed")
+            file_path = root / "data.json"
+            file_path.write_text("{}", encoding="utf-8")
+            not_directory = reconcile_current_state(platform, file_path, "STUDY")
+            self.assertEqual(not_directory["status"], "local_storage_failed")
+
+    def test_malformed_list_entry_and_detail_are_platform_failures(self):
+        class MalformedList(PagedPlatform):
+            def list_submissions(self, **kwargs): return {"results": ["not-an-object"], "next": None}
+        class MalformedDetail(PagedPlatform):
+            def get_submission(self, submission_id): return ["not-an-object"]
+        with tempfile.TemporaryDirectory() as temporary:
+            malformed_list = reconcile_current_state(MalformedList([]), Path(temporary), "STUDY")
+            self.assertEqual(malformed_list["status"], "platform_query_failed")
+            malformed_detail = reconcile_current_state(MalformedDetail([{"results": [{"id": "S1"}], "next": None}]), Path(temporary), "STUDY")
+            self.assertEqual(malformed_detail["status"], "platform_query_failed")
+
 
 if __name__ == "__main__": unittest.main()
