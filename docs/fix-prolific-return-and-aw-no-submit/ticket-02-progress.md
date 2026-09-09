@@ -25,4 +25,15 @@
 - 报告是只读预览，不执行 Ticket 3–8 的归档、释放、联系、webhook 或定时任务。
 
 原实现提交哈希：bc0a708。
-修复提交哈希：d5730c4。
+前一轮修复提交哈希：d5730c4。
+
+
+## API contract correction
+
+- 按官方 `GET /api/v1/submissions/` 使用 `study`, `page`, `page_size`；分页只接受 `results` 和 `next` URL，并检测无 page、环路及 origin 变化。
+- 每个列表摘要通过只读 `GET /api/v1/submissions/:id/` hydrate；身份使用详情 `study_id`、`participant`，完成码使用详情 `entered_code`。
+- 未配置研究有效 completion codes 时分类为 `unavailable`，不猜测默认码。
+- 客户端支持 `PROLIFIC_API_TOKEN`，CLI token 仅为兼容显式注入；请求 URL 编码，禁止自动跨 origin 重定向携带 token。
+- 本地扫描建立一次 snapshot；递归归档，manifest 不算结果；损坏 assignments、目录遍历或 schema 故障返回全局 `local_storage_failed`。结果必须有 object worker，正式/归档结果必须有 tasks list。
+
+验证：Ticket 2 聚焦 7 passed；全量 34 passed；语法检查通过。
