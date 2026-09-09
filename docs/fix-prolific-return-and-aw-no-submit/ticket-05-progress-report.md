@@ -60,3 +60,22 @@ Final validation: `python3 -m unittest discover -s tests -v` — 49 passed.
 - Added tests for participant-scoped query shape, inbound/no-session messages, unassociated chats, old sessions, stale scopes, valid empty history, and the real adapter candidate path.
 
 Final validation after this correction: `python3 -m unittest discover -s tests -v` — 50 passed.
+
+
+## Read-only production verification follow-up
+
+- A researcher-approved, read-only verification used the configured credential and production data path without recording secrets or participant identifiers in version control. No platform messages, status changes, or production file writes were performed.
+- The live submissions response uses `_links.next.href`, and the study response contained repeated submission IDs across pages. Reconciliation now follows that documented response shape, deduplicates by submission/session ID, and fails closed unless the unique count matches `meta.count`.
+- Message history now follows every same-origin `_links.next.href` page before deciding that covered participant history is clear.
+- The historical missing-result list supplied a real completion-code transition: one currently awaiting-review submission had no matching local result and no platform return-request timestamp, but another session for the same participant had a final result. Ticket 5 correctly routed this case to durable manual review rather than producing an automatic contact candidate.
+- Other currently awaiting historical missing-result cases had platform return-request timestamps and were classified as already contacted. The verified live set therefore contained no unambiguous automatic-contact candidate; no positive production send recommendation was manufactured.
+- The durable manual queue was read successfully from a separate process with full identity, proposed message, reason, and evidence. The live participant-specific report remains outside the repository.
+- Added controlled-HTTP integration tests for real submission reconciliation pagination/deduplication and participant message pagination, including a second-page inbound message that must prevent a clear-history decision.
+- Corrected local-evidence manual reasons so the ledger records `uncertain_local_evidence` instead of the generic missing-result classification.
+
+Code-review closure:
+
+- Submission pagination requires a stable `meta.count`; missing or mismatched counts fail closed.
+- Message pages require the actual `_links` envelope. A terminal page may contain only `_links.self`, as observed in the read-only API; continuation links must preserve the exact participant/workspace/time query, message resource path, host, and HTTPS scheme.
+- Durable manual evidence retains each concrete local error string, and initial/fresh local uncertainty uses one shared decision helper.
+- Full validation after review: `python3 -m unittest discover -s tests -v` — 56 passed; syntax and diff checks passed.

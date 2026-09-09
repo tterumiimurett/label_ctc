@@ -104,8 +104,52 @@ def _local_snapshot(data_dir: Path) -> LocalSnapshot:
     return LocalSnapshot(records)
 
 
+def _next_page_href(response: dict[str, Any], resource: str) -> str | None:
+    if "next" in response:
+        value = response["next"]
+    else:
+        links = response.get("_links")
+        if links is None:
+            return None
+        if not isinstance(links, dict):
+            raise ValueError(f"{resource} _links must be an object")
+        next_link = links.get("next")
+        if next_link is None:
+            return None
+        if not isinstance(next_link, dict) or "href" not in next_link:
+            raise ValueError(f"{resource} _links.next must contain href")
+        value = next_link["href"]
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"{resource} next must be a URL")
+    return value
+
+
+def _pagination_count(response: dict[str, Any], resource: str) -> int | None:
+    meta = response.get("meta")
+    if meta is None:
+        return None
+    if not isinstance(meta, dict):
+        raise ValueError(f"{resource} meta must be an object")
+    count = meta.get("count")
+    if isinstance(count, bool) or not isinstance(count, int) or count < 0:
+        raise ValueError(f"{resource} meta.count must be a non-negative integer")
+    return count
+
+
+def _message_page_results(response: Any) -> list[Any]:
+    if not isinstance(response, dict) or not isinstance(response.get("results"), list):
+        raise ValueError("message response must contain a results list")
+    if not isinstance(response.get("_links"), dict):
+        raise ValueError("message response must contain _links")
+    return response["results"]
+
+
 def _pages(reader: SubmissionReader, study_id: str, page_size: int = 100) -> list[dict[str, Any]]:
     result: list[dict[str, Any]] = []
+    seen_submission_ids: set[str] = set()
+    expected_count: int | None = None
     page = 1
     seen_pages: set[int] = set()
     next_origin: str | None = None
@@ -116,12 +160,24 @@ def _pages(reader: SubmissionReader, study_id: str, page_size: int = 100) -> lis
             raise ValueError("submission response must contain a results list")
         if any(not isinstance(item, dict) for item in response["results"]):
             raise ValueError("submission results contain a non-object entry")
-        result.extend(response["results"])
-        next_value = response.get("next")
+        page_count = _pagination_count(response, "submission")
+        if page_count is None:
+            raise ValueError("submission meta.count is required")
+        if expected_count is not None and page_count != expected_count:
+            raise ValueError("submission meta.count changed during pagination")
+        expected_count = page_count
+        for item in response["results"]:
+            submission_id = item.get("id")
+            if isinstance(submission_id, str) and submission_id in seen_submission_ids:
+                continue
+            if isinstance(submission_id, str):
+                seen_submission_ids.add(submission_id)
+            result.append(item)
+        next_value = _next_page_href(response, "submission")
         if not next_value:
+            if expected_count is not None and len(result) != expected_count:
+                raise ValueError("unique submission count does not match meta.count")
             return result
-        if not isinstance(next_value, str):
-            raise ValueError("submission next must be a URL")
         parsed = urlparse(next_value)
         if parsed.netloc:
             if next_origin is None:
@@ -218,14 +274,17 @@ class ProlificSubmissionClient:
         self.token = token or os.environ.get("PROLIFIC_API_TOKEN")
         if not self.token: raise ValueError("PROLIFIC_API_TOKEN is required")
         self.base_url = base_url.rstrip("/")
-        self.origin = urlparse(self.base_url).netloc
+        parsed_base = urlparse(self.base_url)
+        self.scheme, self.origin = parsed_base.scheme, parsed_base.netloc
+        self.messages_path = urlparse(urljoin(self.base_url + "/", "messages/")).path.rstrip("/")
         self.timeout, self.retries, self.rate_delay = timeout, retries, rate_delay
         self.opener = build_opener(_NoRedirect())
 
     def _get(self, path: str, query: dict[str, Any] | None = None) -> dict[str, Any]:
         url = urljoin(self.base_url + "/", path.lstrip("/"))
         if query: url += "?" + urlencode(query)
-        if urlparse(url).netloc != self.origin: raise ValueError("request leaves configured API origin")
+        parsed_url = urlparse(url)
+        if (parsed_url.scheme, parsed_url.netloc) != (self.scheme, self.origin): raise ValueError("request leaves configured API origin")
         for attempt in range(self.retries + 1):
             request = Request(url, headers={"Authorization": f"Token {self.token}", "Accept": "application/json"})
             try:
@@ -246,6 +305,21 @@ class ProlificSubmissionClient:
     def get_submission(self, submission_id: str) -> dict[str, Any]:
         return self._get(f"submissions/{submission_id}/")
 
+    def _validate_message_continuation(self, next_url: str, query: dict[str, Any]) -> None:
+        parsed = urlparse(next_url)
+        if parsed.path.rstrip("/") != self.messages_path:
+            raise ValueError("message continuation changes resource path")
+        actual = parse_qs(parsed.query)
+        scope_keys = {"created_after", "user_id", "study_id", "workspace_id"}
+        for key in scope_keys:
+            expected = query.get(key)
+            values = actual.get(key)
+            if expected is None:
+                if values is not None:
+                    raise ValueError("message continuation changes query scope")
+            elif values != [str(expected)]:
+                raise ValueError("message continuation changes query scope")
+
     def get_messages(self, *, created_after: str, study_id: str | None = None,
                      workspace_id: str | None = None, user_id: str | None = None) -> dict[str, Any]:
         """Read messages using only combinations allowed by the official contract."""
@@ -257,7 +331,21 @@ class ProlificSubmissionClient:
         if user_id: query["user_id"] = user_id
         if study_id: query["study_id"] = study_id
         if workspace_id: query["workspace_id"] = workspace_id
-        return self._get("messages/", query)
+        response = self._get("messages/", query)
+        first_results = _message_page_results(response)
+        combined = dict(response)
+        combined["results"] = list(first_results)
+        seen_urls: set[str] = set()
+        next_url = _next_page_href(response, "message")
+        while next_url:
+            self._validate_message_continuation(next_url, query)
+            if next_url in seen_urls:
+                raise ValueError("message pagination loop")
+            seen_urls.add(next_url)
+            page = self._get(next_url)
+            combined["results"].extend(_message_page_results(page))
+            next_url = _next_page_href(page, "message")
+        return combined
 
 
 def main(argv: list[str] | None = None) -> int:
