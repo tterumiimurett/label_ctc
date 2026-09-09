@@ -33,3 +33,14 @@ Ticket 03 final `473a913`: Standards 0 / Spec 0 remaining blockers. Assignment n
 Ticket 07 final `687876e`: Standards 0 / Spec 0 code blockers. Detail identity/schema, occurrence timestamp ordering and durable periodic reports verified; 14 trigger tests independently passed. Merged to main with production execution disabled. HTTPS, real workspace/API permissions and subscription inventory remain operational acceptance items for activation.
 
 Combined main after these merges: 58 unittest tests passed. Ticket 05 `6f09b6c` remains Spec-blocked: real history adapter never yields clear, fresh uncertainty wrongly cancelled, history manual reasoning not fully durable. Original interactive session is fixing these. Tickets 04/06 have not started.
+
+
+## Round 2 completed
+
+Ticket 05 final `86fbaf3`: Standards 0 / Spec 0. Independent Spec tested documented participant-scoped empty/inbound history and valid/invalid coverage; 13 focused tests passed. Root ran full Ticket 05 suite: 50 passed. Merged main `916ca46`; combined suite: 71 passed. No live message permission or visibility certification inferred from code acceptance.
+
+Tickets 03/05/07 are all merged. Round 3 starts from `916ca46`, with independent Ticket04 and Ticket06 workspaces under `/tmp/prolific-round-c-20260909/`. No Ticket08 implementation yet.
+
+- `01a0852b-94eb-7673-8d9d-c5502859bf0e` — `/tmp/prolific-round-c-20260909/ticket-04` (exec)
+
+- `01a0852b-9a79-7be0-8386-8876171cbcde` — `/tmp/prolific-round-c-20260909/ticket-06` (exec)

@@ -117,6 +117,17 @@ def _manual(entry: dict[str, Any], sid: str, study: str, pid: Any, evidence: set
                   "reason": reason, "evidence": complete, "message": message})
     return ContactDecision(sid, "manual_review", complete, message, identity, study, reason)
 
+
+def _local_manual_reason(row: dict[str, Any], evidence: set[str], *, fresh: bool = False) -> str | None:
+    classification = row.get("classification")
+    if classification in {"local_read_error", "identity_mismatch"}:
+        return str(classification)
+    if row.get("errors"):
+        return "fresh_local_errors" if fresh else "local_errors"
+    if evidence & _MANUAL_EVIDENCE:
+        return "fresh_uncertain_local_evidence" if fresh else "uncertain_local_evidence"
+    return None
+
 def _run(report: dict[str, Any], ledger: ContactLedger, fresh: FreshReconciliation, now: datetime, wait_minutes: int) -> dict[str, Any]:
     if report.get("status") != "ok": return {"status": "pending", "decisions": [], "error": report.get("error", "reconciliation unavailable")}
     study = report.get("study_id")
@@ -127,9 +138,11 @@ def _run(report: dict[str, Any], ledger: ContactLedger, fresh: FreshReconciliati
         sid, pid = row.get("session_id"), row.get("participant_id")
         if not isinstance(sid, str) or not sid: continue
         evidence = {str(item) for item in row.get("evidence", []) if isinstance(item, str)}
+        evidence.update(f"local_error:{item}" for item in row.get("errors", []) if isinstance(item, str) and item)
         entry = sessions.setdefault(sid, {"state": "observed"})
-        if row.get("classification") in {"local_read_error", "identity_mismatch"} or row.get("errors") or evidence & _MANUAL_EVIDENCE:
-            decisions.append(_manual(entry, sid, study, pid, evidence, str(row.get("classification") or "uncertain_local_evidence"))); continue
+        manual_reason = _local_manual_reason(row, evidence)
+        if manual_reason:
+            decisions.append(_manual(entry, sid, study, pid, evidence, manual_reason)); continue
         if row.get("classification") != "awaiting_without_final_result":
             entry["state"] = "resolved"; continue
         if not isinstance(pid, str) or not pid:
@@ -156,10 +169,12 @@ def _run(report: dict[str, Any], ledger: ContactLedger, fresh: FreshReconciliati
         current = next((item for item in fresh_report.get("submissions", []) if isinstance(item, dict) and item.get("session_id") == sid), None)
         if not current: decisions.append(_manual(entry, sid, study, pid, evidence, "fresh_submission_missing")); continue
         current_evidence = {str(item) for item in current.get("evidence", []) if isinstance(item, str)}
+        current_evidence.update(f"local_error:{item}" for item in current.get("errors", []) if isinstance(item, str) and item)
         if current.get("study_id") != study or current.get("participant_id") != pid:
             decisions.append(_manual(entry, sid, study, pid, current_evidence, "fresh_identity_mismatch")); continue
-        if current.get("classification") in {"local_read_error", "identity_mismatch"} or current.get("errors") or current_evidence & _MANUAL_EVIDENCE:
-            decisions.append(_manual(entry, sid, study, pid, current_evidence, str(current.get("classification") or "fresh_evidence_uncertain"))); continue
+        manual_reason = _local_manual_reason(current, current_evidence, fresh=True)
+        if manual_reason:
+            decisions.append(_manual(entry, sid, study, pid, current_evidence, manual_reason)); continue
         if (current.get("status") != "AWAITING REVIEW" or current.get("classification") != "awaiting_without_final_result"):
             entry["state"] = "resolved"; decisions.append(ContactDecision(sid, "cancelled", ["fresh_status_or_result_changed"])); continue
         if bool(current.get("return_requested")):
