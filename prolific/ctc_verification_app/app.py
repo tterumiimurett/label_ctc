@@ -13,6 +13,8 @@ import re
 import sys
 import tempfile
 import threading
+import fcntl
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -24,6 +26,16 @@ ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_COMPLETION_URL = "https://app.prolific.com/submissions/complete"
 SCHEMA_VERSION = "ctc-verification-v1"
 TASK_LOCK = threading.Lock()
+
+@contextmanager
+def store_lock(path: Path):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a+") as handle:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 FILLER_WORDS = {"ah", "eh", "er", "hm", "hmm", "mhm", "mm", "oh", "ok", "okay", "uh", "uhh", "um", "umm", "yeah", "yep"}
 FILLER_PHRASES = {"uh huh", "uh-huh", "mhm", "mm hmm", "you know"}
 DEFAULT_ASSIGNMENT_TIMEOUT_MINUTES = 240
@@ -61,6 +73,20 @@ def read_json(path: Path, default):
     if not path.exists():
         return default
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def atomic_write_bytes(path: Path, data: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, name = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(data); handle.flush(); os.fsync(handle.fileno())
+        os.replace(name, path)
+        directory_fd = os.open(path.parent, os.O_RDONLY)
+        try: os.fsync(directory_fd)
+        finally: os.close(directory_fd)
+    finally:
+        if os.path.exists(name): os.unlink(name)
 
 
 def atomic_write_json(path: Path, data) -> None:
@@ -333,6 +359,8 @@ class VerificationStore:
         )
         self.data_dir = data_dir
         self.assignments_path = data_dir / "assignments.json"
+        self.lifecycle_path = data_dir / "returned-lifecycle.json"
+        self.lifecycle_lock_path = data_dir / ".lifecycle.lock"
         self.submissions_dir = data_dir / "submissions"
         self.drafts_dir = data_dir / "drafts"
         self.bundle_size = bundle_size
@@ -342,9 +370,14 @@ class VerificationStore:
 
     def assign(self, worker: dict[str, str]) -> dict:
         session_id = worker["session_id"]
-        with TASK_LOCK:
+        with TASK_LOCK, store_lock(self.lifecycle_lock_path):
+            blocked = self._operation_gate(session_id)
+            if blocked: return blocked
             assignments = read_json(self.assignments_path, {})
             existing = assignments.get(session_id)
+            lifecycle = read_json(self.lifecycle_path, {})
+            if session_id in lifecycle and lifecycle[session_id].get("status") == "RETURNED":
+                return {"status": "error", "errors": ["This returned session cannot be assigned again."]}
             if existing:
                 if any(
                     existing.get(key) != worker.get(key)
@@ -402,6 +435,63 @@ class VerificationStore:
             assignments[session_id] = assignment
             atomic_write_json(self.assignments_path, assignments)
             return self._assignment_response(assignment, worker)
+
+    def reconcile_returned(self, submission: dict, *, processed_at: str | None = None, consent_withdrawn: bool = False) -> dict:
+        """Run the validated returned transaction; safe to resume after interruption."""
+        if consent_withdrawn:
+            return {"status": "manual_review", "reason": "consent withdrawal requires separate handling"}
+        if not isinstance(submission, dict) or str(submission.get("status", "")).upper() != "RETURNED":
+            return {"status": "manual_review", "reason": "current platform status is not RETURNED"}
+        session_id = str(submission.get("id") or "")
+        participant = submission.get("participant")
+        participant_id = participant.get("id") if isinstance(participant, dict) else participant
+        study_id = submission.get("study_id")
+        if not session_id or not participant_id or not study_id:
+            return {"status": "manual_review", "reason": "returned observation lacks identity"}
+        with TASK_LOCK, store_lock(self.lifecycle_lock_path):
+            lifecycle = read_json(self.lifecycle_path, {}); prior = lifecycle.get(session_id)
+            if prior and prior.get("status") == "RETURNED": return {"status": "already_processed", "session_id": session_id}
+            if prior: return self._resume_returned(session_id, lifecycle)
+            assignments = read_json(self.assignments_path, {}); assignment = assignments.get(session_id)
+            if assignment and any(assignment.get(k) != v for k, v in (("session_id", session_id), ("study_id", study_id), ("prolific_pid", participant_id))):
+                return {"status": "manual_review", "reason": "assignment identity mismatch"}
+            result_path = self.submissions_dir / f"{safe_name(session_id)}.json"; result = read_json(result_path, None) if result_path.exists() else None
+            if result is not None:
+                worker = result.get("worker") or {}
+                if any(worker.get(k) != v for k, v in (("session_id", session_id), ("study_id", study_id), ("prolific_pid", participant_id))):
+                    return {"status": "manual_review", "reason": "result identity mismatch"}
+                raw = result_path.read_bytes(); destination = self.data_dir / "excluded_submissions" / datetime.now(timezone.utc).strftime("%Y-%m-%d") / "prolific_returned" / f"{safe_name(session_id)}.json"
+                if destination.exists() and destination.read_bytes() != raw: return {"status": "manual_review", "reason": "archive collision differs"}
+                action = "archived_result"; source = str(result_path); dest = str(destination); digest = hashlib.sha256(raw).hexdigest()
+            else:
+                raw = b""; action = "released_claim"; source = None; dest = None; digest = None
+            intent = {"status": "PENDING", "stage": "intent", "session_id": session_id, "study_id": study_id, "participant_id": participant_id, "assignment": assignment, "source": source, "destination": dest, "sha256": digest, "reason": "platform RETURNED", "processed_at": processed_at or utc_now(), "action": action}
+            lifecycle[session_id] = intent; atomic_write_json(self.lifecycle_path, lifecycle)
+            return self._resume_returned(session_id, lifecycle)
+
+    def _resume_returned(self, session_id: str, lifecycle: dict) -> dict:
+        record = lifecycle[session_id]; source = Path(record["source"]) if record.get("source") else None; destination = Path(record["destination"]) if record.get("destination") else None
+        if destination:
+            if destination.exists() and hashlib.sha256(destination.read_bytes()).hexdigest() != record["sha256"]: return {"status": "manual_review", "reason": "archive hash mismatch"}
+            if not destination.exists():
+                if not source or not source.exists() or hashlib.sha256(source.read_bytes()).hexdigest() != record["sha256"]: return {"status": "manual_review", "reason": "source missing or hash mismatch"}
+                atomic_write_bytes(destination, source.read_bytes())
+            record["stage"] = "archive_written"; lifecycle[session_id] = record; atomic_write_json(self.lifecycle_path, lifecycle)
+            if source.exists():
+                if hashlib.sha256(source.read_bytes()).hexdigest() != record["sha256"]: return {"status": "manual_review", "reason": "source changed"}
+                source.unlink()
+            record["stage"] = "source_removed"
+        assignments = read_json(self.assignments_path, {}); expected = record.get("assignment")
+        current = assignments.get(session_id)
+        if current is not None and expected is not None and current != expected: return {"status": "manual_review", "reason": "assignment changed during return"}
+        if current is not None: del assignments[session_id]; atomic_write_json(self.assignments_path, assignments)
+        record["stage"] = "assignment_removed"; record["status"] = "RETURNED"; lifecycle[session_id] = record; atomic_write_json(self.lifecycle_path, lifecycle)
+        return {"status": "processed", "session_id": session_id, "action": record["action"]}
+
+    def _recover_returned_intents(self) -> None:
+        lifecycle = read_json(self.lifecycle_path, {})
+        for session_id, record in list(lifecycle.items()):
+            if record.get("status") == "PENDING": self._resume_returned(session_id, lifecycle)
 
     def _claim_counts(self, assignments: dict) -> dict[str, int]:
         counts = {
@@ -473,9 +563,23 @@ class VerificationStore:
             "tasks": assigned_tasks,
         }
 
+    def _operation_gate(self, session_id: str) -> dict | None:
+        try:
+            self._recover_returned_intents()
+        except (OSError, ValueError, json.JSONDecodeError) as error:
+            return {"status": "error", "errors": [f"Returned lifecycle recovery requires manual review: {error}"]}
+        record = read_json(self.lifecycle_path, {}).get(session_id)
+        if record and record.get("status") != "RETURNED":
+            return {"status": "error", "errors": ["This session has an unresolved returned lifecycle; manual review is required."]}
+        if record and record.get("status") == "RETURNED":
+            return {"status": "error", "errors": ["This returned session cannot be used again."]}
+        return None
+
     def load_draft(self, worker: dict[str, str]) -> dict:
         session_id = worker["session_id"]
-        with TASK_LOCK:
+        with TASK_LOCK, store_lock(self.lifecycle_lock_path):
+            blocked = self._operation_gate(session_id)
+            if blocked: return blocked
             assignments = read_json(self.assignments_path, {})
             assignment = assignments.get(session_id)
             errors = self._assignment_identity_errors(assignment, worker)
@@ -491,7 +595,9 @@ class VerificationStore:
         session_id = worker.get("session_id") if isinstance(worker, dict) else ""
         if not session_id:
             return {"status": "error", "errors": ["Draft is missing worker.session_id."]}
-        with TASK_LOCK:
+        with TASK_LOCK, store_lock(self.lifecycle_lock_path):
+            blocked = self._operation_gate(session_id)
+            if blocked: return blocked
             assignments = read_json(self.assignments_path, {})
             assignment = assignments.get(session_id)
             errors = self._assignment_identity_errors(assignment, worker)
@@ -532,7 +638,9 @@ class VerificationStore:
         session_id = worker.get("session_id") if isinstance(worker, dict) else ""
         if not session_id:
             return {"status": "error", "errors": validate_submission(payload)}
-        with TASK_LOCK:
+        with TASK_LOCK, store_lock(self.lifecycle_lock_path):
+            blocked = self._operation_gate(session_id)
+            if blocked: return blocked
             assignments = read_json(self.assignments_path, {})
             assignment = assignments.get(session_id)
             if not assignment:

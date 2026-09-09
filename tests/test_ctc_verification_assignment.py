@@ -1,10 +1,22 @@
 import json
+import hashlib
+import multiprocessing
 import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from prolific.ctc_verification_app.app import VerificationStore
+
+
+def _race_return(root_text):
+    root=Path(root_text)
+    store=VerificationStore([], [str(root/"candidates.jsonl")], root/"data", 1, 1, "https://example.test/complete", False)
+    worker={"prolific_pid":"P1","study_id":"S1","session_id":"S1"}
+    assignment=store.assign(worker)
+    if assignment.get("status") != "ok": return assignment["status"]
+    payload={"schema_version":"ctc-verification-v1","worker":worker,"assignment":assignment["assignment"],"tasks":[{"candidate_id":assignment["tasks"][0]["candidate_id"],"task_id":assignment["tasks"][0]["task_id"],"relevant_interruption":False}]}
+    return store.submit(payload)["status"]
 
 
 class CtcVerificationAssignmentTest(unittest.TestCase):
@@ -157,6 +169,75 @@ class CtcVerificationAssignmentTest(unittest.TestCase):
             self.assertEqual(late_response["status"], "error")
             self.assertIn("required number", late_response["errors"][0])
 
+
+    def test_returned_result_is_archived_once_and_old_session_is_blocked(self):
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            root = Path(temporary_dir); store = self.store(root, count=1, redundancy=2)
+            worker = self.worker("P1", "SESSION1"); assignment = store.assign(worker)
+            self.assertEqual(store.submit(self.payload(worker, assignment))["status"], "ok")
+            observed = {"id": "SESSION1", "study_id": "S1", "participant": {"id": "P1"}, "status": "RETURNED"}
+            self.assertEqual(store.reconcile_returned(observed)["action"], "archived_result")
+            self.assertEqual(store.reconcile_returned(observed)["status"], "already_processed")
+            self.assertFalse((root / "data" / "submissions" / "SESSION1.json").exists())
+            self.assertTrue((next((root / "data" / "excluded_submissions").glob("*/prolific_returned/SESSION1.json"))).exists())
+            self.assertEqual(store.assign(worker)["status"], "error")
+
+    def test_returned_without_result_releases_claim(self):
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            root = Path(temporary_dir); store = self.store(root, count=1, redundancy=1)
+            worker = self.worker("P1", "SESSION1"); store.assign(worker)
+            observed = {"id": "SESSION1", "study_id": "S1", "participant": {"id": "P1"}, "status": "RETURNED"}
+            self.assertEqual(store.reconcile_returned(observed)["action"], "released_claim")
+            self.assertEqual(store.assign(self.worker("P2", "SESSION2"))["status"], "ok")
+
+    def test_return_identity_mismatch_does_not_leave_intent_or_release_claim(self):
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d); store=self.store(root, count=1, redundancy=1); worker=self.worker("P1","S1"); store.assign(worker)
+            bad={"id":"S1","study_id":"S1","participant":{"id":"P2"},"status":"RETURNED"}
+            self.assertEqual(store.reconcile_returned(bad)["status"],"manual_review")
+            self.assertEqual(store.assign(self.worker("P2","S2"))["status"],"error")
+            self.assertIn("S1", json.loads((root/"data"/"assignments.json").read_text()))
+
+    def test_consent_withdrawal_is_not_return_archival(self):
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d); store=self.store(root, count=1, redundancy=1)
+            result=store.reconcile_returned({"id":"S1","study_id":"S1","participant":{"id":"P1"},"status":"RETURNED"}, consent_withdrawn=True)
+            self.assertEqual(result["status"],"manual_review"); self.assertFalse((root/"data"/"returned-lifecycle.json").exists())
+
+    def test_restart_recovers_each_persisted_transaction_boundary(self):
+        for stage in ("intent", "archive_written", "source_removed", "assignment_removed", "complete"):
+            with self.subTest(stage=stage), tempfile.TemporaryDirectory() as d:
+                root=Path(d); store=self.store(root, count=1, redundancy=1); worker=self.worker("P1","S1"); assignment=store.assign(worker)
+                payload=self.payload(worker, assignment); store.submit(payload)
+                source=root/"data"/"submissions"/"S1.json"; raw=source.read_bytes(); archive=root/"data"/"excluded_submissions"/"2026-09-09"/"prolific_returned"/"S1.json"
+                if stage in ("archive_written","source_removed","assignment_removed","complete"): archive.parent.mkdir(parents=True); archive.write_bytes(raw)
+                if stage in ("source_removed","assignment_removed","complete"): source.unlink()
+                assignments=json.loads((root/"data"/"assignments.json").read_text())
+                if stage in ("assignment_removed","complete"): assignments.pop("S1",None); (root/"data"/"assignments.json").write_text(json.dumps(assignments))
+                lifecycle={"S1":{"status":"RETURNED" if stage=="complete" else "PENDING","stage":stage,"session_id":"S1","study_id":"S1","participant_id":"P1","assignment":None if stage in ("assignment_removed","complete") else assignments.get("S1"),"source":str(source),"destination":str(archive),"sha256":hashlib.sha256(raw).hexdigest(),"action":"archived_result","processed_at":"2026-09-09T00:00:00Z"}}
+                (root/"data"/"returned-lifecycle.json").write_text(json.dumps(lifecycle))
+                recovered=self.store(root, count=1, redundancy=1)
+                self.assertEqual(recovered.assign(self.worker("P1","S1"))["status"],"error")
+                self.assertEqual(archive.read_bytes(), raw); self.assertEqual(hashlib.sha256(archive.read_bytes()).hexdigest(), lifecycle["S1"]["sha256"])
+                self.assertEqual(recovered.submit(self.payload(worker, assignment))["status"],"error")
+                self.assertEqual(recovered.save_draft({"worker":worker,"taskState":[]})["status"],"error")
+
+    def test_real_process_store_lock_race_does_not_resurrect_returned_session(self):
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d); store=self.store(root, count=1, redundancy=1); worker=self.worker("P1","S1"); assignment=store.assign(worker)
+            returned={"id":"S1","study_id":"S1","participant":{"id":"P1"},"status":"RETURNED"}
+            process=multiprocessing.Process(target=_race_return,args=(str(root),)); process.start(); store.reconcile_returned(returned); process.join(10)
+            self.assertFalse(process.is_alive()); self.assertEqual(process.exitcode, 0)
+            self.assertEqual(json.loads((root/"data"/"returned-lifecycle.json").read_text())["S1"]["status"],"RETURNED")
+            self.assertFalse((root/"data"/"assignments.json").exists() and "S1" in json.loads((root/"data"/"assignments.json").read_text()))
+
+    def test_assign_rejects_session_when_recovery_identity_is_uncertain(self):
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d); store=self.store(root, count=1, redundancy=1); worker=self.worker("P1","S1"); assignment=store.assign(worker)
+            lifecycle={"S1":{"status":"PENDING","stage":"intent","session_id":"S1","study_id":"S1","participant_id":"P1","assignment":assignment["assignment"],"source":str(root/"data"/"submissions"/"S1.json"),"destination":str(root/"data"/"excluded_submissions/2026-09-09/prolific_returned/S1.json"),"sha256":"wrong","action":"archived_result"}}
+            (root/"data"/"returned-lifecycle.json").write_text(json.dumps(lifecycle))
+            self.assertEqual(store.assign(worker)["status"], "error")
+            self.assertEqual(store.submit(self.payload(worker, assignment))["status"], "error")
 
 if __name__ == "__main__":
     unittest.main()
