@@ -5,6 +5,7 @@ from unittest.mock import patch
 from pathlib import Path
 from prolific.ctc_verification_app.contact_candidates import APPROVED_MESSAGE, JsonContactLedger
 from prolific.ctc_verification_app.outbound import send_approved_return_requests
+from prolific.ctc_verification_app.contact_candidates import build_contact_candidates
 from prolific.ctc_verification_app.reconciliation import ProlificSubmissionClient
 from prolific.ctc_verification_app.contact_candidates import ProlificFreshReconciliation
 
@@ -53,6 +54,40 @@ class Ticket06OutboundTest(unittest.TestCase):
             self.assertEqual(result["decisions"][0]["decision"], "sent"); self.assertEqual(len(adapter.sent),1)
             self.assertEqual(adapter.sent[0]["body"], APPROVED_MESSAGE.format(SESSION_ID="S1"))
             saved=ledger.read()["sessions"]["S1"]; self.assertEqual(saved["state"],"sent"); self.assertTrue(saved["return_status_unchanged"])
+    def test_candidate_builder_and_outbound_share_timeout_attempt_barrier(self):
+        with tempfile.TemporaryDirectory() as d:
+            ledger_path=Path(d)/"c.json"; ledger=JsonContactLedger(ledger_path)
+            ledger.write({"sessions":{"S1":{"state":"candidate","study_id":"STUDY","participant_id":"P1"}}})
+            adapter=Adapter(error=TimeoutError("timeout"))
+            first=send_approved_return_requests(report(), ledger, adapter, approved_sessions={"S1"}, enabled=True)
+            self.assertEqual(first["decisions"][0]["decision"], "delivery_unknown")
+            build=build_contact_candidates(report(), JsonContactLedger(ledger_path), adapter, now="2026-09-09T00:10:00Z")
+            self.assertEqual(JsonContactLedger(ledger_path).read()["sessions"]["S1"]["state"], "delivery_unknown")
+            adapter.error=None; second=send_approved_return_requests(report(), JsonContactLedger(ledger_path), adapter, approved_sessions={"S1"}, enabled=True)
+            self.assertEqual(second["decisions"][0]["decision"], "delivery_unknown"); self.assertEqual(len(adapter.sent), 1)
+
+    def test_successful_send_remains_protected_if_state_is_mutated(self):
+        with tempfile.TemporaryDirectory() as d:
+            ledger_path=Path(d)/"c.json"; ledger=JsonContactLedger(ledger_path)
+            ledger.write({"sessions":{"S1":{"state":"candidate","study_id":"STUDY","participant_id":"P1"}}})
+            adapter=Adapter(); send_approved_return_requests(report(), ledger, adapter, approved_sessions={"S1"}, enabled=True)
+            value=ledger.read(); value["sessions"]["S1"]["state"]="candidate"; ledger.write(value)
+            result=send_approved_return_requests(report(), ledger, adapter, approved_sessions={"S1"}, enabled=True)
+            self.assertEqual(result["decisions"][0]["decision"], "sent"); self.assertEqual(len(adapter.sent), 1)
+
+    def test_latest_reconciliation_cancels_after_result_arrives(self):
+        with tempfile.TemporaryDirectory() as d:
+            ledger=JsonContactLedger(Path(d)/"c.json"); ledger.write({"sessions":{"S1":{"state":"candidate","study_id":"STUDY","participant_id":"P1"}}})
+            class Arrives(Adapter):
+                def __init__(self): super().__init__(); self.calls=0
+                def reconcile(self):
+                    self.calls += 1
+                    value=report()
+                    if self.calls > 1: value["submissions"][0]["classification"]="matched"
+                    return value
+            adapter=Arrives(); result=send_approved_return_requests(report(), ledger, adapter, approved_sessions={"S1"}, enabled=True)
+            self.assertEqual(result["decisions"][0]["decision"], "cancelled"); self.assertEqual(adapter.sent, [])
+
     def test_timeout_is_unknown_and_never_retried(self):
         with tempfile.TemporaryDirectory() as d:
             ledger=JsonContactLedger(Path(d)/"c.json"); ledger.write({"sessions":{"S1":{"state":"candidate","study_id":"STUDY","participant_id":"P1"}}})
@@ -87,7 +122,7 @@ class Ticket06OutboundTest(unittest.TestCase):
             for thread in threads: thread.start()
             for thread in threads: thread.join()
             self.assertEqual(sum(len(adapter.sent) for adapter in adapters), 1)
-            self.assertEqual(sorted(result["decisions"][0]["decision"] for result in results), ["manual_review", "sent"])
+            self.assertEqual(sorted(result["decisions"][0]["decision"] for result in results), ["sent", "sent"])
 
     def test_restart_reconciles_sending_and_unknown_without_send(self):
         with tempfile.TemporaryDirectory() as d:

@@ -118,6 +118,11 @@ def _manual(entry: dict[str, Any], sid: str, study: str, pid: Any, evidence: set
     return ContactDecision(sid, "manual_review", complete, message, identity, study, reason)
 
 
+def outbound_attempted(entry: dict[str, Any]) -> bool:
+    """Irreversible barrier: an outbound operation may never be started twice."""
+    return bool(entry.get("send_attempted_at") or entry.get("send_attempt_count") or entry.get("send_operation"))
+
+
 def _local_manual_reason(row: dict[str, Any], evidence: set[str], *, fresh: bool = False) -> str | None:
     classification = row.get("classification")
     if classification in {"local_read_error", "identity_mismatch"}:
@@ -140,6 +145,13 @@ def _run(report: dict[str, Any], ledger: ContactLedger, fresh: FreshReconciliati
         evidence = {str(item) for item in row.get("evidence", []) if isinstance(item, str)}
         evidence.update(f"local_error:{item}" for item in row.get("errors", []) if isinstance(item, str) and item)
         entry = sessions.setdefault(sid, {"state": "observed"})
+        if outbound_attempted(entry):
+            if entry.get("state") == "sent" or entry.get("send_outcome") == "accepted" or entry.get("message_id"):
+                entry["state"] = "sent"
+                continue
+            if entry.get("state") not in {"sending", "delivery_unknown"}:
+                entry.update({"state": "delivery_unknown", "reason": "outbound_attempt_requires_recovery"})
+            continue
         manual_reason = _local_manual_reason(row, evidence)
         if manual_reason:
             decisions.append(_manual(entry, sid, study, pid, evidence, manual_reason)); continue
