@@ -227,7 +227,17 @@ class CtcVerificationAssignmentTest(unittest.TestCase):
             root=Path(d); store=self.store(root, count=1, redundancy=1); worker=self.worker("P1","S1"); assignment=store.assign(worker)
             returned={"id":"S1","study_id":"S1","participant":{"id":"P1"},"status":"RETURNED"}
             process=multiprocessing.Process(target=_race_return,args=(str(root),)); process.start(); store.reconcile_returned(returned); process.join(10)
-            self.assertFalse(process.is_alive()); self.assertEqual(json.loads((root/"data"/"returned-lifecycle.json").read_text())["S1"]["status"],"RETURNED")
+            self.assertFalse(process.is_alive()); self.assertEqual(process.exitcode, 0)
+            self.assertEqual(json.loads((root/"data"/"returned-lifecycle.json").read_text())["S1"]["status"],"RETURNED")
+            self.assertFalse((root/"data"/"assignments.json").exists() and "S1" in json.loads((root/"data"/"assignments.json").read_text()))
+
+    def test_assign_rejects_session_when_recovery_identity_is_uncertain(self):
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d); store=self.store(root, count=1, redundancy=1); worker=self.worker("P1","S1"); assignment=store.assign(worker)
+            lifecycle={"S1":{"status":"PENDING","stage":"intent","session_id":"S1","study_id":"S1","participant_id":"P1","assignment":assignment["assignment"],"source":str(root/"data"/"submissions"/"S1.json"),"destination":str(root/"data"/"excluded_submissions/2026-09-09/prolific_returned/S1.json"),"sha256":"wrong","action":"archived_result"}}
+            (root/"data"/"returned-lifecycle.json").write_text(json.dumps(lifecycle))
+            self.assertEqual(store.assign(worker)["status"], "error")
+            self.assertEqual(store.submit(self.payload(worker, assignment))["status"], "error")
 
 if __name__ == "__main__":
     unittest.main()

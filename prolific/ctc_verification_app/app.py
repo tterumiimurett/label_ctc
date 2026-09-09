@@ -371,7 +371,8 @@ class VerificationStore:
     def assign(self, worker: dict[str, str]) -> dict:
         session_id = worker["session_id"]
         with TASK_LOCK, store_lock(self.lifecycle_lock_path):
-            self._recover_returned_intents()
+            blocked = self._operation_gate(session_id)
+            if blocked: return blocked
             assignments = read_json(self.assignments_path, {})
             existing = assignments.get(session_id)
             lifecycle = read_json(self.lifecycle_path, {})
