@@ -36,3 +36,12 @@
 | 07 | `01a0850f-ea14-7bf3-970a-4eac1b194ae2` | `/tmp/prolific-round-b-20260909/ticket-07` | exec |
 
 使用持续目标监测各票进展。Ticket 5 的 cli 来源和 workspace 已通过本机任务索引核实；用户远端 UI 的实际可见性仍待用户确认。必要时可运行 `codex resume 01a08510-334a-7271-9798-69f96b8b4f6c` 直接进入。
+
+
+## Mandatory human verification gate (user correction)
+
+For every ticket and every round: Implement → independent Standards/Spec review → fixes/re-review → required human verification → merge → next round. If a ticket/spec requires human verification, pause the dependent implementation/merge/activation and wait for the user's explicit verification result. Do not replace human verification with tests, agent reviews, elapsed time or an assumption that it can be deferred until deployment. Prepare concrete evidence, cases, proposed decisions and limitations first, then ask the user. This rule overrides earlier workflow text that omitted this gate.
+
+The user has now explicitly confirmed completing Ticket 05 human verification in its independent interactive task. Follow-up branch `codex/prolific-ticket-05-20260909`, commit `ab11136`, contains real read-only verification fixes. Root independent review of that new commit is pending before integration. The report records no unambiguous positive production contact candidate; live full-list reconciliation currently fails closed on unique count versus meta.count mismatch. Human completion does not authorize sending, platform status changes, or treating those missing observations as verified success.
+
+Ticket 04 and Ticket 06 process groups 1645435/1645858 remain paused while this follow-up review/integration is pending. Preserve their existing work; do not start replacement sessions. Resume only after this gate is satisfied and communicate the same human-verification rule to both tasks.
