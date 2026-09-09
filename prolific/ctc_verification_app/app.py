@@ -13,6 +13,8 @@ import re
 import sys
 import tempfile
 import threading
+import fcntl
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -24,6 +26,16 @@ ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_COMPLETION_URL = "https://app.prolific.com/submissions/complete"
 SCHEMA_VERSION = "ctc-verification-v1"
 TASK_LOCK = threading.Lock()
+
+@contextmanager
+def store_lock(path: Path):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a+") as handle:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 FILLER_WORDS = {"ah", "eh", "er", "hm", "hmm", "mhm", "mm", "oh", "ok", "okay", "uh", "uhh", "um", "umm", "yeah", "yep"}
 FILLER_PHRASES = {"uh huh", "uh-huh", "mhm", "mm hmm", "you know"}
 DEFAULT_ASSIGNMENT_TIMEOUT_MINUTES = 240
@@ -334,6 +346,7 @@ class VerificationStore:
         self.data_dir = data_dir
         self.assignments_path = data_dir / "assignments.json"
         self.lifecycle_path = data_dir / "returned-lifecycle.json"
+        self.lifecycle_lock_path = data_dir / ".lifecycle.lock"
         self.submissions_dir = data_dir / "submissions"
         self.drafts_dir = data_dir / "drafts"
         self.bundle_size = bundle_size
@@ -343,7 +356,8 @@ class VerificationStore:
 
     def assign(self, worker: dict[str, str]) -> dict:
         session_id = worker["session_id"]
-        with TASK_LOCK:
+        with TASK_LOCK, store_lock(self.lifecycle_lock_path):
+            self._recover_returned_intents()
             assignments = read_json(self.assignments_path, {})
             existing = assignments.get(session_id)
             lifecycle = read_json(self.lifecycle_path, {})
@@ -407,8 +421,10 @@ class VerificationStore:
             atomic_write_json(self.assignments_path, assignments)
             return self._assignment_response(assignment, worker)
 
-    def reconcile_returned(self, submission: dict, *, processed_at: str | None = None) -> dict:
+    def reconcile_returned(self, submission: dict, *, processed_at: str | None = None, consent_withdrawn: bool = False) -> dict:
         """Archive a current RETURNED result or release its pending claim."""
+        if consent_withdrawn:
+            return {"status": "manual_review", "reason": "consent withdrawal requires separate handling"}
         if not isinstance(submission, dict) or str(submission.get("status", "")).upper() != "RETURNED":
             return {"status": "manual_review", "reason": "current platform status is not RETURNED"}
         session_id = str(submission.get("id") or "")
@@ -417,7 +433,7 @@ class VerificationStore:
         study_id = submission.get("study_id")
         if not session_id or not participant_id or not study_id:
             return {"status": "manual_review", "reason": "returned observation lacks identity"}
-        with TASK_LOCK:
+        with TASK_LOCK, store_lock(self.lifecycle_lock_path):
             lifecycle = read_json(self.lifecycle_path, {})
             prior = lifecycle.get(session_id)
             if prior and prior.get("status") == "RETURNED":
@@ -426,6 +442,9 @@ class VerificationStore:
                 return {"status": "manual_review", "session_id": session_id, "reason": "lifecycle state changed"}
             assignments = read_json(self.assignments_path, {})
             assignment = assignments.get(session_id)
+            intent = {"status": "PENDING", "session_id": session_id, "study_id": study_id, "participant_id": participant_id, "created_at": processed_at or utc_now()}
+            lifecycle[session_id] = intent
+            atomic_write_json(self.lifecycle_path, lifecycle)
             if assignment and (assignment.get("study_id") != study_id or assignment.get("prolific_pid") != participant_id):
                 return {"status": "manual_review", "reason": "assignment identity mismatch"}
             result_path = self.submissions_dir / f"{safe_name(session_id)}.json"
@@ -434,9 +453,13 @@ class VerificationStore:
                 worker = result.get("worker") or {}
                 if worker.get("study_id") != study_id or worker.get("prolific_pid") != participant_id:
                     return {"status": "manual_review", "reason": "result identity mismatch"}
-                raw = result_path.read_bytes(); archive = self.data_dir / "excluded-results" / "prolific-returned" / f"{safe_name(session_id)}.json"
+                raw = result_path.read_bytes(); archive = self.data_dir / "excluded_submissions" / datetime.now(timezone.utc).strftime("%Y-%m-%d") / "prolific_returned" / f"{safe_name(session_id)}.json"
                 archive.parent.mkdir(parents=True, exist_ok=True)
-                if not archive.exists(): atomic_write_json(archive, result)
+                if archive.exists():
+                    if archive.read_bytes() != raw:
+                        return {"status": "manual_review", "reason": "archive collision differs"}
+                else:
+                    archive.write_bytes(raw)
                 result_path.unlink(); action = "archived_result"
                 evidence = {"original_path": str(result_path), "archive_path": str(archive), "sha256": hashlib.sha256(raw).hexdigest()}
             else:
@@ -446,6 +469,17 @@ class VerificationStore:
             lifecycle[session_id] = {"status": "RETURNED", "study_id": study_id, "participant_id": participant_id, "action": action, "evidence": evidence, "processed_at": processed_at or utc_now()}
             atomic_write_json(self.lifecycle_path, lifecycle)
         return {"status": "processed", "session_id": session_id, "action": action}
+
+    def _recover_returned_intents(self) -> None:
+        lifecycle = read_json(self.lifecycle_path, {})
+        changed = False
+        for session_id, record in lifecycle.items():
+            if record.get("status") != "PENDING": continue
+            assignments = read_json(self.assignments_path, {})
+            if session_id in assignments:
+                del assignments[session_id]; atomic_write_json(self.assignments_path, assignments)
+            record["status"] = "RETURNED"; record["action"] = record.get("action", "released_claim"); lifecycle[session_id] = record; changed = True
+        if changed: atomic_write_json(self.lifecycle_path, lifecycle)
 
     def _claim_counts(self, assignments: dict) -> dict[str, int]:
         counts = {

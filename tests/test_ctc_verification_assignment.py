@@ -167,7 +167,7 @@ class CtcVerificationAssignmentTest(unittest.TestCase):
             self.assertEqual(store.reconcile_returned(observed)["action"], "archived_result")
             self.assertEqual(store.reconcile_returned(observed)["status"], "already_processed")
             self.assertFalse((root / "data" / "submissions" / "SESSION1.json").exists())
-            self.assertTrue((root / "data" / "excluded-results" / "prolific-returned" / "SESSION1.json").exists())
+            self.assertTrue((next((root / "data" / "excluded_submissions").glob("*/prolific_returned/SESSION1.json"))).exists())
             self.assertEqual(store.assign(worker)["status"], "error")
 
     def test_returned_without_result_releases_claim(self):
