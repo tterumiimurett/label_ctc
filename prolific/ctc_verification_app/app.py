@@ -451,6 +451,10 @@ class VerificationStore:
             return {"status": "manual_review", "reason": "returned observation lacks identity"}
         with TASK_LOCK, store_lock(self.lifecycle_lock_path):
             lifecycle = read_json(self.lifecycle_path, {}); prior = lifecycle.get(session_id)
+            if prior and (prior.get("kind") == "timeout" or str(prior.get("status", "")).startswith("TIMED_OUT")):
+                if any(prior.get(key) != value for key, value in (("session_id", session_id), ("study_id", study_id), ("participant_id", participant_id))):
+                    return {"status": "manual_review", "reason": "timeout lifecycle identity mismatch"}
+                return {"status": "manual_review", "reason": "timed-out lifecycle cannot be processed as RETURNED"}
             if prior and prior.get("status") == "RETURNED": return {"status": "already_processed", "session_id": session_id}
             if prior: return self._resume_returned(session_id, lifecycle)
             assignments = read_json(self.assignments_path, {})
@@ -486,8 +490,12 @@ class VerificationStore:
             assignments = read_json(self.assignments_path, {})
             self._recover_timed_out_intents(lifecycle, assignments)
             prior = lifecycle.get(session_id)
-            if prior and prior.get("status") == "TIMED_OUT":
-                return {"status": "already_processed", "session_id": session_id}
+            if prior and (prior.get("kind") == "timeout" or str(prior.get("status", "")).startswith("TIMED_OUT")):
+                if any(prior.get(key) != value for key, value in (("session_id", session_id), ("study_id", study_id), ("participant_id", participant_id))):
+                    return {"status": "manual_review", "reason": "timeout lifecycle identity mismatch"}
+                if prior.get("status") == "TIMED_OUT":
+                    return {"status": "already_processed", "session_id": session_id}
+                return {"status": "manual_review", "reason": "timed-out lifecycle requires manual review"}
             if prior:
                 return {"status": "manual_review", "reason": "session has an incompatible lifecycle"}
             assignment = assignments.get(session_id)
