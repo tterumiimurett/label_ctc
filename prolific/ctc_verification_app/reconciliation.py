@@ -205,7 +205,7 @@ def reconcile_current_state(reader: SubmissionReader, data_dir: Path, study_id: 
         elif status == "TIMED OUT": classification, action = ("timed_out_with_local_result" if final else "timed_out_without_local_result"), ("review_timeout_with_result" if final else "release_claim_proposal")
         elif status == "AWAITING REVIEW": classification, action = ("matched" if final else "awaiting_without_final_result"), ("none" if final else "review_missing_result")
         else: classification, action = ("matched" if final else "unmatched"), ("none" if final else "manual_review")
-        rows.append({"submission_id": submission.get("id"), "session_id": session_id, "study_id": submission.get("study_id"), "participant_id": participant, "status": status, "completion_code_class": _code_class(submission.get("entered_code"), valid_completion_codes), "classification": classification, "evidence": evidence, "errors": errors, "proposed_action": action})
+        rows.append({"submission_id": submission.get("id"), "session_id": session_id, "study_id": submission.get("study_id"), "participant_id": participant, "status": status, "return_requested": submission.get("return_requested"), "completion_code_class": _code_class(submission.get("entered_code"), valid_completion_codes), "classification": classification, "evidence": evidence, "errors": errors, "proposed_action": action})
     return {"status": "ok", "study_id": study_id, "counts": {"platform_submissions": len(platform), "local_final_results": local_final, "temporary_claims": claims}, "submissions": rows, "writes_performed": False}
 
 
@@ -245,6 +245,19 @@ class ProlificSubmissionClient:
 
     def get_submission(self, submission_id: str) -> dict[str, Any]:
         return self._get(f"submissions/{submission_id}/")
+
+    def get_messages(self, *, created_after: str, study_id: str | None = None,
+                     workspace_id: str | None = None, user_id: str | None = None) -> dict[str, Any]:
+        """Read messages using only combinations allowed by the official contract."""
+        if not user_id and not created_after:
+            raise ValueError("created_after or user_id is required")
+        if user_id and study_id:
+            raise ValueError("study_id cannot be combined with user_id")
+        query: dict[str, Any] = {"created_after": created_after}
+        if user_id: query["user_id"] = user_id
+        if study_id: query["study_id"] = study_id
+        if workspace_id: query["workspace_id"] = workspace_id
+        return self._get("messages/", query)
 
 
 def main(argv: list[str] | None = None) -> int:
