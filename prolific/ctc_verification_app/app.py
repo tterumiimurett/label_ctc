@@ -75,6 +75,20 @@ def read_json(path: Path, default):
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def atomic_write_bytes(path: Path, data: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, name = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(data); handle.flush(); os.fsync(handle.fileno())
+        os.replace(name, path)
+        directory_fd = os.open(path.parent, os.O_RDONLY)
+        try: os.fsync(directory_fd)
+        finally: os.close(directory_fd)
+    finally:
+        if os.path.exists(name): os.unlink(name)
+
+
 def atomic_write_json(path: Path, data) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, temporary_name = tempfile.mkstemp(
@@ -460,7 +474,7 @@ class VerificationStore:
             if destination.exists() and hashlib.sha256(destination.read_bytes()).hexdigest() != record["sha256"]: return {"status": "manual_review", "reason": "archive hash mismatch"}
             if not destination.exists():
                 if not source or not source.exists() or hashlib.sha256(source.read_bytes()).hexdigest() != record["sha256"]: return {"status": "manual_review", "reason": "source missing or hash mismatch"}
-                destination.parent.mkdir(parents=True, exist_ok=True); destination.write_bytes(source.read_bytes())
+                atomic_write_bytes(destination, source.read_bytes())
             record["stage"] = "archive_written"; lifecycle[session_id] = record; atomic_write_json(self.lifecycle_path, lifecycle)
             if source.exists():
                 if hashlib.sha256(source.read_bytes()).hexdigest() != record["sha256"]: return {"status": "manual_review", "reason": "source changed"}
@@ -548,9 +562,23 @@ class VerificationStore:
             "tasks": assigned_tasks,
         }
 
+    def _operation_gate(self, session_id: str) -> dict | None:
+        try:
+            self._recover_returned_intents()
+        except (OSError, ValueError, json.JSONDecodeError) as error:
+            return {"status": "error", "errors": [f"Returned lifecycle recovery requires manual review: {error}"]}
+        record = read_json(self.lifecycle_path, {}).get(session_id)
+        if record and record.get("status") != "RETURNED":
+            return {"status": "error", "errors": ["This session has an unresolved returned lifecycle; manual review is required."]}
+        if record and record.get("status") == "RETURNED":
+            return {"status": "error", "errors": ["This returned session cannot be used again."]}
+        return None
+
     def load_draft(self, worker: dict[str, str]) -> dict:
         session_id = worker["session_id"]
         with TASK_LOCK, store_lock(self.lifecycle_lock_path):
+            blocked = self._operation_gate(session_id)
+            if blocked: return blocked
             assignments = read_json(self.assignments_path, {})
             assignment = assignments.get(session_id)
             errors = self._assignment_identity_errors(assignment, worker)
@@ -567,6 +595,8 @@ class VerificationStore:
         if not session_id:
             return {"status": "error", "errors": ["Draft is missing worker.session_id."]}
         with TASK_LOCK, store_lock(self.lifecycle_lock_path):
+            blocked = self._operation_gate(session_id)
+            if blocked: return blocked
             assignments = read_json(self.assignments_path, {})
             assignment = assignments.get(session_id)
             errors = self._assignment_identity_errors(assignment, worker)
@@ -608,6 +638,8 @@ class VerificationStore:
         if not session_id:
             return {"status": "error", "errors": validate_submission(payload)}
         with TASK_LOCK, store_lock(self.lifecycle_lock_path):
+            blocked = self._operation_gate(session_id)
+            if blocked: return blocked
             assignments = read_json(self.assignments_path, {})
             assignment = assignments.get(session_id)
             if not assignment:
