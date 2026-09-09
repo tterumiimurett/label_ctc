@@ -19,3 +19,11 @@ Spec review: the implementation covers fresh recheck, one operation, durable pre
 ## Operational prerequisites
 
 Before any future live use, an operator must verify credentials, workspace/message visibility, current candidate and history approval, and the production API contract/read-only state. Live sending remains disabled by default and was not executed here.
+
+## Defect-fix demonstration (integrated branch)
+
+The reproduced defects are covered by controlled synthetic tests: concurrent calls sharing the JSON ledger produce one send and one manual-review result; a latest draft, archive, other-session result, local error, or `return_requested` blocks sending; changing the approved participant from `P1` to `P9` produces manual review; interrupted `sending`/`delivery_unknown` states query history and never resend; and a malformed response is recorded as delivery unknown rather than sent. The composed adapter is `ProlificFreshReconciliation` delegating its one outbound operation to `ProlificSubmissionClient.send_message`.
+
+The exact approved body remains the `APPROVED_MESSAGE` template with the candidate session ID. The demonstration used synthetic `STUDY`/`S1`/`P1` records and controlled HTTP/openers only. Activation is still explicit (`enabled=False` by default), candidate IDs and message-history clearance are independently required, and no real message was sent.
+
+Post-fix verification: 11 focused Ticket 06 tests and 87 full-suite tests passed.

@@ -211,6 +211,10 @@ class ProlificFreshReconciliation:
         from .reconciliation import reconcile_current_state
         return reconcile_current_state(self.reader, self.data_dir, self.study_id, self.valid_completion_codes)
 
+    def send_message(self, *, recipient_id: str, body: str, study_id: str) -> dict[str, Any]:
+        """Delegate the single ordinary-message operation to the real API client."""
+        return self.reader.send_message(recipient_id=recipient_id, body=body, study_id=study_id)
+
     def inspect_messages(self, *, session_id: str, participant_id: str, study_id: str) -> str:
         if self.scope is None:
             return "unavailable"
