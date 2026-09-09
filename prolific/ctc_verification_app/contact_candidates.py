@@ -27,6 +27,27 @@ class FreshReconciliation(Protocol):
     def inspect_messages(self, *, session_id: str, participant_id: str, study_id: str) -> str: ...
 
 @dataclass(frozen=True)
+class VerifiedMessageScope:
+    """Local operator evidence for an approved, accessible workspace query."""
+    researcher_id: str
+    workspace_id: str
+    coverage_start: datetime
+    coverage_end: datetime
+    workspace_visibility_verified: bool
+    verification_note: str
+
+    def valid_for(self, started_at: Any, now: datetime) -> bool:
+        if not self.workspace_visibility_verified or not self.verification_note.strip():
+            return False
+        if not isinstance(started_at, str):
+            return False
+        try:
+            started = _dt(started_at)
+        except ValueError:
+            return False
+        return self.coverage_start <= started <= self.coverage_end and self.coverage_end <= now
+
+@dataclass(frozen=True)
 class ContactDecision:
     session_id: str
     decision: str
@@ -129,16 +150,18 @@ def _run(report: dict[str, Any], ledger: ContactLedger, fresh: FreshReconciliati
         current_evidence = {str(item) for item in current.get("evidence", []) if isinstance(item, str)}
         if current.get("study_id") != study or current.get("participant_id") != pid:
             decisions.append(_manual(entry, sid, study, pid, current_evidence, "fresh_identity_mismatch")); continue
+        if current.get("classification") in {"local_read_error", "identity_mismatch"} or current.get("errors") or current_evidence & _MANUAL_EVIDENCE:
+            decisions.append(_manual(entry, sid, study, pid, current_evidence, str(current.get("classification") or "fresh_evidence_uncertain"))); continue
         if (current.get("status") != "AWAITING REVIEW" or current.get("classification") != "awaiting_without_final_result"):
             entry["state"] = "resolved"; decisions.append(ContactDecision(sid, "cancelled", ["fresh_status_or_result_changed"])); continue
-        if current.get("errors") or current_evidence & _MANUAL_EVIDENCE:
-            decisions.append(_manual(entry, sid, study, pid, current_evidence, "fresh_evidence_uncertain")); continue
         if bool(current.get("return_requested")):
             entry["state"] = "contacted"; decisions.append(ContactDecision(sid, "already_contacted", ["platform_return_requested"])); continue
         history = fresh.inspect_messages(session_id=sid, participant_id=pid, study_id=study)
         if history != "clear":
-            state_name = "contacted" if history == "already_contacted" else "manual_review"
-            entry["state"] = state_name; decisions.append(ContactDecision(sid, "already_contacted" if history == "already_contacted" else "manual_review", ["fresh_message_history_" + history])); continue
+            if history == "already_contacted":
+                entry.update({"state": "contacted", "reason": "prior_outbound_return_request", "evidence": ["fresh_message_history_already_contacted"]})
+                decisions.append(ContactDecision(sid, "already_contacted", entry["evidence"], participant_id=pid, study_id=study, reason=entry["reason"])); continue
+            decisions.append(_manual(entry, sid, study, pid, {"fresh_message_history_" + history}, "message_history_not_proven_clear")); continue
         candidate_evidence = set(entry.get("evidence", [])) | current_evidence | {"fresh_reconciliation", "fresh_message_history_clear"}
         entry.update({"state": "candidate", "candidate_at": _ts(now), "candidate_evidence": sorted(candidate_evidence), "candidate_message": APPROVED_MESSAGE.format(SESSION_ID=sid)})
         decisions.append(ContactDecision(sid, "candidate", entry["candidate_evidence"], entry["candidate_message"]))
@@ -155,35 +178,35 @@ def build_contact_candidates(report: dict[str, Any], ledger: ContactLedger, fres
 
 class ProlificFreshReconciliation:
     """Fresh, read-only platform/local/chat adapter used at candidate time."""
-    def __init__(self, reader: Any, data_dir: Path, study_id: str, *, valid_completion_codes: set[str] | None = None, researcher_id: str | None = None, workspace_id: str | None = None):
+    def __init__(self, reader: Any, data_dir: Path, study_id: str, *, valid_completion_codes: set[str] | None = None, scope: VerifiedMessageScope | None = None, now: datetime | None = None):
         self.reader, self.data_dir, self.study_id = reader, data_dir, study_id
         self.valid_completion_codes = valid_completion_codes
-        self.researcher_id, self.workspace_id = researcher_id, workspace_id
+        self.scope = scope
+        self.now = now
 
     def reconcile(self) -> dict[str, Any]:
         from .reconciliation import reconcile_current_state
         return reconcile_current_state(self.reader, self.data_dir, self.study_id, self.valid_completion_codes)
 
     def inspect_messages(self, *, session_id: str, participant_id: str, study_id: str) -> str:
-        if not self.researcher_id or not self.workspace_id:
+        if self.scope is None:
             return "unavailable"
         try:
             detail = self.reader.get_submission(session_id)
             participant = detail.get("participant")
             if isinstance(participant, dict):
                 participant = participant.get("id") or participant.get("participant_id") or participant.get("user_id")
+            now = self.now or datetime.now(timezone.utc)
             if detail.get("study_id") != study_id or participant != participant_id:
                 return "ambiguous"
             if detail.get("return_requested"):
                 return "already_contacted"
-            cutoff = datetime.now(timezone.utc) - timedelta(days=30)
-            payload = self.reader.get_messages(created_after=_ts(cutoff), study_id=study_id, workspace_id=self.workspace_id)
-            if not isinstance(payload, dict) or payload.get("workspace_visible") is not True or payload.get("coverage_start") != _ts(cutoff):
+            if not self.scope.valid_for(detail.get("started_at"), now):
                 return "unavailable"
-            messages = payload.get("results")
-            if not isinstance(messages, list):
+            payload = self.reader.get_messages(created_after=_ts(self.scope.coverage_start), study_id=study_id, workspace_id=self.scope.workspace_id)
+            if not isinstance(payload, dict) or not isinstance(payload.get("results"), list):
                 return "unavailable"
-            for message in messages:
+            for message in payload["results"]:
                 if not isinstance(message, dict):
                     return "ambiguous"
                 sender = message.get("sender_id")
@@ -191,13 +214,13 @@ class ProlificFreshReconciliation:
                 recipient = message.get("recipient_id") or message.get("user_id")
                 data = message.get("data") if isinstance(message.get("data"), dict) else {}
                 relevant = recipient == participant_id or data.get("participant_id") == participant_id
-                outbound = sender == self.researcher_id
+                outbound = sender == self.scope.researcher_id
                 request_text = "return" in body.lower() and ("submission" in body.lower() or session_id in body)
                 if relevant and outbound and session_id in body and request_text:
                     return "already_contacted"
                 if relevant or session_id in body:
                     return "ambiguous"
-            return "unknown"
+            return "clear"
         except Exception:
             return "unavailable"
 

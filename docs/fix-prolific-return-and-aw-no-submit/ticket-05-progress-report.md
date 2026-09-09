@@ -40,3 +40,13 @@ Follow-up validation: `python3 -m unittest discover -s tests -v` — 45 passed.
 - Added official query-combination tests and synthetic integrated reconciliation/message tests.
 
 Final validation: `python3 -m unittest discover -s tests -v` — 49 passed; no outbound or live API operations.
+
+
+## Final three-blocker correction
+
+- Added `VerifiedMessageScope` as explicit local operator evidence: approved researcher/workspace IDs, coverage start/end, verified workspace visibility, and a required verification note. The adapter uses only documented message `results`; it does not require invented API response metadata.
+- The documented `created_after + study_id + workspace_id` query is used. Submission `started_at` must fall within the locally verified coverage window. A genuinely covered empty result is `clear`; absent/invalid setup evidence is unavailable/manual.
+- Fresh `local_read_error` and `identity_mismatch` are checked before status cancellation. Every non-clear history outcome goes through durable `_manual` with identity, approved text, reason, and evidence.
+- The integrated controlled-API test reaches a candidate through `ProlificFreshReconciliation` with empty official results and local scope evidence; no `FakeFresh` bypass or live messaging is used.
+
+Final validation: `python3 -m unittest discover -s tests -v` — 49 passed.
