@@ -260,6 +260,10 @@
       showFatal(`Unable to load assignment: ${error.message}`);
       return;
     }
+    if (!assignment || typeof assignment !== 'object' || Array.isArray(assignment)) {
+      showFatal('The server returned an invalid assignment response.');
+      return;
+    }
     if (!response.ok || assignment.status !== 'ok') {
       const errors = Array.isArray(assignment.errors)
         ? assignment.errors
