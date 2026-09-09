@@ -70,6 +70,20 @@ class CtcVerificationAssignmentTest(unittest.TestCase):
             ],
         }
 
+    def test_participant_loading_errors_are_visible_in_the_real_app(self) -> None:
+        static_dir = Path(__file__).resolve().parents[1] / 'prolific' / 'ctc_verification_app' / 'static'
+        html = (static_dir / 'verify.html').read_text(encoding='utf-8')
+        javascript = (static_dir / 'app.js').read_text(encoding='utf-8')
+        stylesheet = (static_dir / 'style.css').read_text(encoding='utf-8')
+
+        self.assertIn('id="loading-card"', html)
+        self.assertIn('id="loading-message"', html)
+        self.assertIn('try {', javascript)
+        self.assertIn('Unable to load assignment:', javascript)
+        self.assertIn('The server returned an invalid assignment response.', javascript)
+        self.assertIn('.status.errors', stylesheet)
+        self.assertIn('display: block;', stylesheet[stylesheet.index('.status.errors'):stylesheet.index('.status.errors') + 80])
+
     def test_same_participant_gets_different_candidate_across_sessions(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_dir:
             root = Path(temporary_dir)

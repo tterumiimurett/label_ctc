@@ -251,10 +251,24 @@
     }
     byId('worker-line').textContent =
       `Participant ${query.get('PROLIFIC_PID')} · Session ${query.get('SESSION_ID')}`;
-    const response = await fetch(`/api/assign?${query.toString()}`);
-    const assignment = await response.json();
+    let response;
+    let assignment;
+    try {
+      response = await fetch(`/api/assign?${query.toString()}`);
+      assignment = await response.json();
+    } catch (error) {
+      showFatal(`Unable to load assignment: ${error.message}`);
+      return;
+    }
+    if (!assignment || typeof assignment !== 'object' || Array.isArray(assignment)) {
+      showFatal('The server returned an invalid assignment response.');
+      return;
+    }
     if (!response.ok || assignment.status !== 'ok') {
-      showFatal((assignment.errors || ['Unable to assign pre-labelled candidates.']).join(' '));
+      const errors = Array.isArray(assignment.errors)
+        ? assignment.errors
+        : ['The server returned an invalid assignment response.'];
+      showFatal(errors.join(' '));
       return;
     }
     state.assignment = assignment.assignment;

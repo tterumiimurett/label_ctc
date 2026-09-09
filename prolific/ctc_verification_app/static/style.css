@@ -387,6 +387,10 @@ fieldset {
   padding: 9px;
 }
 
+.status.errors {
+  display: block;
+}
+
 .warnings {
   background: #fffbeb;
   border: 1px solid #fde68a;
