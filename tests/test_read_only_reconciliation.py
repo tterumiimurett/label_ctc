@@ -12,6 +12,10 @@ from prolific.ctc_verification_app.reconciliation import ProlificSubmissionClien
 class PagedPlatform:
     def __init__(self, pages):
         self.pages, self.calls, self.details = pages, [], {}
+        unique_count = len({item.get("id") for page in pages for item in page.get("results", []) if isinstance(item, dict)})
+        for page in pages:
+            if isinstance(page, dict):
+                page.setdefault("meta", {"count": unique_count})
         for page in pages:
             for item in page.get("results", []):
                 self.details[item["id"]] = {"id": item["id"], "study_id": item.get("study_id", "STUDY"),
@@ -46,6 +50,64 @@ class ReadOnlyReconciliationTest(unittest.TestCase):
             self.assertEqual(report["counts"], {"platform_submissions": 2, "local_final_results": 1, "temporary_claims": 1})
             self.assertEqual(report["submissions"][0]["classification"], "matched")
 
+    def test_real_http_adapter_follows_nested_links_and_deduplicates_submission_ids(self):
+        class Response:
+            def __init__(self, payload): self.payload = json.dumps(payload).encode()
+            def __enter__(self): return self
+            def __exit__(self, *args): pass
+            def read(self): return self.payload
+
+        calls = []
+        def open_url(request, timeout):
+            calls.append(request.full_url)
+            if "/submissions/?" in request.full_url:
+                page = "2" if "page=2" in request.full_url else "1"
+                if page == "1":
+                    payload = {"results": [{"id": "S1"}], "meta": {"count": 2}, "_links": {"next": {"href": "https://api.test/v1/submissions/?study=STUDY&page=2&page_size=100"}}}
+                else:
+                    payload = {"results": [{"id": "S1"}, {"id": "S2"}], "meta": {"count": 2}, "_links": {"next": {"href": None}}}
+            else:
+                session = request.full_url.rstrip("/").rsplit("/", 1)[-1]
+                payload = {"id": session, "study_id": "STUDY", "participant": f"P{session[-1]}", "status": "AWAITING REVIEW"}
+            return Response(payload)
+
+        opener = type("Opener", (), {"open": staticmethod(open_url)})()
+        with tempfile.TemporaryDirectory() as temporary:
+            with patch("prolific.ctc_verification_app.reconciliation.build_opener", return_value=opener):
+                client = ProlificSubmissionClient("synthetic", "https://api.test/v1")
+                report = reconcile_current_state(client, Path(temporary), "STUDY")
+
+        self.assertEqual(report["status"], "ok")
+        self.assertEqual(report["counts"]["platform_submissions"], 2)
+        self.assertEqual([row["session_id"] for row in report["submissions"]], ["S1", "S2"])
+        list_calls = [url for url in calls if "/submissions/?" in url]
+        detail_calls = [url for url in calls if "/submissions/" in url and "?" not in url]
+        self.assertEqual(len(list_calls), 2)
+        self.assertIn("page=2", list_calls[1])
+        self.assertEqual(len(detail_calls), 2)
+
+    def test_duplicate_pages_that_do_not_satisfy_meta_count_fail_closed(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            platform = PagedPlatform([
+                {"results": [{"id": "S1", "participant_id": "P1"}], "meta": {"count": 3},
+                 "_links": {"next": {"href": "https://api.test/api/v1/submissions/?study=STUDY&page=2&page_size=100"}}},
+                {"results": [{"id": "S1", "participant_id": "P1"}, {"id": "S2", "participant_id": "P2"}],
+                 "meta": {"count": 3}, "_links": {"next": {"href": None}}},
+            ])
+
+            report = reconcile_current_state(platform, Path(temporary), "STUDY")
+
+        self.assertEqual(report["status"], "platform_query_failed")
+
+    def test_missing_submission_count_metadata_fails_closed(self):
+        class NoMeta(PagedPlatform):
+            def list_submissions(self, **kwargs):
+                return {"results": [], "_links": {"next": {"href": None}}}
+
+        with tempfile.TemporaryDirectory() as temporary:
+            report = reconcile_current_state(NoMeta([]), Path(temporary), "STUDY")
+
+        self.assertEqual(report["status"], "platform_query_failed")
     def test_detail_identity_is_required_and_completion_code_is_unavailable_without_config(self):
         with tempfile.TemporaryDirectory() as temporary:
             platform = PagedPlatform([{"results": [{"id": "S1", "participant_id": "P1"}], "next": None}])
