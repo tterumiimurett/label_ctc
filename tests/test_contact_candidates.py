@@ -70,6 +70,7 @@ class ContactCandidateTest(unittest.TestCase):
             now = "2026-09-09T00:10:00Z"
             build_contact_candidates(report(missing(evidence=["other_session_result"])), ledger, Fresh(), now="2026-09-09T00:00:00Z")
             result = build_contact_candidates(report(missing(evidence=["other_session_result"])), ledger, Fresh(), now=now)
+            self.assertEqual(result["decisions"][0]["reason"], "uncertain_local_evidence")
             self.assertEqual(result["decisions"][0]["decision"], "manual_review")
 
             ledger = JsonContactLedger(Path(directory) / "history.json")
@@ -84,6 +85,7 @@ class ContactCandidateTest(unittest.TestCase):
             result = build_contact_candidates(report(*rows), ledger, Fresh(), now="2026-09-09T00:00:00Z")
             self.assertEqual({item["decision"] for item in result["decisions"]}, {"manual_review"})
             saved = ledger.read()["sessions"]
+            self.assertIn("local_error:save_error", saved["E"]["evidence"])
             self.assertEqual({saved[key]["state"] for key in ("D", "A", "E")}, {"manual_review"})
 
     def test_wait_window_cannot_be_shortened_and_queue_is_visible_after_restart(self):
@@ -134,7 +136,7 @@ class ContactCandidateTest(unittest.TestCase):
         class Response:
             def __enter__(self): return self
             def __exit__(self, *args): pass
-            def read(self): return b'{"results": []}'
+            def read(self): return b'{"results": [], "_links": {"self": {"href": "https://api.test/v1/messages/"}}}'
         calls = []
         def open_url(request, timeout):
             calls.append(request.full_url)
@@ -144,11 +146,90 @@ class ContactCandidateTest(unittest.TestCase):
         with patch("prolific.ctc_verification_app.reconciliation.build_opener", return_value=opener):
             client = ProlificSubmissionClient("synthetic", "https://api.test/v1")
             client.get_messages(created_after="2026-09-01T00:00:00Z", study_id="STUDY", workspace_id="WORKSPACE")
+            class NoLinksResponse(Response):
+                def read(self): return b'{"results": []}'
+            client.opener = type("Opener", (), {"open": staticmethod(lambda request, timeout: NoLinksResponse())})()
+            with self.assertRaises(ValueError):
+                client.get_messages(created_after="2026-09-01T00:00:00Z", user_id="P1", workspace_id="WORKSPACE")
             with self.assertRaises(ValueError):
                 client.get_messages(created_after="2026-09-01T00:00:00Z", user_id="P1", study_id="STUDY")
         self.assertIn("created_after=2026-09-01T00%3A00%3A00Z", calls[0])
         self.assertIn("study_id=STUDY", calls[0])
         self.assertNotIn("user_id", calls[0])
+
+    def test_real_message_adapter_reads_every_documented_link_page(self):
+        class Response:
+            def __init__(self, payload): self.payload = payload
+            def __enter__(self): return self
+            def __exit__(self, *args): pass
+            def read(self): return self.payload
+
+        calls = []
+        payloads = [
+            b'{"id":"S1","study_id":"STUDY","participant":"P1","status":"AWAITING REVIEW","started_at":"2026-08-15T00:00:00Z"}',
+            b'{"results": [], "_links": {"next": {"href": "https://api.test/v1/messages/?created_after=2026-08-05T00%3A00%3A00Z&user_id=P1&workspace_id=W&page=2"}}}',
+            b'{"results": [{"sender_id": "P1", "body": "You already asked me to return; I need help", "channel_id": "CH", "data": {"study_id": "STUDY"}}], "_links": {"self": {"href": "https://api.test/v1/messages/"}}}',
+        ]
+        def open_url(request, timeout):
+            calls.append(request.full_url)
+            return Response(payloads.pop(0))
+        opener = type("Opener", (), {"open": staticmethod(open_url)})()
+        with patch("prolific.ctc_verification_app.reconciliation.build_opener", return_value=opener):
+            from prolific.ctc_verification_app.reconciliation import ProlificSubmissionClient
+            client = ProlificSubmissionClient("synthetic", "https://api.test/v1")
+            scope = VerifiedMessageScope("R", "W", datetime(2026, 8, 5, tzinfo=timezone.utc), datetime(2026, 9, 1, tzinfo=timezone.utc), True, "controlled workspace visibility", datetime(2026, 8, 31, tzinfo=timezone.utc), datetime(2026, 9, 2, tzinfo=timezone.utc))
+            state = ProlificFreshReconciliation(client, Path("/tmp"), "STUDY", scope=scope, now=datetime(2026, 9, 1, tzinfo=timezone.utc)).inspect_messages(session_id="S1", participant_id="P1", study_id="STUDY")
+
+        self.assertEqual(len(calls), 3)
+        self.assertEqual(state, "ambiguous")
+        self.assertIn("user_id=P1", calls[1])
+        self.assertIn("page=2", calls[2])
+
+    def test_message_continuation_cannot_change_verified_query_scope(self):
+        class Response:
+            def __enter__(self): return self
+            def __exit__(self, *args): pass
+            def read(self):
+                return b'{"results": [], "_links": {"next": {"href": "https://api.test/v1/messages/?created_after=2026-08-05T00%3A00%3A00Z&user_id=P2&workspace_id=W&page=2"}}}'
+
+        calls = []
+        def open_url(request, timeout):
+            calls.append(request.full_url)
+            return Response()
+        opener = type("Opener", (), {"open": staticmethod(open_url)})()
+        from prolific.ctc_verification_app.reconciliation import ProlificSubmissionClient
+        with patch("prolific.ctc_verification_app.reconciliation.build_opener", return_value=opener):
+            client = ProlificSubmissionClient("synthetic", "https://api.test/v1")
+            with self.assertRaises(ValueError):
+                client.get_messages(
+                    created_after="2026-08-05T00:00:00Z",
+                    user_id="P1",
+                    workspace_id="W",
+                )
+
+        self.assertEqual(len(calls), 1)
+    def test_message_continuation_cannot_downgrade_https_origin(self):
+        class Response:
+            def __enter__(self): return self
+            def __exit__(self, *args): pass
+            def read(self):
+                return b'{"results": [], "_links": {"next": {"href": "http://api.test/v1/messages/?created_after=2026-08-05T00%3A00%3A00Z&user_id=P1&workspace_id=W&page=2"}}}'
+
+        calls = []
+        def open_url(request, timeout):
+            calls.append(request.full_url)
+            return Response()
+        opener = type("Opener", (), {"open": staticmethod(open_url)})()
+        from prolific.ctc_verification_app.reconciliation import ProlificSubmissionClient
+        with patch("prolific.ctc_verification_app.reconciliation.build_opener", return_value=opener):
+            client = ProlificSubmissionClient("synthetic", "https://api.test/v1")
+            with self.assertRaises(ValueError):
+                client.get_messages(created_after="2026-08-05T00:00:00Z", user_id="P1", workspace_id="W")
+
+        self.assertEqual(len(calls), 1)
+
+
+
 
     def test_api_or_storage_failure_stays_pending_and_wrong_study_is_not_contacted(self):
         history = Fresh()
@@ -183,7 +264,7 @@ class ContactCandidateTest(unittest.TestCase):
                     self.messages = []
                     self.calls = []
                 def list_submissions(self, **kwargs):
-                    return {"results":[{"id":"S1"}], "next":None}
+                    return {"results":[{"id":"S1"}], "meta":{"count":1}, "next":None}
                 def get_submission(self, submission_id):
                     self.calls.append(("submission", submission_id))
                     return self.detail.copy()
