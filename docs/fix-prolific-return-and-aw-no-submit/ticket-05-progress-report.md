@@ -17,3 +17,14 @@ Limitations and human checkpoints:
 - The message-history adapter and reconciliation scheduler/API wiring remain external seams; this ticket intentionally does not send or activate production contact.
 - A human must review generated candidates and approve any later outbound operation, including historical candidates.
 - No production credentials, participant data, API writes, subscriptions, deployments, or runtime mutations were used.
+
+
+## Spec-blocker follow-up
+
+- Replaced fabricated-report-only due processing with `ProlificFreshReconciliation`, which reruns the real read-only reconciliation and fetches current submission details/messages before candidate generation.
+- Reconciliation rows now preserve `return_requested`; the adapter respects the 30-day message query window and treats permission, schema, identity, and ambiguous history failures as non-clear.
+- Drafts, archived results, save/read errors, other-session evidence, identity changes, and changed current status are durable manual/cancelled outcomes.
+- Added process/thread locking and atomic per-process temporary files for ledger updates.
+- Added integrated synthetic API/storage tests covering fresh participant changes and durable manual queues.
+
+Follow-up validation: `python3 -m unittest discover -s tests -v` — 45 passed.

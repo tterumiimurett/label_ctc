@@ -205,7 +205,7 @@ def reconcile_current_state(reader: SubmissionReader, data_dir: Path, study_id: 
         elif status == "TIMED OUT": classification, action = ("timed_out_with_local_result" if final else "timed_out_without_local_result"), ("review_timeout_with_result" if final else "release_claim_proposal")
         elif status == "AWAITING REVIEW": classification, action = ("matched" if final else "awaiting_without_final_result"), ("none" if final else "review_missing_result")
         else: classification, action = ("matched" if final else "unmatched"), ("none" if final else "manual_review")
-        rows.append({"submission_id": submission.get("id"), "session_id": session_id, "study_id": submission.get("study_id"), "participant_id": participant, "status": status, "completion_code_class": _code_class(submission.get("entered_code"), valid_completion_codes), "classification": classification, "evidence": evidence, "errors": errors, "proposed_action": action})
+        rows.append({"submission_id": submission.get("id"), "session_id": session_id, "study_id": submission.get("study_id"), "participant_id": participant, "status": status, "return_requested": bool(submission.get("return_requested")), "completion_code_class": _code_class(submission.get("entered_code"), valid_completion_codes), "classification": classification, "evidence": evidence, "errors": errors, "proposed_action": action})
     return {"status": "ok", "study_id": study_id, "counts": {"platform_submissions": len(platform), "local_final_results": local_final, "temporary_claims": claims}, "submissions": rows, "writes_performed": False}
 
 
@@ -245,6 +245,10 @@ class ProlificSubmissionClient:
 
     def get_submission(self, submission_id: str) -> dict[str, Any]:
         return self._get(f"submissions/{submission_id}/")
+
+    def get_messages(self, *, user_id: str, created_after: str) -> dict[str, Any]:
+        """Read messages within Prolific's supported participant/time window."""
+        return self._get("messages/", {"user_id": user_id, "created_after": created_after})
 
 
 def main(argv: list[str] | None = None) -> int:
