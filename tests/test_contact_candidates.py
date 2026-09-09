@@ -1,5 +1,7 @@
 import tempfile
 import unittest
+from unittest.mock import patch
+from urllib.error import HTTPError
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -7,7 +9,9 @@ from prolific.ctc_verification_app.reconciliation import reconcile_current_state
 from prolific.ctc_verification_app.contact_candidates import (
     APPROVED_MESSAGE,
     JsonContactLedger,
+    ProlificFreshReconciliation,
     build_contact_candidates,
+    queue_report,
 )
 
 
@@ -80,6 +84,56 @@ class ContactCandidateTest(unittest.TestCase):
             self.assertEqual({item["decision"] for item in result["decisions"]}, {"manual_review"})
             saved = ledger.read()["sessions"]
             self.assertEqual({saved[key]["state"] for key in ("D", "A", "E")}, {"manual_review"})
+
+    def test_wait_window_cannot_be_shortened_and_queue_is_visible_after_restart(self):
+        with tempfile.TemporaryDirectory() as directory:
+            ledger = JsonContactLedger(Path(directory) / "contacts.json")
+            with self.assertRaises(ValueError):
+                build_contact_candidates(report(missing()), ledger, Fresh(), now="2026-09-09T00:00:00Z", wait_minutes=1)
+            build_contact_candidates(report(missing()), ledger, Fresh(), now="2026-09-09T00:00:00Z")
+            restored = JsonContactLedger(Path(directory) / "contacts.json")
+            visible = queue_report(restored)
+            self.assertEqual(visible["sessions"]["S1"]["state"], "observed")
+
+    def test_message_contract_never_treats_empty_or_inbound_help_as_clear(self):
+        class Reader:
+            def __init__(self, messages): self.messages = messages
+            def get_submission(self, session_id):
+                return {"id": session_id, "study_id": "STUDY", "participant": "P1", "status": "AWAITING REVIEW"}
+            def get_messages(self, **kwargs):
+                self.kwargs = kwargs
+                return {"results": self.messages, "workspace_visible": True, "coverage_start": kwargs["created_after"]}
+        empty = ProlificFreshReconciliation(Reader([]), Path("/tmp"), "STUDY", researcher_id="R", workspace_id="W")
+        self.assertEqual(empty.inspect_messages(session_id="S1", participant_id="P1", study_id="STUDY"), "unknown")
+        inbound = ProlificFreshReconciliation(Reader([{"sender_id":"P1", "recipient_id":"R", "body":"I completed S1"}]), Path("/tmp"), "STUDY", researcher_id="R", workspace_id="W")
+        self.assertEqual(inbound.inspect_messages(session_id="S1", participant_id="P1", study_id="STUDY"), "ambiguous")
+
+    def test_outbound_session_return_request_is_recognized(self):
+        class Reader:
+            def get_submission(self, session_id): return {"id":session_id, "study_id":"STUDY", "participant":"P1", "status":"AWAITING REVIEW"}
+            def get_messages(self, **kwargs): return {"results":[{"sender_id":"R", "recipient_id":"P1", "body":"Please return this submission S1"}], "workspace_visible":True, "coverage_start":kwargs["created_after"]}
+        adapter = ProlificFreshReconciliation(Reader(), Path("/tmp"), "STUDY", researcher_id="R", workspace_id="W")
+        self.assertEqual(adapter.inspect_messages(session_id="S1", participant_id="P1", study_id="STUDY"), "already_contacted")
+
+    def test_message_client_uses_official_query_without_illegal_user_and_study_combo(self):
+        class Response:
+            def __enter__(self): return self
+            def __exit__(self, *args): pass
+            def read(self): return b'{"results": []}'
+        calls = []
+        def open_url(request, timeout):
+            calls.append(request.full_url)
+            return Response()
+        opener = type("Opener", (), {"open": staticmethod(open_url)})()
+        from prolific.ctc_verification_app.reconciliation import ProlificSubmissionClient
+        with patch("prolific.ctc_verification_app.reconciliation.build_opener", return_value=opener):
+            client = ProlificSubmissionClient("synthetic", "https://api.test/v1")
+            client.get_messages(created_after="2026-09-01T00:00:00Z", study_id="STUDY", workspace_id="WORKSPACE")
+            with self.assertRaises(ValueError):
+                client.get_messages(created_after="2026-09-01T00:00:00Z", user_id="P1", study_id="STUDY")
+        self.assertIn("created_after=2026-09-01T00%3A00%3A00Z", calls[0])
+        self.assertIn("study_id=STUDY", calls[0])
+        self.assertNotIn("user_id", calls[0])
 
     def test_api_or_storage_failure_stays_pending_and_wrong_study_is_not_contacted(self):
         history = Fresh()

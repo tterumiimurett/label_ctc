@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import threading
+import argparse
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -31,9 +32,15 @@ class ContactDecision:
     decision: str
     evidence: list[str]
     message: str | None = None
+    participant_id: str | None = None
+    study_id: str | None = None
+    reason: str | None = None
     def as_dict(self) -> dict[str, Any]:
         result = {"session_id": self.session_id, "decision": self.decision, "evidence": self.evidence}
         if self.message is not None: result["message"] = self.message
+        if self.participant_id is not None: result["participant_id"] = self.participant_id
+        if self.study_id is not None: result["study_id"] = self.study_id
+        if self.reason is not None: result["reason"] = self.reason
         return result
 
 class JsonContactLedger:
@@ -71,7 +78,15 @@ def _dt(value: Any) -> datetime:
 
 def _ts(value: datetime) -> str: return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
-_MANUAL_EVIDENCE = {"draft", "archived_result", "read_error", "other_session_result", "save_error", "identity_mismatch"}
+_MANUAL_EVIDENCE = {"draft", "archived_result", "read_error", "other_session_result", "save_error", "identity_mismatch", "local_read_error"}
+
+def _manual(entry: dict[str, Any], sid: str, study: str, pid: Any, evidence: set[str], reason: str) -> ContactDecision:
+    identity = pid if isinstance(pid, str) and pid else None
+    complete = sorted(evidence | {reason})
+    message = APPROVED_MESSAGE.format(SESSION_ID=sid)
+    entry.update({"state": "manual_review", "study_id": study, "participant_id": identity,
+                  "reason": reason, "evidence": complete, "message": message})
+    return ContactDecision(sid, "manual_review", complete, message, identity, study, reason)
 
 def _run(report: dict[str, Any], ledger: ContactLedger, fresh: FreshReconciliation, now: datetime, wait_minutes: int) -> dict[str, Any]:
     if report.get("status") != "ok": return {"status": "pending", "decisions": [], "error": report.get("error", "reconciliation unavailable")}
@@ -84,36 +99,41 @@ def _run(report: dict[str, Any], ledger: ContactLedger, fresh: FreshReconciliati
         if not isinstance(sid, str) or not sid: continue
         evidence = {str(item) for item in row.get("evidence", []) if isinstance(item, str)}
         entry = sessions.setdefault(sid, {"state": "observed"})
+        if row.get("classification") in {"local_read_error", "identity_mismatch"} or row.get("errors") or evidence & _MANUAL_EVIDENCE:
+            decisions.append(_manual(entry, sid, study, pid, evidence, str(row.get("classification") or "uncertain_local_evidence"))); continue
         if row.get("classification") != "awaiting_without_final_result":
             entry["state"] = "resolved"; continue
-        if not isinstance(pid, str) or not pid or row.get("errors") or evidence & _MANUAL_EVIDENCE:
-            entry.update({"state": "manual_review", "evidence": sorted(evidence | {"uncertain_local_evidence"})})
-            decisions.append(ContactDecision(sid, "manual_review", sorted(evidence | {"uncertain_local_evidence"}))); continue
-        if row.get("return_requested") is True:
+        if not isinstance(pid, str) or not pid:
+            decisions.append(_manual(entry, sid, study, pid, evidence, "missing_participant_identity")); continue
+        if bool(row.get("return_requested")):
             entry["state"] = "contacted"; decisions.append(ContactDecision(sid, "already_contacted", ["platform_return_requested"])); continue
         if entry.get("study_id") and (entry.get("study_id"), entry.get("participant_id")) != (study, pid):
-            entry["state"] = "manual_review"; decisions.append(ContactDecision(sid, "manual_review", ["identity_changed_since_observation"])); continue
+            decisions.append(_manual(entry, sid, study, pid, evidence, "identity_changed_since_observation")); continue
         if not entry.get("first_missing_at"):
             entry.update({"state": "observed", "study_id": study, "participant_id": pid, "first_missing_at": _ts(now), "evidence": sorted(evidence)})
             continue
         try: due = _dt(entry["first_missing_at"]) + timedelta(minutes=wait_minutes)
         except (TypeError, ValueError):
-            entry["state"] = "manual_review"; decisions.append(ContactDecision(sid, "manual_review", ["invalid_missing_observation_time"])); continue
+            decisions.append(_manual(entry, sid, study, pid, evidence, "invalid_missing_observation_time")); continue
         if now < due: decisions.append(ContactDecision(sid, "waiting", ["missing_result_wait_window"])); continue
         if entry.get("state") in {"candidate", "contacted", "manual_review"}: continue
         fresh_report = fresh.reconcile()
         if fresh_report.get("status") != "ok":
-            decisions.append(ContactDecision(sid, "pending", ["fresh_reconciliation_unavailable"])); continue
+            entry.update({"state": "pending", "study_id": study, "participant_id": pid,
+                          "reason": "fresh_reconciliation_unavailable",
+                          "evidence": sorted(evidence | {"fresh_reconciliation_unavailable"}),
+                          "message": APPROVED_MESSAGE.format(SESSION_ID=sid)})
+            decisions.append(ContactDecision(sid, "pending", entry["evidence"], entry["message"], pid, study, entry["reason"])); continue
         current = next((item for item in fresh_report.get("submissions", []) if isinstance(item, dict) and item.get("session_id") == sid), None)
-        if not current: decisions.append(ContactDecision(sid, "manual_review", ["fresh_submission_missing"])); continue
+        if not current: decisions.append(_manual(entry, sid, study, pid, evidence, "fresh_submission_missing")); continue
         current_evidence = {str(item) for item in current.get("evidence", []) if isinstance(item, str)}
         if current.get("study_id") != study or current.get("participant_id") != pid:
-            entry["state"] = "manual_review"; decisions.append(ContactDecision(sid, "manual_review", sorted(current_evidence | {"fresh_identity_mismatch"}))); continue
+            decisions.append(_manual(entry, sid, study, pid, current_evidence, "fresh_identity_mismatch")); continue
         if (current.get("status") != "AWAITING REVIEW" or current.get("classification") != "awaiting_without_final_result"):
             entry["state"] = "resolved"; decisions.append(ContactDecision(sid, "cancelled", ["fresh_status_or_result_changed"])); continue
         if current.get("errors") or current_evidence & _MANUAL_EVIDENCE:
-            entry["state"] = "manual_review"; decisions.append(ContactDecision(sid, "manual_review", sorted(current_evidence | {"fresh_evidence_uncertain"}))); continue
-        if current.get("return_requested") is True:
+            decisions.append(_manual(entry, sid, study, pid, current_evidence, "fresh_evidence_uncertain")); continue
+        if bool(current.get("return_requested")):
             entry["state"] = "contacted"; decisions.append(ContactDecision(sid, "already_contacted", ["platform_return_requested"])); continue
         history = fresh.inspect_messages(session_id=sid, participant_id=pid, study_id=study)
         if history != "clear":
@@ -126,7 +146,7 @@ def _run(report: dict[str, Any], ledger: ContactLedger, fresh: FreshReconciliati
     return {"status": "ok", "study_id": study, "decisions": [d.as_dict() for d in decisions], "writes_performed": True}
 
 def build_contact_candidates(report: dict[str, Any], ledger: ContactLedger, fresh: FreshReconciliation, *, now: datetime | str | None = None, wait_minutes: int = WAIT_MINUTES) -> dict[str, Any]:
-    if wait_minutes < 1: raise ValueError("wait_minutes must be at least one minute")
+    if wait_minutes != WAIT_MINUTES: raise ValueError("wait_minutes must be exactly ten minutes")
     reference = _dt(now or datetime.now(timezone.utc))
     if hasattr(ledger, "locked"):
         with ledger.locked(): return _run(report, ledger, fresh, reference, wait_minutes)
@@ -135,15 +155,18 @@ def build_contact_candidates(report: dict[str, Any], ledger: ContactLedger, fres
 
 class ProlificFreshReconciliation:
     """Fresh, read-only platform/local/chat adapter used at candidate time."""
-    def __init__(self, reader: Any, data_dir: Path, study_id: str, *, valid_completion_codes: set[str] | None = None):
+    def __init__(self, reader: Any, data_dir: Path, study_id: str, *, valid_completion_codes: set[str] | None = None, researcher_id: str | None = None, workspace_id: str | None = None):
         self.reader, self.data_dir, self.study_id = reader, data_dir, study_id
         self.valid_completion_codes = valid_completion_codes
+        self.researcher_id, self.workspace_id = researcher_id, workspace_id
 
     def reconcile(self) -> dict[str, Any]:
         from .reconciliation import reconcile_current_state
         return reconcile_current_state(self.reader, self.data_dir, self.study_id, self.valid_completion_codes)
 
     def inspect_messages(self, *, session_id: str, participant_id: str, study_id: str) -> str:
+        if not self.researcher_id or not self.workspace_id:
+            return "unavailable"
         try:
             detail = self.reader.get_submission(session_id)
             participant = detail.get("participant")
@@ -153,16 +176,46 @@ class ProlificFreshReconciliation:
                 return "ambiguous"
             if detail.get("return_requested"):
                 return "already_contacted"
-            cutoff = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat().replace("+00:00", "Z")
-            payload = self.reader.get_messages(user_id=participant_id, created_after=cutoff)
-            if not isinstance(payload, dict) or not isinstance(payload.get("results"), list):
+            cutoff = datetime.now(timezone.utc) - timedelta(days=30)
+            payload = self.reader.get_messages(created_after=_ts(cutoff), study_id=study_id, workspace_id=self.workspace_id)
+            if not isinstance(payload, dict) or payload.get("workspace_visible") is not True or payload.get("coverage_start") != _ts(cutoff):
                 return "unavailable"
-            matches = []
-            for message in payload["results"]:
-                if not isinstance(message, dict): return "ambiguous"
-                body = str(message.get("body", message.get("content", "")))
-                if session_id in body: matches.append(message)
-            if matches: return "already_contacted"
-            return "ambiguous" if payload["results"] else "clear"
+            messages = payload.get("results")
+            if not isinstance(messages, list):
+                return "unavailable"
+            for message in messages:
+                if not isinstance(message, dict):
+                    return "ambiguous"
+                sender = message.get("sender_id")
+                body = str(message.get("body", ""))
+                recipient = message.get("recipient_id") or message.get("user_id")
+                data = message.get("data") if isinstance(message.get("data"), dict) else {}
+                relevant = recipient == participant_id or data.get("participant_id") == participant_id
+                outbound = sender == self.researcher_id
+                request_text = "return" in body.lower() and ("submission" in body.lower() or session_id in body)
+                if relevant and outbound and session_id in body and request_text:
+                    return "already_contacted"
+                if relevant or session_id in body:
+                    return "ambiguous"
+            return "unknown"
         except Exception:
             return "unavailable"
+
+
+def queue_report(ledger: ContactLedger) -> dict[str, Any]:
+    state = ledger.read()
+    sessions = state.get("sessions", {})
+    return {"sessions": {sid: item for sid, item in sessions.items()
+                          if isinstance(item, dict) and item.get("state") in {"observed", "waiting", "pending", "manual_review", "candidate"}}}
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Show durable Ticket 5 contact queue")
+    parser.add_argument("--ledger", type=Path, required=True)
+    args = parser.parse_args(argv)
+    print(json.dumps(queue_report(JsonContactLedger(args.ledger)), ensure_ascii=False, indent=2, sort_keys=True))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

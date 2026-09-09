@@ -28,3 +28,15 @@ Limitations and human checkpoints:
 - Added integrated synthetic API/storage tests covering fresh participant changes and durable manual queues.
 
 Follow-up validation: `python3 -m unittest discover -s tests -v` — 45 passed.
+
+
+## Final Spec blocker closure
+
+- `local_read_error` and `identity_mismatch` rows are routed to durable manual review before any resolution branch.
+- `return_requested` preserves the official nullable timestamp and any truthy timestamp is deduplicated.
+- Empty or unscoped 30-day message results are never treated as clear. Automatic prior-contact recognition requires workspace visibility, coverage evidence, researcher sender identity, participant relevance, session ID, and explicit return-request wording; inbound participant help is ambiguous.
+- The wait parameter is fixed at exactly ten minutes; shorter values are rejected.
+- Pending, manual-review, and candidate records are exposed by `queue_report` and `python3 -m prolific.ctc_verification_app.contact_candidates --ledger ...`, with identity, approved text, reason, and evidence persisted.
+- Added official query-combination tests and synthetic integrated reconciliation/message tests.
+
+Final validation: `python3 -m unittest discover -s tests -v` — 49 passed; no outbound or live API operations.
