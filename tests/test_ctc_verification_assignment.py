@@ -239,5 +239,26 @@ class CtcVerificationAssignmentTest(unittest.TestCase):
             self.assertEqual(store.assign(worker)["status"], "error")
             self.assertEqual(store.submit(self.payload(worker, assignment))["status"], "error")
 
+    def test_timed_out_without_result_releases_and_blocks_late_submit(self):
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            root = Path(temporary_dir); store = self.store(root, count=1, redundancy=1)
+            worker = self.worker("P1", "SESSION1"); assignment = store.assign(worker)
+            observed = {"id": "SESSION1", "study_id": "S1", "participant": {"id": "P1"}, "status": "TIMED-OUT"}
+            self.assertEqual(store.reconcile_timed_out(observed)["action"], "released_claim")
+            self.assertEqual(store.reconcile_timed_out(observed)["status"], "already_processed")
+            self.assertEqual(store.assign(self.worker("P2", "SESSION2"))["status"], "ok")
+            late = store.submit(self.payload(worker, assignment))
+            self.assertEqual(late["status"], "error")
+            self.assertIn("cannot be used again", late["errors"][0])
+
+    def test_timed_out_with_final_result_is_manual_review(self):
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            root = Path(temporary_dir); store = self.store(root, count=1, redundancy=1)
+            worker = self.worker("P1", "SESSION1"); assignment = store.assign(worker)
+            self.assertEqual(store.submit(self.payload(worker, assignment))["status"], "ok")
+            result = store.reconcile_timed_out({"id": "SESSION1", "study_id": "S1", "participant": {"id": "P1"}, "status": "TIMED_OUT"})
+            self.assertEqual(result["status"], "manual_review")
+            self.assertTrue((root / "data" / "submissions" / "SESSION1.json").exists())
+
 if __name__ == "__main__":
     unittest.main()
