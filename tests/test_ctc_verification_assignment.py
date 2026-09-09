@@ -158,5 +158,25 @@ class CtcVerificationAssignmentTest(unittest.TestCase):
             self.assertIn("required number", late_response["errors"][0])
 
 
+    def test_returned_result_is_archived_once_and_old_session_is_blocked(self):
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            root = Path(temporary_dir); store = self.store(root, count=1, redundancy=2)
+            worker = self.worker("P1", "SESSION1"); assignment = store.assign(worker)
+            self.assertEqual(store.submit(self.payload(worker, assignment))["status"], "ok")
+            observed = {"id": "SESSION1", "study_id": "S1", "participant": {"id": "P1"}, "status": "RETURNED"}
+            self.assertEqual(store.reconcile_returned(observed)["action"], "archived_result")
+            self.assertEqual(store.reconcile_returned(observed)["status"], "already_processed")
+            self.assertFalse((root / "data" / "submissions" / "SESSION1.json").exists())
+            self.assertTrue((root / "data" / "excluded-results" / "prolific-returned" / "SESSION1.json").exists())
+            self.assertEqual(store.assign(worker)["status"], "error")
+
+    def test_returned_without_result_releases_claim(self):
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            root = Path(temporary_dir); store = self.store(root, count=1, redundancy=1)
+            worker = self.worker("P1", "SESSION1"); store.assign(worker)
+            observed = {"id": "SESSION1", "study_id": "S1", "participant": {"id": "P1"}, "status": "RETURNED"}
+            self.assertEqual(store.reconcile_returned(observed)["action"], "released_claim")
+            self.assertEqual(store.assign(self.worker("P2", "SESSION2"))["status"], "ok")
+
 if __name__ == "__main__":
     unittest.main()

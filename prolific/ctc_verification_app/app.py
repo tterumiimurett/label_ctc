@@ -333,6 +333,7 @@ class VerificationStore:
         )
         self.data_dir = data_dir
         self.assignments_path = data_dir / "assignments.json"
+        self.lifecycle_path = data_dir / "returned-lifecycle.json"
         self.submissions_dir = data_dir / "submissions"
         self.drafts_dir = data_dir / "drafts"
         self.bundle_size = bundle_size
@@ -345,6 +346,9 @@ class VerificationStore:
         with TASK_LOCK:
             assignments = read_json(self.assignments_path, {})
             existing = assignments.get(session_id)
+            lifecycle = read_json(self.lifecycle_path, {})
+            if session_id in lifecycle and lifecycle[session_id].get("status") == "RETURNED":
+                return {"status": "error", "errors": ["This returned session cannot be assigned again."]}
             if existing:
                 if any(
                     existing.get(key) != worker.get(key)
@@ -402,6 +406,46 @@ class VerificationStore:
             assignments[session_id] = assignment
             atomic_write_json(self.assignments_path, assignments)
             return self._assignment_response(assignment, worker)
+
+    def reconcile_returned(self, submission: dict, *, processed_at: str | None = None) -> dict:
+        """Archive a current RETURNED result or release its pending claim."""
+        if not isinstance(submission, dict) or str(submission.get("status", "")).upper() != "RETURNED":
+            return {"status": "manual_review", "reason": "current platform status is not RETURNED"}
+        session_id = str(submission.get("id") or "")
+        participant = submission.get("participant")
+        participant_id = participant.get("id") if isinstance(participant, dict) else participant
+        study_id = submission.get("study_id")
+        if not session_id or not participant_id or not study_id:
+            return {"status": "manual_review", "reason": "returned observation lacks identity"}
+        with TASK_LOCK:
+            lifecycle = read_json(self.lifecycle_path, {})
+            prior = lifecycle.get(session_id)
+            if prior and prior.get("status") == "RETURNED":
+                return {"status": "already_processed", "session_id": session_id}
+            if prior:
+                return {"status": "manual_review", "session_id": session_id, "reason": "lifecycle state changed"}
+            assignments = read_json(self.assignments_path, {})
+            assignment = assignments.get(session_id)
+            if assignment and (assignment.get("study_id") != study_id or assignment.get("prolific_pid") != participant_id):
+                return {"status": "manual_review", "reason": "assignment identity mismatch"}
+            result_path = self.submissions_dir / f"{safe_name(session_id)}.json"
+            result = read_json(result_path, None) if result_path.exists() else None
+            if result is not None:
+                worker = result.get("worker") or {}
+                if worker.get("study_id") != study_id or worker.get("prolific_pid") != participant_id:
+                    return {"status": "manual_review", "reason": "result identity mismatch"}
+                raw = result_path.read_bytes(); archive = self.data_dir / "excluded-results" / "prolific-returned" / f"{safe_name(session_id)}.json"
+                archive.parent.mkdir(parents=True, exist_ok=True)
+                if not archive.exists(): atomic_write_json(archive, result)
+                result_path.unlink(); action = "archived_result"
+                evidence = {"original_path": str(result_path), "archive_path": str(archive), "sha256": hashlib.sha256(raw).hexdigest()}
+            else:
+                action, evidence = "released_claim", {"original_path": None}
+            if assignment:
+                del assignments[session_id]; atomic_write_json(self.assignments_path, assignments)
+            lifecycle[session_id] = {"status": "RETURNED", "study_id": study_id, "participant_id": participant_id, "action": action, "evidence": evidence, "processed_at": processed_at or utc_now()}
+            atomic_write_json(self.lifecycle_path, lifecycle)
+        return {"status": "processed", "session_id": session_id, "action": action}
 
     def _claim_counts(self, assignments: dict) -> dict[str, int]:
         counts = {
