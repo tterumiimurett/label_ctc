@@ -3,6 +3,7 @@ import hashlib
 import multiprocessing
 import tempfile
 import unittest
+from unittest.mock import patch
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -259,6 +260,67 @@ class CtcVerificationAssignmentTest(unittest.TestCase):
             result = store.reconcile_timed_out({"id": "SESSION1", "study_id": "S1", "participant": {"id": "P1"}, "status": "TIMED_OUT"})
             self.assertEqual(result["status"], "manual_review")
             self.assertTrue((root / "data" / "submissions" / "SESSION1.json").exists())
+
+    def test_repeated_timeout_identity_mismatch_is_manual_and_byte_unchanged(self):
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d); store=self.store(root, count=1, redundancy=1)
+            worker=self.worker('P1','S1'); store.assign(worker)
+            good={'id':'S1','study_id':'S1','participant':{'id':'P1'},'status':'TIMED-OUT'}
+            self.assertEqual(store.reconcile_timed_out(good)['status'], 'processed')
+            lifecycle=root/'data'/'returned-lifecycle.json'; assignments=root/'data'/'assignments.json'
+            before_lifecycle=lifecycle.read_bytes(); before_assignments=assignments.read_bytes()
+            bad={'id':'S1','study_id':'OTHER','participant':{'id':'P2'},'status':'TIMED-OUT'}
+            self.assertEqual(store.reconcile_timed_out(bad)['status'], 'manual_review')
+            self.assertEqual(store.reconcile_timed_out(bad)['status'], 'manual_review')
+            self.assertEqual(lifecycle.read_bytes(), before_lifecycle)
+            self.assertEqual(assignments.read_bytes(), before_assignments)
+
+    def test_timeout_manual_then_returned_stays_manual(self):
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d); store=self.store(root, count=1, redundancy=1)
+            worker=self.worker('P1','S1'); store.assign(worker)
+            timeout={'id':'S1','study_id':'S1','participant':{'id':'P1'},'status':'TIMED-OUT'}
+            self.assertEqual(store.reconcile_timed_out(timeout)['status'], 'processed')
+            lifecycle=root/'data'/'returned-lifecycle.json'; state=json.loads(lifecycle.read_text())
+            state['S1']['status']='TIMED_OUT_MANUAL'; state['S1']['stage']='final_result_conflict'; lifecycle.write_text(json.dumps(state))
+            result=store.reconcile_returned({**timeout,'status':'RETURNED'})
+            self.assertEqual(result['status'], 'manual_review')
+            self.assertEqual(json.loads(lifecycle.read_text())['S1']['status'], 'TIMED_OUT_MANUAL')
+
+    def test_timeout_fault_after_intent_is_recovered_by_new_assignment(self):
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d); store=self.store(root, count=1, redundancy=1)
+            worker=self.worker('P1','S1'); store.assign(worker)
+            observed={'id':'S1','study_id':'S1','participant':{'id':'P1'},'status':'TIMED-OUT'}
+            app=__import__('prolific.ctc_verification_app.app', fromlist=['atomic_write_json'])
+            real_write=app.atomic_write_json
+            def fail_after_intent(path, payload):
+                real_write(path, payload)
+                if path.name == 'returned-lifecycle.json' and payload.get('S1',{}).get('stage') == 'claim_release':
+                    raise OSError('crash after intent')
+            with patch('prolific.ctc_verification_app.app.atomic_write_json', side_effect=fail_after_intent):
+                with self.assertRaises(OSError): store.reconcile_timed_out(observed)
+            recovered=self.store(root, count=1, redundancy=1)
+            self.assertEqual(recovered.assign(self.worker('P2','S2'))['status'], 'ok')
+            self.assertNotIn('S1', json.loads((root/'data'/'assignments.json').read_text()))
+
+    def test_timeout_fault_after_claim_delete_is_recovered_exactly_once(self):
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d); store=self.store(root, count=1, redundancy=1)
+            worker=self.worker('P1','S1'); store.assign(worker)
+            observed={'id':'S1','study_id':'S1','participant':{'id':'P1'},'status':'TIMED-OUT'}
+            app=__import__('prolific.ctc_verification_app.app', fromlist=['atomic_write_json'])
+            real_write=app.atomic_write_json
+            def fail_after_delete(path, payload):
+                real_write(path, payload)
+                if path.name == 'assignments.json' and 'S1' not in payload:
+                    raise OSError('crash after claim delete')
+            with patch('prolific.ctc_verification_app.app.atomic_write_json', side_effect=fail_after_delete):
+                with self.assertRaises(OSError): store.reconcile_timed_out(observed)
+            recovered=self.store(root, count=1, redundancy=1)
+            self.assertEqual(recovered.assign(self.worker('P2','S2'))['status'], 'ok')
+            self.assertEqual(recovered.reconcile_timed_out(observed)['status'], 'already_processed')
+            self.assertNotIn('S1', json.loads((root/'data'/'assignments.json').read_text()))
 
 if __name__ == "__main__":
     unittest.main()
