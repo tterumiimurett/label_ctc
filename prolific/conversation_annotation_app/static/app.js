@@ -287,20 +287,10 @@
     }
     byId('worker-line').textContent =
       `Participant ${query.get('PROLIFIC_PID')} · Session ${query.get('SESSION_ID')}`;
-    let response;
-    let assignment;
-    try {
-      response = await fetch(`/api/assign?${query.toString()}`);
-      assignment = await response.json();
-    } catch (error) {
-      showFatal(`Unable to load assignment: ${error.message}`);
-      return;
-    }
+    const response = await fetch(`/api/assign?${query.toString()}`);
+    const assignment = await response.json();
     if (!response.ok || assignment.status !== 'ok') {
-      const errors = Array.isArray(assignment.errors)
-        ? assignment.errors
-        : ['The server returned an invalid assignment response.'];
-      showFatal(errors.join(' '));
+      showFatal((assignment.errors || ['Unable to assign tasks.']).join(' '));
       return;
     }
     state.assignment = assignment.assignment;
@@ -350,16 +340,7 @@
     byId('next-task').disabled = index === state.tasks.length - 1;
 
     renderPhenomenon();
-    const audio = byId('fallback-audio');
-    const audioStatus = byId('audio-status');
-    audioStatus.textContent = 'Loading task audio…';
-    audioStatus.classList.remove('errors');
-    audio.addEventListener('canplay', () => { audioStatus.textContent = 'Task audio ready.'; }, { once: true });
-    audio.addEventListener('error', () => {
-      audioStatus.textContent = 'Audio failed to load. You can report this task before submitting.';
-      audioStatus.classList.add('errors');
-    }, { once: true });
-    audio.src = task.task.audio_url;
+    byId('fallback-audio').src = task.task.audio_url;
 
     renderList();
     wireWave(task.task.audio_url);
