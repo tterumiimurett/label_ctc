@@ -13,8 +13,9 @@ Implemented a read-only HTTP/webhook and scheduled trigger boundary around the m
 
 Assumptions: the merged reader’s `get_submission` call remains the source of
 truth for status/study/participant/completion code; webhook bodies are only
-triggers. The JSON ledger is intended for one scheduler/receiver process; a
-multi-process deployment needs a transactional store owned by a later ticket.
+triggers. The JSON ledger uses an advisory lock plus atomic replacement for concurrent
+receiver/scheduler processes on the same filesystem; deployment still requires a
+shared durable filesystem and an HTTPS reverse proxy/TLS endpoint.
 
 Validation: `python -m unittest tests.test_ticket_07_triggers
 tests.test_read_only_reconciliation` and the full unittest suite are run in the
@@ -36,3 +37,18 @@ and documents `X-Event-ID` idempotency and unordered `X-Timestamp` delivery:
 https://docs.prolific.com/api-reference/webhooks/verifying
 https://docs.prolific.com/api-reference/webhooks/idempotency-and-the-x-event-id-header
 https://docs.prolific.com/api-reference/webhooks/handling-event-order-with-x-timestamp
+
+
+Spec-blocker fixes completed: reconciliation reports with `platform_query_failed`
+or `local_storage_failed` remain pending, retain report/error evidence, and are
+not marked complete. `periodic()` drains pending events and expired processing
+leases independently of webhook replay. HTTP responses include the reviewable
+report, and the ledger stores it atomically with the event. Header matching is
+case-insensitive. Wrong-study events are terminally deduplicated. Processing
+ownership tokens prevent an expired worker from completing or failing a newer
+lease owner.
+
+Offline wiring prerequisites: expose `make_webhook_server` through a publicly
+reachable HTTPS reverse proxy and run `run_periodic` from an external scheduler
+process with a configured interval. No subscription, secret, deployment, or live
+API setup was performed.

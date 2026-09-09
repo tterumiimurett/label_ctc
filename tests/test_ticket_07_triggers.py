@@ -75,8 +75,9 @@ class TriggerTest(unittest.TestCase):
             reader = Mock(); reader.get_submission.return_value = {"id": "S1", "study_id": "STUDY"}; reader.list_submissions.return_value = {"results": [], "next": None}
             path = Path(directory) / "events.json"; store = JsonTriggerStore(path, processing_lease_seconds=0)
             body, headers = self.signed({"event_type": "submission.status.change", "resource_id": "S1"})
-            self.assertEqual(store.begin("E1", 100, json.loads(body)), "new")
-            trigger = ReconciliationTrigger(reader, Path(directory) / "data", "STUDY", store)
+            self.assertEqual(store.begin("E1", 100, json.loads(body))[0], "new")
+            data = Path(directory) / "data"; data.mkdir()
+            trigger = ReconciliationTrigger(reader, data, "STUDY", store)
             self.assertEqual(trigger.handle(body, headers, "secret").status, "reconciled")
 
     def test_periodic_entrypoint_uses_configured_interval_and_stop(self):
@@ -87,6 +88,37 @@ class TriggerTest(unittest.TestCase):
         stop = threading.Event()
         run_periodic(Fake(), 0.01, stop)
         self.assertEqual(calls, [True])
+
+    def test_report_failure_stays_pending_and_persists_evidence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            reader = Mock(); reader.get_submission.return_value = {"id": "S1", "study_id": "STUDY"}
+            trigger = self.trigger(directory, reader); trigger._run = lambda: {"status": "platform_query_failed", "error": "synthetic outage", "writes_performed": False}
+            body, headers = self.signed({"event_type": "submission.status.change", "resource_id": "S1"})
+            result = trigger.handle(body, headers, "secret")
+            saved = json.loads((Path(directory) / "events.json").read_text())
+            self.assertEqual(result.status, "pending_retry"); self.assertEqual(saved["events"]["E1"]["stage"], "pending")
+            self.assertEqual(saved["events"]["E1"]["report"]["status"], "platform_query_failed")
+
+    def test_periodic_drains_pending_without_webhook_replay(self):
+        with tempfile.TemporaryDirectory() as directory:
+            reader = Mock(); reader.get_submission.return_value = {"id": "S1", "study_id": "STUDY"}; reader.list_submissions.return_value = {"results": [], "next": None}
+            trigger = self.trigger(directory, reader); body, headers = self.signed({"event_type": "submission.status.change", "resource_id": "S1"})
+            trigger._run = lambda: {"status": "platform_query_failed", "error": "offline"}
+            trigger.handle(body, headers, "secret"); trigger._run = lambda: {"status": "ok", "writes_performed": False}
+            result = trigger.periodic(); saved = json.loads((Path(directory) / "events.json").read_text())
+            self.assertEqual(result["drained"], 1); self.assertEqual(saved["events"]["E1"]["stage"], "completed")
+
+    def test_lowercase_headers_and_terminal_wrong_study_deduplicate(self):
+        with tempfile.TemporaryDirectory() as directory:
+            reader = Mock(); reader.get_submission.return_value = {"id": "S1", "study_id": "OTHER"}; trigger = self.trigger(directory, reader)
+            body, headers = self.signed({"event_type": "submission.status.change", "resource_id": "S1"}); lower = {key.lower(): value for key, value in headers.items()}
+            self.assertEqual(trigger.handle(body, lower, "secret").status, "ignored_wrong_study"); self.assertEqual(trigger.handle(body, lower, "secret").status, "ignored_wrong_study"); self.assertEqual(reader.get_submission.call_count, 1)
+
+    def test_expired_owner_cannot_finish_new_owner_attempt(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = JsonTriggerStore(Path(directory) / "events.json", processing_lease_seconds=0); payload = {"resource_id": "S1"}
+            first, owner1 = store.begin("E1", 1, payload); second, owner2 = store.begin("E1", 1, payload)
+            self.assertEqual((first, second), ("new", "retry")); self.assertNotEqual(owner1, owner2); self.assertFalse(store.finish("E1", owner1, "completed")); self.assertTrue(store.finish("E1", owner2, "completed"))
 
 
 if __name__ == "__main__": unittest.main()
