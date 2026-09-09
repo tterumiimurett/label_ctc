@@ -25,7 +25,7 @@ class TriggerTest(unittest.TestCase):
     def test_restart_after_api_failure_retries_pending_event(self):
         with tempfile.TemporaryDirectory() as directory:
             reader = Mock(); reader.get_submission.side_effect = [ConnectionError("offline"), {"id": "S1", "study_id": "STUDY", "participant": "P1", "status": "AWAITING_REVIEW"}]
-            reader.list_submissions.return_value = {"results": [], "next": None}
+            reader.list_submissions.return_value = {"results": [], "meta": {"count": 0}, "_links": {"self": {"href": "https://api.test/api/v1/submissions/"}}}
             body, headers = self.signed({"event_type": "submission.status.change", "resource_id": "S1", "status": "RETURNED"})
             first = self.trigger(directory, reader).handle(body, headers, "secret")
             second = self.trigger(directory, reader).handle(body, headers, "secret")
@@ -42,7 +42,7 @@ class TriggerTest(unittest.TestCase):
 
     def test_http_contract_verifies_headers_and_returns_ack(self):
         with tempfile.TemporaryDirectory() as directory:
-            reader = Mock(); reader.get_submission.return_value = {"id": "S1", "study_id": "STUDY", "participant": "P1", "status": "AWAITING_REVIEW"}; reader.list_submissions.return_value = {"results": [], "next": None}
+            reader = Mock(); reader.get_submission.return_value = {"id": "S1", "study_id": "STUDY", "participant": "P1", "status": "AWAITING_REVIEW"}; reader.list_submissions.return_value = {"results": [], "meta": {"count": 0}, "_links": {"self": {"href": "https://api.test/api/v1/submissions/"}}}
             server = make_webhook_server(self.trigger(directory, reader), "secret")
             thread = threading.Thread(target=server.serve_forever); thread.start()
             try:
@@ -55,7 +55,7 @@ class TriggerTest(unittest.TestCase):
 
     def test_concurrent_duplicate_requests_reconcile_once(self):
         with tempfile.TemporaryDirectory() as directory:
-            reader = Mock(); reader.get_submission.return_value = {"id": "S1", "study_id": "STUDY", "participant": "P1", "status": "AWAITING_REVIEW"}; reader.list_submissions.return_value = {"results": [], "next": None}
+            reader = Mock(); reader.get_submission.return_value = {"id": "S1", "study_id": "STUDY", "participant": "P1", "status": "AWAITING_REVIEW"}; reader.list_submissions.return_value = {"results": [], "meta": {"count": 0}, "_links": {"self": {"href": "https://api.test/api/v1/submissions/"}}}
             trigger = self.trigger(directory, reader); body, headers = self.signed({"event_type": "submission.status.change", "resource_id": "S1"})
             results = []; threads = [threading.Thread(target=lambda: results.append(trigger.handle(body, headers, "secret"))) for _ in range(6)]
             for thread in threads: thread.start()
@@ -64,7 +64,7 @@ class TriggerTest(unittest.TestCase):
 
     def test_out_of_order_event_is_recorded_but_not_processed(self):
         with tempfile.TemporaryDirectory() as directory:
-            reader = Mock(); reader.get_submission.return_value = {"id": "S1", "study_id": "STUDY", "participant": "P1", "status": "AWAITING_REVIEW"}; reader.list_submissions.return_value = {"results": [], "next": None}
+            reader = Mock(); reader.get_submission.return_value = {"id": "S1", "study_id": "STUDY", "participant": "P1", "status": "AWAITING_REVIEW"}; reader.list_submissions.return_value = {"results": [], "meta": {"count": 0}, "_links": {"self": {"href": "https://api.test/api/v1/submissions/"}}}
             trigger = self.trigger(directory, reader)
             body, headers = self.signed({"event_type": "submission.status.change", "resource_id": "S1"}, "new", "200"); self.assertEqual(trigger.handle(body, headers, "secret").status, "reconciled")
             body, headers = self.signed({"event_type": "submission.status.change", "resource_id": "S1"}, "old", "100"); self.assertEqual(trigger.handle(body, headers, "secret").status, "stale")
@@ -72,7 +72,7 @@ class TriggerTest(unittest.TestCase):
 
     def test_processing_lease_recovers_crashed_worker(self):
         with tempfile.TemporaryDirectory() as directory:
-            reader = Mock(); reader.get_submission.return_value = {"id": "S1", "study_id": "STUDY", "participant": "P1", "status": "AWAITING_REVIEW"}; reader.list_submissions.return_value = {"results": [], "next": None}
+            reader = Mock(); reader.get_submission.return_value = {"id": "S1", "study_id": "STUDY", "participant": "P1", "status": "AWAITING_REVIEW"}; reader.list_submissions.return_value = {"results": [], "meta": {"count": 0}, "_links": {"self": {"href": "https://api.test/api/v1/submissions/"}}}
             path = Path(directory) / "events.json"; store = JsonTriggerStore(path, processing_lease_seconds=0)
             body, headers = self.signed({"event_type": "submission.status.change", "resource_id": "S1"})
             self.assertEqual(store.begin("E1", 100, json.loads(body))[0], "new")
@@ -101,7 +101,7 @@ class TriggerTest(unittest.TestCase):
 
     def test_periodic_drains_pending_without_webhook_replay(self):
         with tempfile.TemporaryDirectory() as directory:
-            reader = Mock(); reader.get_submission.return_value = {"id": "S1", "study_id": "STUDY", "participant": "P1", "status": "AWAITING_REVIEW"}; reader.list_submissions.return_value = {"results": [], "next": None}
+            reader = Mock(); reader.get_submission.return_value = {"id": "S1", "study_id": "STUDY", "participant": "P1", "status": "AWAITING_REVIEW"}; reader.list_submissions.return_value = {"results": [], "meta": {"count": 0}, "_links": {"self": {"href": "https://api.test/api/v1/submissions/"}}}
             trigger = self.trigger(directory, reader); body, headers = self.signed({"event_type": "submission.status.change", "resource_id": "S1"})
             trigger._run = lambda: {"status": "platform_query_failed", "error": "offline"}
             trigger.handle(body, headers, "secret"); trigger._run = lambda: {"status": "ok", "writes_performed": False}
@@ -122,7 +122,7 @@ class TriggerTest(unittest.TestCase):
 
     def test_event_timestamp_orders_delayed_delivery_not_request_timestamp(self):
         with tempfile.TemporaryDirectory() as directory:
-            reader = Mock(); reader.get_submission.return_value = {"id": "S1", "study_id": "STUDY", "participant": "P1", "status": "AWAITING_REVIEW"}; reader.list_submissions.return_value = {"results": [], "next": None}
+            reader = Mock(); reader.get_submission.return_value = {"id": "S1", "study_id": "STUDY", "participant": "P1", "status": "AWAITING_REVIEW"}; reader.list_submissions.return_value = {"results": [], "meta": {"count": 0}, "_links": {"self": {"href": "https://api.test/api/v1/submissions/"}}}
             trigger = self.trigger(directory, reader)
             body, headers = self.signed({"event_type": "submission.status.change", "resource_id": "S1"}, "new", "100")
             headers["X-Timestamp"] = "200"; self.assertEqual(trigger.handle(body, headers, "secret").status, "reconciled")
@@ -139,7 +139,7 @@ class TriggerTest(unittest.TestCase):
 
     def test_periodic_without_events_persists_inspectable_run(self):
         with tempfile.TemporaryDirectory() as directory:
-            reader = Mock(); reader.list_submissions.return_value = {"results": [], "next": None}
+            reader = Mock(); reader.list_submissions.return_value = {"results": [], "meta": {"count": 0}, "_links": {"self": {"href": "https://api.test/api/v1/submissions/"}}}
             result = self.trigger(directory, reader).periodic(); ledger = json.loads((Path(directory) / "events.json").read_text())
             self.assertEqual(result["status"], "ok"); self.assertEqual(ledger["periodic_runs"][-1]["source"], "periodic")
 
