@@ -50,3 +50,13 @@ Final validation: `python3 -m unittest discover -s tests -v` — 49 passed; no o
 - The integrated controlled-API test reaches a candidate through `ProlificFreshReconciliation` with empty official results and local scope evidence; no `FakeFresh` bypass or live messaging is used.
 
 Final validation: `python3 -m unittest discover -s tests -v` — 49 passed.
+
+
+## Participant-scoped history correction
+
+- Message inspection now uses the documented participant-scoped `user_id + workspace_id + created_after` query and deliberately omits `study_id`, so unassociated participant chats are included.
+- It relies only on documented message fields (`sender_id`, `body`, `channel_id`, `data`) and treats inbound participant help or outbound return wording without the exact session ID as ambiguous/manual.
+- A covered empty participant history is clear only when local scope evidence is current, unexpired, within the API's 30-day query limit, workspace visibility is verified, and the session `started_at` is covered through the latest read.
+- Added tests for participant-scoped query shape, inbound/no-session messages, unassociated chats, old sessions, stale scopes, valid empty history, and the real adapter candidate path.
+
+Final validation after this correction: `python3 -m unittest discover -s tests -v` — 50 passed.

@@ -104,17 +104,31 @@ class ContactCandidateTest(unittest.TestCase):
             def get_messages(self, **kwargs):
                 self.kwargs = kwargs
                 return {"results": self.messages}
-        empty = ProlificFreshReconciliation(Reader([]), Path("/tmp"), "STUDY", scope=VerifiedMessageScope("R", "W", datetime(2026, 8, 1, tzinfo=timezone.utc), datetime(2026, 9, 1, tzinfo=timezone.utc), True, "operator verified workspace access"), now=datetime(2026, 9, 1, tzinfo=timezone.utc))
+        empty = ProlificFreshReconciliation(Reader([]), Path("/tmp"), "STUDY", scope=VerifiedMessageScope("R", "W", datetime(2026, 8, 5, tzinfo=timezone.utc), datetime(2026, 9, 1, tzinfo=timezone.utc), True, "operator verified workspace access", datetime(2026, 8, 31, tzinfo=timezone.utc), datetime(2026, 9, 2, tzinfo=timezone.utc)), now=datetime(2026, 9, 1, tzinfo=timezone.utc))
         self.assertEqual(empty.inspect_messages(session_id="S1", participant_id="P1", study_id="STUDY"), "clear")
-        inbound = ProlificFreshReconciliation(Reader([{"sender_id":"P1", "recipient_id":"R", "body":"I completed S1"}]), Path("/tmp"), "STUDY", scope=VerifiedMessageScope("R", "W", datetime(2026, 8, 1, tzinfo=timezone.utc), datetime(2026, 9, 1, tzinfo=timezone.utc), True, "operator verified workspace access"), now=datetime(2026, 9, 1, tzinfo=timezone.utc))
+        inbound = ProlificFreshReconciliation(Reader([{"sender_id":"P1", "body":"I completed S1", "channel_id":"CH", "data":{"study_id":"STUDY"}}]), Path("/tmp"), "STUDY", scope=VerifiedMessageScope("R", "W", datetime(2026, 8, 5, tzinfo=timezone.utc), datetime(2026, 9, 1, tzinfo=timezone.utc), True, "operator verified workspace access", datetime(2026, 8, 31, tzinfo=timezone.utc), datetime(2026, 9, 2, tzinfo=timezone.utc)), now=datetime(2026, 9, 1, tzinfo=timezone.utc))
         self.assertEqual(inbound.inspect_messages(session_id="S1", participant_id="P1", study_id="STUDY"), "ambiguous")
+        self.assertEqual(inbound.reader.kwargs["user_id"], "P1")
+        self.assertNotIn("study_id", inbound.reader.kwargs)
+
+        outbound_without_session = ProlificFreshReconciliation(Reader([{"sender_id":"R", "body":"Please return this submission", "channel_id":"CH", "data":{"study_id":"STUDY"}}]), Path("/tmp"), "STUDY", scope=VerifiedMessageScope("R", "W", datetime(2026, 8, 5, tzinfo=timezone.utc), datetime(2026, 9, 1, tzinfo=timezone.utc), True, "operator verified workspace access", datetime(2026, 8, 31, tzinfo=timezone.utc), datetime(2026, 9, 2, tzinfo=timezone.utc)), now=datetime(2026, 9, 1, tzinfo=timezone.utc))
+        self.assertEqual(outbound_without_session.inspect_messages(session_id="S1", participant_id="P1", study_id="STUDY"), "ambiguous")
 
     def test_outbound_session_return_request_is_recognized(self):
         class Reader:
             def get_submission(self, session_id): return {"id":session_id, "study_id":"STUDY", "participant":"P1", "status":"AWAITING REVIEW", "started_at":"2026-08-15T00:00:00Z"}
-            def get_messages(self, **kwargs): return {"results":[{"sender_id":"R", "recipient_id":"P1", "body":"Please return this submission S1"}]}
-        adapter = ProlificFreshReconciliation(Reader(), Path("/tmp"), "STUDY", scope=VerifiedMessageScope("R", "W", datetime(2026, 8, 1, tzinfo=timezone.utc), datetime(2026, 9, 1, tzinfo=timezone.utc), True, "operator verified workspace access"), now=datetime(2026, 9, 1, tzinfo=timezone.utc))
+            def get_messages(self, **kwargs): return {"results":[{"sender_id":"R", "body":"Please return this submission S1", "channel_id":"CH", "data":{"study_id":"STUDY"}}]}
+        adapter = ProlificFreshReconciliation(Reader(), Path("/tmp"), "STUDY", scope=VerifiedMessageScope("R", "W", datetime(2026, 8, 5, tzinfo=timezone.utc), datetime(2026, 9, 1, tzinfo=timezone.utc), True, "operator verified workspace access", datetime(2026, 8, 31, tzinfo=timezone.utc), datetime(2026, 9, 2, tzinfo=timezone.utc)), now=datetime(2026, 9, 1, tzinfo=timezone.utc))
         self.assertEqual(adapter.inspect_messages(session_id="S1", participant_id="P1", study_id="STUDY"), "already_contacted")
+
+    def test_scope_rejects_old_session_and_stale_or_incomplete_coverage(self):
+        class Reader:
+            def get_submission(self, session_id): return {"study_id":"STUDY", "participant":"P1", "started_at": "2026-07-01T00:00:00Z"}
+            def get_messages(self, **kwargs): return {"results": []}
+        old_scope = VerifiedMessageScope("R", "W", datetime(2026, 7, 1, tzinfo=timezone.utc), datetime(2026, 9, 1, tzinfo=timezone.utc), True, "verified", datetime(2026, 8, 31, tzinfo=timezone.utc), datetime(2026, 9, 2, tzinfo=timezone.utc))
+        self.assertEqual(ProlificFreshReconciliation(Reader(), Path("/tmp"), "STUDY", scope=old_scope, now=datetime(2026, 9, 1, tzinfo=timezone.utc)).inspect_messages(session_id="S1", participant_id="P1", study_id="STUDY"), "unavailable")
+        stale = VerifiedMessageScope("R", "W", datetime(2026, 8, 5, tzinfo=timezone.utc), datetime(2026, 8, 31, tzinfo=timezone.utc), True, "verified", datetime(2026, 8, 30, tzinfo=timezone.utc), datetime(2026, 9, 2, tzinfo=timezone.utc))
+        self.assertEqual(ProlificFreshReconciliation(Reader(), Path("/tmp"), "STUDY", scope=stale, now=datetime(2026, 9, 1, tzinfo=timezone.utc)).inspect_messages(session_id="S1", participant_id="P1", study_id="STUDY"), "unavailable")
 
     def test_message_client_uses_official_query_without_illegal_user_and_study_combo(self):
         class Response:
@@ -180,7 +194,7 @@ class ContactCandidateTest(unittest.TestCase):
             api = Api()
             initial = reconcile_current_state(api, root, "STUDY")
             from prolific.ctc_verification_app.contact_candidates import ProlificFreshReconciliation
-            fresh = ProlificFreshReconciliation(api, root, "STUDY", scope=VerifiedMessageScope("R", "W", datetime(2026, 8, 1, tzinfo=timezone.utc), datetime(2026, 9, 1, tzinfo=timezone.utc), True, "synthetic controlled HTTP workspace access"), now=datetime(2026, 9, 1, tzinfo=timezone.utc))
+            fresh = ProlificFreshReconciliation(api, root, "STUDY", scope=VerifiedMessageScope("R", "W", datetime(2026, 8, 5, tzinfo=timezone.utc), datetime(2026, 9, 1, tzinfo=timezone.utc), True, "synthetic controlled HTTP workspace access", datetime(2026, 8, 31, tzinfo=timezone.utc), datetime(2026, 9, 2, tzinfo=timezone.utc)), now=datetime(2026, 9, 1, tzinfo=timezone.utc))
             ledger = JsonContactLedger(root / "contacts.json")
             first = build_contact_candidates(initial, ledger, fresh, now="2026-09-09T00:00:00Z")
             self.assertEqual(first["decisions"], [])

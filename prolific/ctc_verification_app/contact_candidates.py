@@ -35,9 +35,17 @@ class VerifiedMessageScope:
     coverage_end: datetime
     workspace_visibility_verified: bool
     verification_note: str
+    checked_at: datetime | None = None
+    expires_at: datetime | None = None
 
     def valid_for(self, started_at: Any, now: datetime) -> bool:
         if not self.workspace_visibility_verified or not self.verification_note.strip():
+            return False
+        if self.checked_at is None or self.expires_at is None:
+            return False
+        if self.coverage_start < now - timedelta(days=30) or self.coverage_end < now:
+            return False
+        if self.checked_at > now or self.expires_at < now:
             return False
         if not isinstance(started_at, str):
             return False
@@ -45,7 +53,7 @@ class VerifiedMessageScope:
             started = _dt(started_at)
         except ValueError:
             return False
-        return self.coverage_start <= started <= self.coverage_end and self.coverage_end <= now
+        return self.coverage_start <= started <= now
 
 @dataclass(frozen=True)
 class ContactDecision:
@@ -203,7 +211,7 @@ class ProlificFreshReconciliation:
                 return "already_contacted"
             if not self.scope.valid_for(detail.get("started_at"), now):
                 return "unavailable"
-            payload = self.reader.get_messages(created_after=_ts(self.scope.coverage_start), study_id=study_id, workspace_id=self.scope.workspace_id)
+            payload = self.reader.get_messages(user_id=participant_id, created_after=_ts(self.scope.coverage_start), workspace_id=self.scope.workspace_id)
             if not isinstance(payload, dict) or not isinstance(payload.get("results"), list):
                 return "unavailable"
             for message in payload["results"]:
@@ -211,14 +219,14 @@ class ProlificFreshReconciliation:
                     return "ambiguous"
                 sender = message.get("sender_id")
                 body = str(message.get("body", ""))
-                recipient = message.get("recipient_id") or message.get("user_id")
-                data = message.get("data") if isinstance(message.get("data"), dict) else {}
-                relevant = recipient == participant_id or data.get("participant_id") == participant_id
                 outbound = sender == self.scope.researcher_id
-                request_text = "return" in body.lower() and ("submission" in body.lower() or session_id in body)
-                if relevant and outbound and session_id in body and request_text:
+                inbound = sender == participant_id
+                return_language = "return" in body.lower() and "submission" in body.lower()
+                if outbound and session_id in body and return_language:
                     return "already_contacted"
-                if relevant or session_id in body:
+                if inbound or (outbound and return_language):
+                    return "ambiguous"
+                if sender not in {self.scope.researcher_id, participant_id}:
                     return "ambiguous"
             return "clear"
         except Exception:
