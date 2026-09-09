@@ -1,5 +1,29 @@
 # First100 独立人工审核
 
+## 优先审核：至少两人认可的 65 条（2026-09-09）
+
+现在优先使用这个较小的审核入口：
+
+```bash
+bash prolific/run_ctc_verification_expert_agree2_first100.sh
+```
+
+打开脚本打印的完整地址，默认端口 8004。筛选口径为：有效 `submissions/` 中，同一个 `candidate_id` 至少有两名不同标注者的 `relevant_interruption` 为 true；不要求 `speaker_stuck` 为 true。当前共 65 条（35 条两票认可、30 条三票认可）。不读取 drafts 或 excluded_submissions，不把同一个人的重复判断算作多票。
+
+任务快照是 `tables/ctc_verification_expert_agree2_first100_20260909.jsonl`，只包含原候选输入，不包含众包身份或答案。在另一台电脑上运行不需要下载众包 submissions。该快照冻结本次审核范围，后续众包数据变化不会使正在审核的列表改变。
+
+页面仍沿用原表单，判断题留空，不显示具体票数或众包答案；由于候选经过筛选，你已知它们至少得到两票认可，因此这不是对筛选条件完全盲法的审核。
+
+新页面的 Candidate 1–65 按子集重新编号，与原 100 条列表的序号不同；`candidate_id` 保持不变，用它匹配后续分析。
+结果及草稿保存到独立目录 `prolific/ctc_verification_app/data_expert_agree2_first100_20260909/`。原 100 条审核的进度保留，新入口不会自动导入旧草稿。可分多次完成，恢复时保持同一完整链接和数据目录。
+最终提交文件为 `submissions/expert_agree2_first100_20260909_v1.json`。完成并关闭服务后，在仓库根目录打包回传：
+
+```bash
+tar -czf expert_agree2_first100.tar.gz -C prolific/ctc_verification_app data_expert_agree2_first100_20260909
+```
+
+本轮主要评估该筛选集的误收比例，也可在其中比较两票和三票认可的结果。由于未审核其余候选，本轮不能估计完整召回率。以下 100 条入口仍保留，需要扩展审核范围时再使用。
+
 ## 本地启动
 
 在包含本次变更的提交已同步到远端后，在自己的电脑上执行：

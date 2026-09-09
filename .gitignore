@@ -27,3 +27,6 @@ prolific/ctc_verification_app/static/examples/video/*.mp4
 # Independent expert review runtime data and return archives
 prolific/ctc_verification_app/data_expert_train_first100/
 expert_train_first100*.tar.gz
+
+prolific/ctc_verification_app/data_expert_agree2_first100_20260909/
+expert_agree2_first100*.tar.gz
