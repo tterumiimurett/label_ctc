@@ -26,6 +26,7 @@
 
 原实现提交哈希：bc0a708。
 前一轮修复提交哈希：d5730c4。
+本轮 API contract 修复提交哈希：c672275。
 
 
 ## API contract correction
