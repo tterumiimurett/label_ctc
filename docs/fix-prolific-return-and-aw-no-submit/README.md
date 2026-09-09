@@ -24,4 +24,15 @@
 
 实施使用独立 Codex 任务；Ticket 5 需要可供用户直接介入的交互任务。需要人工判断时交由用户处理。代码合并授权不代替生产动作清单与启用确认。
 
-当前核验：Ticket 1 的提交 `187576c` 已通过 Standards 和 Spec 复审（各 0 项剩余问题），隔离 Chromium 验证任务、说明和合成音频实际播放；该验证不代表生产音频已验收。Ticket 2 的提交 `1ddccd2` 正在双轴复审。本轮尚未完成合并。
+当前核验：Ticket 1 的提交 `187576c` 已通过 Standards 和 Spec 复审（各 0 项剩余问题），隔离 Chromium 验证任务、说明和合成音频实际播放；该验证不代表生产音频已验收。Ticket 2 的提交 `b3b53d3` 已通过双轴复审（各 0 项剩余问题）。第一轮已合并至 `37e6db5`，合并后 37 项 unittest 通过。
+
+
+第二轮已启动，固定基准 `37e6db5`：
+
+| Ticket | 独立 session | Workspace | 类型 |
+| --- | --- | --- | --- |
+| 03 | `01a0850f-df47-7a72-9cfc-7b1c86d863ab` | `/tmp/prolific-round-b-20260909/ticket-03` | exec |
+| 05 | `01a08510-334a-7271-9798-69f96b8b4f6c` | `/tmp/prolific-round-b-20260909/ticket-05` | cli，交互 |
+| 07 | `01a0850f-ea14-7bf3-970a-4eac1b194ae2` | `/tmp/prolific-round-b-20260909/ticket-07` | exec |
+
+使用持续目标监测各票进展。Ticket 5 的 cli 来源和 workspace 已通过本机任务索引核实；用户远端 UI 的实际可见性仍待用户确认。必要时可运行 `codex resume 01a08510-334a-7271-9798-69f96b8b4f6c` 直接进入。
