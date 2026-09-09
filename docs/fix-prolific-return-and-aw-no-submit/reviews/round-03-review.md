@@ -18,3 +18,8 @@ Human verification materials must show exact synthetic identities, candidate evi
 Ticket04 `6c1bbbf`: Standards passed; Spec still reproduced repeated timeout identity mismatch acknowledged as already processed. Root requested persisted identity checks before recovery/acknowledgement and preventing RETURNED entry from consuming timeout/manual records; original session is fixing with regressions.
 
 Ticket06 `a043f8f`: Standards passed (nonblocking duplicate uncertainty-rule suggestion); Spec reproduced actual cross-ticket resend: timeout -> delivery_unknown -> Ticket05 candidate pass -> candidate -> second POST. Fix requires both candidate-builder lifecycle preservation and irreversible send-attempt barrier in outbound, plus fresh per-recipient checks. Original session is fixing; no human-ready completion claim yet.
+
+
+## Code review complete; human gate pending
+
+Ticket04 `cf3792c`: Standards/Spec both pass; root83 tests, independent18 assignment tests. Ticket06 `f433324`: Standards/Spec pass; root91 tests, independent14 outbound tests plus actual candidate/ledger/outbound duplicate-delivery reproduction. Neither branch is merged. User-facing evidence is in `ticket-04-human-verification.md` and `ticket-06-human-verification.md`. Await explicit user verification of both; no Ticket08 start and no production actions.
