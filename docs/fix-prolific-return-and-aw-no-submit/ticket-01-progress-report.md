@@ -6,4 +6,4 @@
 - Isolated validation: localhost server with synthetic participant/study/session and temporary `/tmp/ticket1-synthetic-data`; page exposed instruction/loading/audio status and assignment returned a task/audio URL. No production service or participant data was used.
 - Limitation: no Chromium/browser binary is installed in this environment, so real browser automation could not be run. The HTTP check is not claimed as browser validation.
 - Code review: standards pass; spec pass for Ticket 1, with the browser-validation limitation above.
-- Commit: `9a46630` (this commit).
+- Commit: `cfd2a49` (this commit).
