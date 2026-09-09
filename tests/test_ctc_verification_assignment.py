@@ -178,5 +178,19 @@ class CtcVerificationAssignmentTest(unittest.TestCase):
             self.assertEqual(store.reconcile_returned(observed)["action"], "released_claim")
             self.assertEqual(store.assign(self.worker("P2", "SESSION2"))["status"], "ok")
 
+    def test_return_identity_mismatch_does_not_leave_intent_or_release_claim(self):
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d); store=self.store(root, count=1, redundancy=1); worker=self.worker("P1","S1"); store.assign(worker)
+            bad={"id":"S1","study_id":"S1","participant":{"id":"P2"},"status":"RETURNED"}
+            self.assertEqual(store.reconcile_returned(bad)["status"],"manual_review")
+            self.assertEqual(store.assign(self.worker("P2","S2"))["status"],"error")
+            self.assertIn("S1", json.loads((root/"data"/"assignments.json").read_text()))
+
+    def test_consent_withdrawal_is_not_return_archival(self):
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d); store=self.store(root, count=1, redundancy=1)
+            result=store.reconcile_returned({"id":"S1","study_id":"S1","participant":{"id":"P1"},"status":"RETURNED"}, consent_withdrawn=True)
+            self.assertEqual(result["status"],"manual_review"); self.assertFalse((root/"data"/"returned-lifecycle.json").exists())
+
 if __name__ == "__main__":
     unittest.main()

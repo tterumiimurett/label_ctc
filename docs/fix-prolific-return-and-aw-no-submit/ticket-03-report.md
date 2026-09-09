@@ -11,3 +11,6 @@ Implemented returned-session local lifecycle integration. `VerificationStore.rec
 ## Limitations and human checkpoints
 
 Ticket 05 contact candidates and Ticket 07 triggers are intentionally not implemented. The lifecycle now writes a pending intent before archive/release effects, recovers pending intents on assign, uses an OS file lock for cross-process coordination, and rejects differing archive collisions without deleting the source. Archives use `excluded_submissions/YYYY-MM-DD/prolific_returned/` and preserve exact bytes. Consent withdrawal is an explicit manual-review input. Production execution remains off; current platform state must be read and independently verified by the caller before invoking the seam. Status reversal and consent withdrawal require human handling.
+
+
+Follow-up hardening: staged intents now validate complete identities before creation, preserve exact bytes and hashes, use dated archive paths, recover each mutation stage, reject collisions, and coordinate all store mutations with an interprocess lock.

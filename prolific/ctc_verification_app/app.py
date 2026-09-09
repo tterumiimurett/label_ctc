@@ -422,7 +422,7 @@ class VerificationStore:
             return self._assignment_response(assignment, worker)
 
     def reconcile_returned(self, submission: dict, *, processed_at: str | None = None, consent_withdrawn: bool = False) -> dict:
-        """Archive a current RETURNED result or release its pending claim."""
+        """Run the validated returned transaction; safe to resume after interruption."""
         if consent_withdrawn:
             return {"status": "manual_review", "reason": "consent withdrawal requires separate handling"}
         if not isinstance(submission, dict) or str(submission.get("status", "")).upper() != "RETURNED":
@@ -434,52 +434,49 @@ class VerificationStore:
         if not session_id or not participant_id or not study_id:
             return {"status": "manual_review", "reason": "returned observation lacks identity"}
         with TASK_LOCK, store_lock(self.lifecycle_lock_path):
-            lifecycle = read_json(self.lifecycle_path, {})
-            prior = lifecycle.get(session_id)
-            if prior and prior.get("status") == "RETURNED":
-                return {"status": "already_processed", "session_id": session_id}
-            if prior:
-                return {"status": "manual_review", "session_id": session_id, "reason": "lifecycle state changed"}
-            assignments = read_json(self.assignments_path, {})
-            assignment = assignments.get(session_id)
-            intent = {"status": "PENDING", "session_id": session_id, "study_id": study_id, "participant_id": participant_id, "created_at": processed_at or utc_now()}
-            lifecycle[session_id] = intent
-            atomic_write_json(self.lifecycle_path, lifecycle)
-            if assignment and (assignment.get("study_id") != study_id or assignment.get("prolific_pid") != participant_id):
+            lifecycle = read_json(self.lifecycle_path, {}); prior = lifecycle.get(session_id)
+            if prior and prior.get("status") == "RETURNED": return {"status": "already_processed", "session_id": session_id}
+            if prior: return self._resume_returned(session_id, lifecycle)
+            assignments = read_json(self.assignments_path, {}); assignment = assignments.get(session_id)
+            if assignment and any(assignment.get(k) != v for k, v in (("session_id", session_id), ("study_id", study_id), ("prolific_pid", participant_id))):
                 return {"status": "manual_review", "reason": "assignment identity mismatch"}
-            result_path = self.submissions_dir / f"{safe_name(session_id)}.json"
-            result = read_json(result_path, None) if result_path.exists() else None
+            result_path = self.submissions_dir / f"{safe_name(session_id)}.json"; result = read_json(result_path, None) if result_path.exists() else None
             if result is not None:
                 worker = result.get("worker") or {}
-                if worker.get("study_id") != study_id or worker.get("prolific_pid") != participant_id:
+                if any(worker.get(k) != v for k, v in (("session_id", session_id), ("study_id", study_id), ("prolific_pid", participant_id))):
                     return {"status": "manual_review", "reason": "result identity mismatch"}
-                raw = result_path.read_bytes(); archive = self.data_dir / "excluded_submissions" / datetime.now(timezone.utc).strftime("%Y-%m-%d") / "prolific_returned" / f"{safe_name(session_id)}.json"
-                archive.parent.mkdir(parents=True, exist_ok=True)
-                if archive.exists():
-                    if archive.read_bytes() != raw:
-                        return {"status": "manual_review", "reason": "archive collision differs"}
-                else:
-                    archive.write_bytes(raw)
-                result_path.unlink(); action = "archived_result"
-                evidence = {"original_path": str(result_path), "archive_path": str(archive), "sha256": hashlib.sha256(raw).hexdigest()}
+                raw = result_path.read_bytes(); destination = self.data_dir / "excluded_submissions" / datetime.now(timezone.utc).strftime("%Y-%m-%d") / "prolific_returned" / f"{safe_name(session_id)}.json"
+                if destination.exists() and destination.read_bytes() != raw: return {"status": "manual_review", "reason": "archive collision differs"}
+                action = "archived_result"; source = str(result_path); dest = str(destination); digest = hashlib.sha256(raw).hexdigest()
             else:
-                action, evidence = "released_claim", {"original_path": None}
-            if assignment:
-                del assignments[session_id]; atomic_write_json(self.assignments_path, assignments)
-            lifecycle[session_id] = {"status": "RETURNED", "study_id": study_id, "participant_id": participant_id, "action": action, "evidence": evidence, "processed_at": processed_at or utc_now()}
-            atomic_write_json(self.lifecycle_path, lifecycle)
-        return {"status": "processed", "session_id": session_id, "action": action}
+                raw = b""; action = "released_claim"; source = None; dest = None; digest = None
+            intent = {"status": "PENDING", "stage": "intent", "session_id": session_id, "study_id": study_id, "participant_id": participant_id, "assignment": assignment, "source": source, "destination": dest, "sha256": digest, "reason": "platform RETURNED", "processed_at": processed_at or utc_now(), "action": action}
+            lifecycle[session_id] = intent; atomic_write_json(self.lifecycle_path, lifecycle)
+            return self._resume_returned(session_id, lifecycle)
+
+    def _resume_returned(self, session_id: str, lifecycle: dict) -> dict:
+        record = lifecycle[session_id]; source = Path(record["source"]) if record.get("source") else None; destination = Path(record["destination"]) if record.get("destination") else None
+        if destination:
+            if destination.exists() and hashlib.sha256(destination.read_bytes()).hexdigest() != record["sha256"]: return {"status": "manual_review", "reason": "archive hash mismatch"}
+            if not destination.exists():
+                if not source or not source.exists() or hashlib.sha256(source.read_bytes()).hexdigest() != record["sha256"]: return {"status": "manual_review", "reason": "source missing or hash mismatch"}
+                destination.parent.mkdir(parents=True, exist_ok=True); destination.write_bytes(source.read_bytes())
+            record["stage"] = "archive_written"; lifecycle[session_id] = record; atomic_write_json(self.lifecycle_path, lifecycle)
+            if source.exists():
+                if hashlib.sha256(source.read_bytes()).hexdigest() != record["sha256"]: return {"status": "manual_review", "reason": "source changed"}
+                source.unlink()
+            record["stage"] = "source_removed"
+        assignments = read_json(self.assignments_path, {}); expected = record.get("assignment")
+        current = assignments.get(session_id)
+        if current is not None and expected is not None and current != expected: return {"status": "manual_review", "reason": "assignment changed during return"}
+        if current is not None: del assignments[session_id]; atomic_write_json(self.assignments_path, assignments)
+        record["stage"] = "assignment_removed"; record["status"] = "RETURNED"; lifecycle[session_id] = record; atomic_write_json(self.lifecycle_path, lifecycle)
+        return {"status": "processed", "session_id": session_id, "action": record["action"]}
 
     def _recover_returned_intents(self) -> None:
         lifecycle = read_json(self.lifecycle_path, {})
-        changed = False
-        for session_id, record in lifecycle.items():
-            if record.get("status") != "PENDING": continue
-            assignments = read_json(self.assignments_path, {})
-            if session_id in assignments:
-                del assignments[session_id]; atomic_write_json(self.assignments_path, assignments)
-            record["status"] = "RETURNED"; record["action"] = record.get("action", "released_claim"); lifecycle[session_id] = record; changed = True
-        if changed: atomic_write_json(self.lifecycle_path, lifecycle)
+        for session_id, record in list(lifecycle.items()):
+            if record.get("status") == "PENDING": self._resume_returned(session_id, lifecycle)
 
     def _claim_counts(self, assignments: dict) -> dict[str, int]:
         counts = {
@@ -553,7 +550,7 @@ class VerificationStore:
 
     def load_draft(self, worker: dict[str, str]) -> dict:
         session_id = worker["session_id"]
-        with TASK_LOCK:
+        with TASK_LOCK, store_lock(self.lifecycle_lock_path):
             assignments = read_json(self.assignments_path, {})
             assignment = assignments.get(session_id)
             errors = self._assignment_identity_errors(assignment, worker)
@@ -569,7 +566,7 @@ class VerificationStore:
         session_id = worker.get("session_id") if isinstance(worker, dict) else ""
         if not session_id:
             return {"status": "error", "errors": ["Draft is missing worker.session_id."]}
-        with TASK_LOCK:
+        with TASK_LOCK, store_lock(self.lifecycle_lock_path):
             assignments = read_json(self.assignments_path, {})
             assignment = assignments.get(session_id)
             errors = self._assignment_identity_errors(assignment, worker)
@@ -610,7 +607,7 @@ class VerificationStore:
         session_id = worker.get("session_id") if isinstance(worker, dict) else ""
         if not session_id:
             return {"status": "error", "errors": validate_submission(payload)}
-        with TASK_LOCK:
+        with TASK_LOCK, store_lock(self.lifecycle_lock_path):
             assignments = read_json(self.assignments_path, {})
             assignment = assignments.get(session_id)
             if not assignment:
