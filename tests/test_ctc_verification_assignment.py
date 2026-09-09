@@ -1,10 +1,22 @@
 import json
+import hashlib
+import multiprocessing
 import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from prolific.ctc_verification_app.app import VerificationStore
+
+
+def _race_return(root_text):
+    root=Path(root_text)
+    store=VerificationStore([], [str(root/"candidates.jsonl")], root/"data", 1, 1, "https://example.test/complete", False)
+    worker={"prolific_pid":"P1","study_id":"S1","session_id":"S1"}
+    assignment=store.assign(worker)
+    if assignment.get("status") != "ok": return assignment["status"]
+    payload={"schema_version":"ctc-verification-v1","worker":worker,"assignment":assignment["assignment"],"tasks":[{"candidate_id":assignment["tasks"][0]["candidate_id"],"task_id":assignment["tasks"][0]["task_id"],"relevant_interruption":False}]}
+    return store.submit(payload)["status"]
 
 
 class CtcVerificationAssignmentTest(unittest.TestCase):
@@ -191,6 +203,31 @@ class CtcVerificationAssignmentTest(unittest.TestCase):
             root=Path(d); store=self.store(root, count=1, redundancy=1)
             result=store.reconcile_returned({"id":"S1","study_id":"S1","participant":{"id":"P1"},"status":"RETURNED"}, consent_withdrawn=True)
             self.assertEqual(result["status"],"manual_review"); self.assertFalse((root/"data"/"returned-lifecycle.json").exists())
+
+    def test_restart_recovers_each_persisted_transaction_boundary(self):
+        for stage in ("intent", "archive_written", "source_removed", "assignment_removed", "complete"):
+            with self.subTest(stage=stage), tempfile.TemporaryDirectory() as d:
+                root=Path(d); store=self.store(root, count=1, redundancy=1); worker=self.worker("P1","S1"); assignment=store.assign(worker)
+                payload=self.payload(worker, assignment); store.submit(payload)
+                source=root/"data"/"submissions"/"S1.json"; raw=source.read_bytes(); archive=root/"data"/"excluded_submissions"/"2026-09-09"/"prolific_returned"/"S1.json"
+                if stage in ("archive_written","source_removed","assignment_removed","complete"): archive.parent.mkdir(parents=True); archive.write_bytes(raw)
+                if stage in ("source_removed","assignment_removed","complete"): source.unlink()
+                assignments=json.loads((root/"data"/"assignments.json").read_text())
+                if stage in ("assignment_removed","complete"): assignments.pop("S1",None); (root/"data"/"assignments.json").write_text(json.dumps(assignments))
+                lifecycle={"S1":{"status":"RETURNED" if stage=="complete" else "PENDING","stage":stage,"session_id":"S1","study_id":"S1","participant_id":"P1","assignment":None if stage in ("assignment_removed","complete") else assignments.get("S1"),"source":str(source),"destination":str(archive),"sha256":hashlib.sha256(raw).hexdigest(),"action":"archived_result","processed_at":"2026-09-09T00:00:00Z"}}
+                (root/"data"/"returned-lifecycle.json").write_text(json.dumps(lifecycle))
+                recovered=self.store(root, count=1, redundancy=1)
+                self.assertEqual(recovered.assign(self.worker("P1","S1"))["status"],"error")
+                self.assertEqual(archive.read_bytes(), raw); self.assertEqual(hashlib.sha256(archive.read_bytes()).hexdigest(), lifecycle["S1"]["sha256"])
+                self.assertEqual(recovered.submit(self.payload(worker, assignment))["status"],"error")
+                self.assertEqual(recovered.save_draft({"worker":worker,"taskState":[]})["status"],"error")
+
+    def test_real_process_store_lock_race_does_not_resurrect_returned_session(self):
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d); store=self.store(root, count=1, redundancy=1); worker=self.worker("P1","S1"); assignment=store.assign(worker)
+            returned={"id":"S1","study_id":"S1","participant":{"id":"P1"},"status":"RETURNED"}
+            process=multiprocessing.Process(target=_race_return,args=(str(root),)); process.start(); store.reconcile_returned(returned); process.join(10)
+            self.assertFalse(process.is_alive()); self.assertEqual(json.loads((root/"data"/"returned-lifecycle.json").read_text())["S1"]["status"],"RETURNED")
 
 if __name__ == "__main__":
     unittest.main()
