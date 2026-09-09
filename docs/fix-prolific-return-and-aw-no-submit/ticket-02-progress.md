@@ -21,4 +21,4 @@
 - 未使用真实凭据或生产 API；当前环境未配置可用的只读平台客户端，因此没有声称 live validation。调用方需提供实现 `list_submissions(study_id, cursor, page_size)` 的客户端，并将真实分页字段适配到该接口。
 - 报告是只读预览，不执行 Ticket 3–8 的归档、释放、联系、webhook 或定时任务。
 
-提交哈希：ac94f88（本地分支）。
+实现提交哈希：bc0a708（本地分支）。
