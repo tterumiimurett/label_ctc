@@ -24,3 +24,12 @@ All reproduction uses synthetic isolated data. No production archival, message, 
 - Ticket 07 `52c1326`: Standards passed; Spec blocked failed reports marked complete, absent autonomous pending drain, discarded reports, HTTP header/order timestamp handling, stale lease ownership and wrong-study terminal handling. Fix `e6da61a` is now in independent dual-axis re-review.
 
 The next round remains blocked on all three tickets passing their own final reviews and merging. These are implementation/review defects, not evidence of newly observed production incidents.
+
+
+## Approved code merges
+
+Ticket 03 final `473a913`: Standards 0 / Spec 0 remaining blockers. Assignment now uses the same recovery gate as submit and drafts. Independent tests: 12 focused CTC tests; root full suite 44 passed. Merged to main.
+
+Ticket 07 final `687876e`: Standards 0 / Spec 0 code blockers. Detail identity/schema, occurrence timestamp ordering and durable periodic reports verified; 14 trigger tests independently passed. Merged to main with production execution disabled. HTTPS, real workspace/API permissions and subscription inventory remain operational acceptance items for activation.
+
+Combined main after these merges: 58 unittest tests passed. Ticket 05 `6f09b6c` remains Spec-blocked: real history adapter never yields clear, fresh uncertainty wrongly cancelled, history manual reasoning not fully durable. Original interactive session is fixing these. Tickets 04/06 have not started.
