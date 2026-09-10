@@ -162,11 +162,17 @@ def outbound_attempted(entry: dict[str, Any]) -> bool:
     return bool(entry.get("send_attempted_at") or entry.get("send_attempt_count") or entry.get("send_operation"))
 
 
-def _complete_answer_arrival(row: dict[str, Any], study: str, participant_id: Any) -> bool:
+def _complete_answer_arrival(entry: dict[str, Any], row: dict[str, Any], study: str, participant_id: Any) -> bool:
     """Return true only for an identity-matched complete answer still in AW."""
     if row.get("status") != "AWAITING REVIEW" or row.get("classification") != "matched":
         return False
     if row.get("study_id") != study or row.get("participant_id") != participant_id:
+        return False
+    stored_study = entry.get("study_id")
+    stored_participant = entry.get("participant_id")
+    if stored_study is not None and stored_study != study:
+        return False
+    if stored_participant is not None and stored_participant != participant_id:
         return False
     if not isinstance(participant_id, str) or not participant_id:
         return False
@@ -200,6 +206,16 @@ def _run(report: dict[str, Any], ledger: ContactLedger, fresh: FreshReconciliati
         entry = sessions.setdefault(sid, {"state": "observed"})
         if entry.get("state") == "manual_review":
             continue
+        entry_state = entry.get("state")
+        if entry_state == "contacted":
+            decisions.append(queue_manual_review(entry, sid, study, pid, {"prior_contact"}, "prior_contact_requires_confirmation"))
+            continue
+        if entry_state == "delivery_unknown" and not outbound_attempted(entry):
+            decisions.append(ContactDecision(sid, "manual_review", ["delivery_unknown"], participant_id=pid, study_id=study, reason="outbound_attempt_requires_recovery"))
+            continue
+        if entry_state in {"sent", "sending"} and not outbound_attempted(entry):
+            decisions.append(queue_manual_review(entry, sid, study, pid, {entry_state}, "outbound_attempt_requires_recovery"))
+            continue
         if outbound_attempted(entry):
             if entry.get("state") == "sent" or entry.get("send_outcome") == "accepted" or entry.get("message_id"):
                 decisions.append(queue_manual_review(entry, sid, study, pid, {"acknowledged_send"}, "acknowledged_send_requires_confirmation"))
@@ -213,7 +229,7 @@ def _run(report: dict[str, Any], ledger: ContactLedger, fresh: FreshReconciliati
         if row.get("classification") != "awaiting_without_final_result":
             if entry.get("first_missing_at") and entry.get("state") == "manual_review":
                 continue
-            if _complete_answer_arrival(row, study, pid):
+            if _complete_answer_arrival(entry, row, study, pid):
                 entry["state"] = "resolved"
                 entry["resolution"] = "complete_answer_arrived"
             elif entry.get("first_missing_at"):
@@ -255,7 +271,7 @@ def _run(report: dict[str, Any], ledger: ContactLedger, fresh: FreshReconciliati
         manual_reason = _local_manual_reason(current, current_evidence, fresh=True)
         if manual_reason:
             decisions.append(_manual(entry, sid, study, pid, current_evidence, manual_reason)); continue
-        if _complete_answer_arrival(current, study, pid):
+        if _complete_answer_arrival(entry, current, study, pid):
             if entry.get("state") != "manual_review":
                 entry["state"] = "resolved"
                 entry["resolution"] = "complete_answer_arrived"

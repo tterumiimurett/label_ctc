@@ -83,9 +83,13 @@ try:
             payload = {'schema_version': 'ctc-verification-v1', 'worker': worker, 'assignment': assignment['assignment'], 'tasks': [{'candidate_id': t['candidate_id'], 'task_id': t['task_id'], 'relevant_interruption': False} for t in assignment['tasks']]}
             submit_result = store.submit(payload)
             assert submit_result['status'] == 'ok', submit_result
-        if mode in {'answer', 'initial_answer'}:
+        if mode == 'initial_answer':
             submit_answer()
         first = event('E1')
+        if mode == 'answer':
+            before_answer = ledger.read()
+            assert before_answer['sessions']['S1'].get('first_missing_at'), 'First missing observation was not durable before answer'
+            submit_answer()
         if mode == 'approved':
             state['status'] = 'APPROVED'
         now[0] += timedelta(minutes=10)

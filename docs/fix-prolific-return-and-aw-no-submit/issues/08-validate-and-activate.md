@@ -13,3 +13,6 @@
 - [ ] 用户确认报告和验证结果后才启用生产迁移/释放/消息；历史消息清单单独确认。
 - [ ] 独立记录每个动作和失败原因，可关闭后续自动动作；不把回滚当作自动恢复已归档结果。
 - [ ] 提供真实浏览器任务、说明、音频与失败提示验证证据，缺失证据明确列出。
+
+
+**Answer-arrival amendment:** See [`answer-arrival-amendment.md`](../answer-arrival-amendment.md). A complete identity-matched final answer during the missing-result wait resolves normally; status/contact/uncertain/identity exceptions remain manual.

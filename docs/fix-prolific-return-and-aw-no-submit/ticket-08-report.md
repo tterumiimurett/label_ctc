@@ -9,13 +9,13 @@ Run from the repository root:
 ```sh
 python3 -m unittest discover -s tests -v
 python3 tests/ticket08_cli_smoke.py > artifacts/ticket08/cli-smoke-final.json
-python3 -m unittest tests.test_ticket_08_cli_smoke tests.test_ticket_08_approved_transition -v
+python3 -m unittest tests.test_ticket_08_cli_smoke tests.test_ticket_08_approved_transition tests.test_ticket_08_answer_arrival_guards -v
 python3 -m unittest tests.test_ticket_08_authentic_recovery tests.test_ticket_08_concurrent_disable tests.test_ticket_08_crossresource tests.test_ticket_08_lifecycle_guards -v
 python3 -m unittest tests.test_ticket_08_lifecycle_guards.NoOpLifecycleRegressionTest tests.test_ticket_08_concurrent_disable.ConcurrentDisableIntegrationTest -v
 NODE_PATH=/tmp/ticket1-ctc/node_modules node tests/browser_ticket_01_ctc.cjs
 ```
 
-Current full-suite evidence: **129 tests passed**. Browser evidence is at [`artifacts/ticket08/browser-final.json`](../../artifacts/ticket08/browser-final.json): visible task/instructions, audio playback, no-task state, network failure, invalid JSON, and null-payload states.
+Current full-suite evidence: **132 tests passed**. Browser evidence is at [`artifacts/ticket08/browser-final.json`](../../artifacts/ticket08/browser-final.json): visible task/instructions, audio playback, no-task state, network failure, invalid JSON, and null-payload states.
 
 Controlled integration evidence covers signed receiver/archive and timeout paths, routine NEW ten-minute message delivery, reconstructed scheduler state, cross-resource isolation, disconnected POST restart recovery, concurrent disable, durable lifecycle manual outcomes, consent-source validation, historical approval records, and missed-event surfacing. These are isolated localhost/temp-store tests only.
 
@@ -81,4 +81,4 @@ The documented CLI preview/approve/status/receiver/scheduler/disable/restart seq
 
 ## Answer-arrival amendment
 
-The authoritative amendment is copied to [`answer-arrival-amendment.md`](answer-arrival-amendment.md) and synced into the spec and missing-result ticket. An identity-matched complete final answer in `AWAITING REVIEW` now resolves a waiting case without a message or new manual item, including initial observation and reconstructed fresh reassessment; the authentic approved-transition fixture submits through `VerificationStore`, reconstructs the stack, and repeats assessment. Status changes, prior contact, uncertain delivery, identity conflicts, drafts, errors, other-session results, existing manual records, and outbound attempts remain protected. The focused amendment tests cover initial answer, fresh-only answer, restart persistence, and approved-status manual behavior; both answer paths produce zero POSTs.
+The authoritative amendment is copied to [`answer-arrival-amendment.md`](answer-arrival-amendment.md) and synced into the spec and missing-result ticket. An identity-matched complete final answer in `AWAITING REVIEW` now resolves a waiting case without a message or new manual item, including initial observation and reconstructed fresh reassessment; the authentic approved-transition fixture submits through `VerificationStore`, reconstructs the stack, and repeats assessment. Status changes, prior contact, uncertain delivery, identity conflicts, drafts, errors, other-session results, existing manual records, and outbound attempts remain protected. The focused amendment tests cover initial answer, answer after a durable first-missing observation and reconstructed reassessment, restart persistence, approved-status manual behavior, stored-identity conflict, contacted-without-attempt metadata, and delivery-unknown recovery without attempt metadata; both answer paths produce zero POSTs while the guarded states remain manual/recovery-protected.

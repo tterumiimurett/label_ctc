@@ -14,7 +14,7 @@ class ApprovedTransitionTest(unittest.TestCase):
         self.assertIn('\"POSTs\": []', result.stdout)
 
 
-    def test_complete_answer_after_reconstructed_wait_resolves_without_manual_or_post(self):
+    def test_complete_answer_arrives_after_first_missing_before_due_and_resolves_after_reconstruction(self):
         fixture = Path(__file__).with_name("ticket08_approved_transition_fixture.py")
         result = subprocess.run([sys.executable, str(fixture), "answer"], capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
