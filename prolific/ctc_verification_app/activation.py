@@ -142,10 +142,11 @@ class ActivationController:
         if result.status not in {'reconciled'}: return result
         payload=json.loads(body); report=result.report or {}; context_value=json.loads(context.read_text(encoding='utf-8')) if isinstance(context,Path) else context
         event_id=headers.get('X-Event-ID') or headers.get('x-event-id')
-        state = self.trigger.store._read() if hasattr(self.trigger.store, '_read') else {}
-        event_record = state.get('events', {}).get(event_id, {})
-        if not event_record:
-            event_record = next((item for item in state.get('events', {}).values() if item.get('payload', {}).get('resource_id') == json.loads(body).get('resource_id') and item.get('stage') == 'completed'), {})
+        normalized_headers = {key.lower(): value for key, value in headers.items()}
+        event_id = normalized_headers.get('x-event-id', '')
+        payload = json.loads(body)
+        resource_id = payload.get('resource_id')
+        event_record = self.trigger.store.accepted_event(event_id, resource_id) if hasattr(self.trigger.store, 'accepted_event') else None
         payload_event = event_record.get('payload', {})
         accepted = {'event_id': event_id, 'resource_id': payload_event.get('resource_id'), 'study_id': self.study_id, 'event_timestamp': event_record.get('timestamp', 0), 'activation_timestamp': self._activation_epoch()}
         if event_record.get('stage') != 'completed' or not accepted['resource_id']:
@@ -196,6 +197,8 @@ class ActivationController:
         from .outbound import send_approved_return_requests
         fresh=self.adapter.reconcile()
         if fresh.get('status')!='ok': return {'status':'pending','origin':origin,'results':results,'report':fresh}
+        if session_id is not None:
+            fresh = {**fresh, 'submissions': [row for row in fresh.get('submissions', []) if row.get('session_id') == session_id]}
         candidate_report=build_contact_candidates(fresh,self.ledger,self.adapter,candidate_origin=origin,now=self.clock() if self.clock else None)
         historical=set(approval.historical_sessions) if approval else set()
         outbound=send_approved_return_requests(candidate_report,self.ledger,GuardedOutboundAdapter(self.adapter,self.journal),approved_sessions={item['session_id'] for item in candidate_report.get('decisions', []) if item.get('decision') == 'candidate'} if approval and approval.routine_enabled and origin == 'new' else set(approval.routine_sessions) if approval else set(),historical_sessions=historical,enabled=self.production_enabled)

@@ -12,6 +12,7 @@ class TriggerStore(Protocol):
     def begin(self, event_id: str, timestamp: int, payload: dict[str, Any]) -> tuple[str, str | None]: ...
     def finish(self, event_id: str, owner: str, stage: str, *, report: dict[str, Any] | None = None, error: str | None = None) -> bool: ...
     def retryable(self) -> list[tuple[str, dict[str, Any]]]: ...
+    def accepted_event(self, event_id: str, resource_id: str | None = None) -> dict[str, Any] | None: ...
     def record_periodic(self, report: dict[str, Any], *, error: str | None = None) -> None: ...
 
 class JsonTriggerStore:
@@ -73,6 +74,23 @@ class JsonTriggerStore:
                 state = self._read()
                 state["periodic_runs"].append({"source": "periodic", "recorded_at": time.time(), "status": report.get("status"), "report": report, "error": error})
                 self._write(state)
+            finally:
+                fcntl.flock(lock.fileno(), fcntl.LOCK_UN); lock.close()
+
+    def accepted_event(self, event_id: str, resource_id: str | None = None) -> dict[str, Any] | None:
+        """Return one completed durable event with exact id/resource matching."""
+        with self._thread_lock:
+            lock = self._lock()
+            try:
+                event = self._read().get('events', {}).get(event_id)
+                if not isinstance(event, dict) or event.get('stage') != 'completed':
+                    return None
+                payload = event.get('payload', {})
+                if resource_id is not None and payload.get('resource_id') != resource_id:
+                    return None
+                return {'event_id': event_id, 'resource_id': payload.get('resource_id'),
+                        'event_timestamp': event.get('timestamp', 0),
+                        'payload': payload, 'stage': event.get('stage')}
             finally:
                 fcntl.flock(lock.fileno(), fcntl.LOCK_UN); lock.close()
 
