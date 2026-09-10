@@ -83,3 +83,65 @@ Implementation adds exact public event lookup, normalized headers and resource f
 ## 51384f5 remains unaccepted
 
 Root inspected committed execute: lifecycle default-off and fresh validation defects remain despite completion-themed commit title. Full dual-axis review started pinned51384f5. Original task terminal; resumed same session in ticket-08-lifecycle-gates.* with actual-store reproduction and mandatory regression cases. Previous tests allowing lifecycle effects while disabled must use explicit local approval rather than weakening new guards. No merge/production.
+
+## c6f8e8d lifecycle guard checkpoint
+
+Original task added five-case actual VerificationStore regression and reports121 full tests. Default-off, fresh uncertainty/consent and routine future lifecycle addressed; independent field-contract review pending. Continued same session in ticket-08-outbound-recovery.* for actual uncertain HTTP delivery/restart and concurrent disable, with missed-event, CLI digest, Standards and final packet still required. No acceptance/merge/production.
+
+## Independent c6f8e8d review — immediate guards pass, integration incomplete
+
+/tmp/ticket08-c6f8e8d-lifecycle-review.py verifies immediate no-mutation/default-off guards. Manual lifecycle guard results are not durably journaled. Real reconciliation classification/proposed_action must be consumed; consent flag is injected in tests but not emitted by reconciliation, so explicit consent evidence source must be connected. Unconditional non-contact selection bypasses historical lifecycle approval. Findings queued to current ticket-08-outbound-recovery.*; final acceptance still withheld.
+
+## 8d8252b recovery evidence rejected
+
+Root inspected committed test_ticket_08_recovery_matrix.py: candidate is handwritten, reconciliation/history are canned, restart only reopens ledger, and disable test checks journal.begin rather than next controller effect. Report claim of reconstructed scheduler is unsupported. Original task resumed in ticket-08-authentic-unknown.* for actual one-event/ten-minute/HTTP-disconnect/reconstructed-components scheduler proof. Component pass123tests does not close full-chain requirement.
+
+## 53da6fc authentic unknown-delivery proof
+
+Independent pinned8d8252b /tmp/ticket08-8d8252b-unknown-http-review.py passes actual signed-event, ten-minute scheduler, recorded HTTP POST/disconnect and reconstructed full-stack recovery: one POST, manual_review, unknown outcome, attemptcount1 retained. Original task added equivalent repository test53da6fc and removed superseded mock proof;122tests reported. Continued same task ticket-08-final-guards.* for remaining lifecycle durability/real schema/consent source/historical approval, missed events, concurrency and Standards. Full acceptance remains pending.
+
+## 8dc871c guard persistence and concurrent-disable evidence
+
+Original task reports durablemanual, historical approval and missed-event surfacing122tests; newbehavior still needs explicit regression/final review. Independent /tmp/ticket08-53da6fc-concurrent-disable.py passes realtwoNEW/signedHTTP/firstPOSTblocked/separateprocessdisable: onePOST, no subsequent RETURNED release, restartedcontroller disabled. Audit limitation: locally prevented secondsend misclassified unknownattempt. Continued original ticket-08-final-evidence.* to retain authentic test, distinguish auditreason, finish Standards/sharedfixtures/actualrestart and guard regressions.
+
+## f6fcf1c and remaining audit binding gaps
+
+Local prevented-send reason distinguished from networkunknown; constructor typed;122tests. Spec8dc871c repro /tmp/ticket08-8dc871c-guards-review.py still finds earlymanual branches notjournaled, consent no real source, historical approval onlysession not exactaction/identity/digest. Continued same ticket-08-audit-binding.* to close with realregressions. Cleanup/reconstruction/disableproof/finalreview/humangate remain.
+
+## 914a7a5 approval/consent checkpoint
+
+Three production-code/docs files changed, no newtests;122tests reported. Independentreview checking realCLI approval record construction, consent source and earlymanualdurability. Continued same session ticket-08-fixture-cleanup.* for shared4spaceUTF8 fixtures, actualcrossresourcerestart, authenticconcurrentdisable retention and missingguardregressions. Full acceptance not established.
+
+## 9aef32e reconstruction tests, configuration findings still open
+
+Actualcrossresourcereconstruction and basicconsent/Approval objecttests added124tests+browserreported. Spec914a7a5 actual /tmp/ticket08-914a7a5-consent-review.py shows rootarray/malformedrecords/identitymismatch/conflictingduplicates failopen. CLIhistoricalrecords empty; earlymanual branch stillnotpersisted. No productioncode changed9aef32e; original resumed ticket-08-contract-closure.* for actualCLI/adapter regressionfixes. Cleanup/authenticdisable/finalreview/humangate pending.
+
+## dd7af1b contract closure awaiting independent verification
+
+Original reports earlymanual journal, CLIhistoricalrecords and consent4malformedcases pending nowfixed;124existingtests, no permanentnewregressions incommit. Independentrepro requested. Continued ticket-08-shared-fixtures.* to finish previouslydeferred shared4spaceUTF8 fixtures/authenticseparateprocessdisable and retainguardregressions before fullreview/humangate.
+
+## 3f7ce78 concurrency retained; two configuration failures
+
+Authentic separateprocessdisable repositorytest125fulltestsreported. Independentdd7af1b proves earlymanualpersistence; schema-valid consent record withrecord_id/samesessionwrongstudy stillignored. ActualCLI historical stores release_claim_proposal vs normalizedrelease_claim and rejects unchangedapprovedcase. Repros /tmp/ticket08-dd7af1b-{consent-review,cli-historical}.py. Original resumed ticket-08-final-normalization.* for2fixes/permanenttests and deferredfixtureStandards.
+
+## 461c87f normalized actions and final review cycle
+
+Original reports sharedCLI/controller actionnormalization and validconsentidentityconflict guard125tests; fullStandards+Spec pinned461c87f against377199a started. Original resumed ticket-08-cleanup-only.* to complete deferredfixtureStandards and accurateexecutablehumanpacket. Humanpacket still stale120 and unsupportedcompleteclaim atrootaudit; must correctbefore user gate.
+
+## 388d4e3 cleanup; normal-success no-op defect
+
+Standalonefixtures formatted andpacket rewritten125tests/browserreported; Standards re-review started. Spec461c87f authenticCLI consent/historicalmatching/rejectwrongactionidentity PASSES. UnrelatedAPPROVED proposed_action none createsfalsemanual record; original resumed ticket-08-noop-fix.* to correctwhilepreserving existingmissingstatuschange. Operationalcommands still require actualcontrolledverification; human/live gatespending.
+
+## 2e05b21 technical checkpoint
+
+Root independently ran fullsuite126tests exit0. Spec reviewedcode requirements pass including actualCLI no-op/historical and existingmissingstatuschange; operationalrunbook P2 remains: emptyauto_labels cannotconstructstore, approvalpath differsdata_dir, fixtureAPI/files absent, expiredscope. Standards only9explicitUTF8calls remain; duplicatefixtures NONBLOCKING. Original task ticket-08-encoding.* PID1829882 fixes exactcalls; runbookfindingsqueued. No human gate until runnablecontrolledsetup checked.
+
+## 801458a explicit UTF-8 closure
+
+Original ASTscan allTicket8testtextIO explicitUTF8 and126testsreported; Standardsfinalcheck requested. Continued same ticket-08-runnable-runbook.* to create/run actualisolatedoperator setup resolving brokenauto_labels/approvalpath/scope/API assumptions, capture proof, correctpacket. CoreSpecpass2e05b21; live/human gate remains afteroperationalreview.
+
+Standards final801458a PASS: all9reported IOcalls and entirechangedPython textIO verifiedexplicitUTF8; priorannotation/indentationpassescarry. Duplicationnonblocking. Speccore2e05b21pass remains; runnableoperatorrunbook andhumanacceptance pending.
+
+## f018997/1028718 runbook smoke rejected as insufficient
+
+Root normalrunexit0/receiverpreview passes; Spec faultinjection schedulerexit7 stillsmokeexit0 /tmp/ticket08-f018997-smoke-scheduler-failure.json. Schedulercycle notasserted/restartstatus notactualrestart/hardcodedport/finallychildcleanup missing. Docs1028718updated butscriptunchanged; original resumed ticket-08-smoke-failure.* to proveactualcycle/restart/noeffects and detectfailedscheduler. No human gate yet.

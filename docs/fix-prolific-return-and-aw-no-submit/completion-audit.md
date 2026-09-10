@@ -22,3 +22,11 @@ Branch: `codex/prolific-ticket-08-20260910`, base `377199a`.
 Run artifacts: `/tmp/prolific-round-d-20260910/ticket-08.*`.
 
 Do not mark goal complete while required evidence, code review, human verification or integration remains missing. Production enablement is not included merely because implementation is accepted.
+
+## Latest technical checkpoint (2026-09-10)
+
+- Root independently ran 126 tests at 2e05b21; all passed.
+- Spec reviewed code passes at 2e05b21; controlled HTTP proofs cover normal and cross-session contact, delayed recheck, actual restart, uncertain delivery without resend, concurrent disable, returned/timeout archive and release, and late answers. Detailed scope and artifacts: reviews/ticket-08-review.md.
+- Standards passes at 801458a; fixture duplication is non-blocking.
+- Operator instructions still require a reproducible isolated setup and actual CLI receiver/scheduler smoke proof. Same independent task is executing ticket-08-runnable-runbook.*.
+- Ticket 8 remains unmerged. Its final human verification and current live read-only report/access prerequisites remain unmet. Neither the technical checks nor isolated browser evidence authorize production actions.
