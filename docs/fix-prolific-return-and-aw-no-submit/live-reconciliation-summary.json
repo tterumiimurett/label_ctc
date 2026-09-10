@@ -1,0 +1,45 @@
+{
+  "status": "ok",
+  "error": null,
+  "counts": {
+    "local_final_results": 295,
+    "platform_submissions": 2952,
+    "temporary_claims": 0
+  },
+  "writes_performed": false,
+  "rows": 2952,
+  "unique_sessions": 2952,
+  "status_counts": {
+    "RETURNED": 2593,
+    "AWAITING REVIEW": 299,
+    "TIMED OUT": 60
+  },
+  "classification_counts": {
+    "returned_without_local_result": 2592,
+    "matched": 293,
+    "timed_out_without_local_result": 59,
+    "awaiting_without_final_result": 6,
+    "returned_with_local_result": 1,
+    "timed_out_with_local_result": 1
+  },
+  "code_classification_cross_counts": {
+    "('absent', 'returned_without_local_result')": 2555,
+    "('unavailable', 'matched')": 293,
+    "('absent', 'timed_out_without_local_result')": 59,
+    "('unavailable', 'returned_without_local_result')": 24,
+    "('nocode', 'returned_without_local_result')": 13,
+    "('nocode', 'awaiting_without_final_result')": 5,
+    "('unavailable', 'awaiting_without_final_result')": 1,
+    "('unavailable', 'returned_with_local_result')": 1,
+    "('absent', 'timed_out_with_local_result')": 1
+  },
+  "implementation_commit": "cc98597",
+  "report_sha256": "67218f54e36ae244809bd985ea75611841e7750e7614022c5bb0dad9c38b95de",
+  "recorded_at_utc": "2026-09-10T05:33:12.054593+00:00",
+  "limitations": [
+    "Sequential current-state read, not an atomic platform snapshot",
+    "Valid completion codes not configured: nonempty non-NOCODE values remain unavailable, not proven unknown",
+    "No permission to execute proposed actions or send messages",
+    "Only archive technical human acceptance has passed"
+  ]
+}

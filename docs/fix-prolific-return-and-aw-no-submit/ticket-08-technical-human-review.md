@@ -2,7 +2,7 @@
 
 状态：等待用户核验，尚未合并。
 
-待核验版本：`3a89d70`，分支 `codex/prolific-ticket-08-20260910`。独立任务 `01a0890a-dc99-7113-afe8-d7020a3e0e2c`，工作区 `/tmp/prolific-round-d-20260910/ticket-08`。
+待核验版本：`cc98597`，分支 `codex/prolific-ticket-08-20260910`。独立任务 `01a0890a-dc99-7113-afe8-d7020a3e0e2c`，工作区 `/tmp/prolific-round-d-20260910/ticket-08`。
 
 ## 已验证证据
 
@@ -20,7 +20,9 @@
 
 用户已提供 `source ~/.prolific_profile`，凭据可用。默认分页30页2952行却只有1424个唯一ID，完整性校验正确阻止报告。只读对照增加官方支持的 `ordering=started_at` 后，30页2952个ID无重复，和研究专用接口集合完全一致；平台当次状态为299 AWAITING REVIEW、2593 RETURNED、60 TIMED-OUT。这不是本地有效答案数量，也不能用于替代旧CSV时点。
 
-证据见 `live-pagination-investigation.md`、`sorted-pagination-evidence.json`。原独立任务正在修复客户端未指定排序的问题，修复后须独立双轴审查，现有人工门槛保持不变。仍须通过实际修复客户端完成身份与本地答案逐条对账，取得只读动作清单；尚未执行任何归档、释放或消息动作。生产迁移、消息发送和启用服务仍需明确批准。workspace/webhook 配置清单仍待核实。
+证据见 `live-pagination-investigation.md`、`sorted-pagination-evidence.json`。客户端排序修复已提交cc98597并通过独立双轴审查。修复后的真实CLI完成全部2952条对账，status=ok、唯一session2952，未出现身份冲突/本地读取错误分类。299条AW中293有匹配结果、6缺失；本地最终结果295条，其中1条Returned、1条Timed Out。零临时占用。6条缺失中5条NOCODE，另1条未提供有效完成码集合故代码类别unavailable，不能称Unknown Code。汇总证据 live-reconciliation-summary.json；完整私有报告 /tmp/prolific-ticket08-sorted-live-reconciliation.json，不提交参与者明细。
+
+查询是顺序读取，非平台原子快照。后续动作仍须执行前复查；本次没有归档、释放、发信或变更状态。有效完成码分类、workspace/webhook 配置清单和具体历史动作批准仍待核实。人工门槛不变，生产迁移、消息发送和启用服务仍需明确批准。
 
 ## 恢复步骤
 
