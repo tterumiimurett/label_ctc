@@ -347,6 +347,20 @@ class ProlificSubmissionClient:
             next_url = _next_page_href(page, "message")
         return combined
 
+    def send_message(self, *, recipient_id: str, body: str, study_id: str) -> dict[str, Any]:
+        """Send one ordinary message, preserving the approved request wording."""
+        url = urljoin(self.base_url + "/", "messages/")
+        if urlparse(url).netloc != self.origin:
+            raise ValueError("request leaves configured API origin")
+        payload = json.dumps({"recipient_id": recipient_id, "body": body, "study_id": study_id}).encode("utf-8")
+        request = Request(url, data=payload, method="POST", headers={
+            "Authorization": f"Token {self.token}",
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+        })
+        with self.opener.open(request, timeout=self.timeout) as response:
+            return json.loads(response.read().decode("utf-8"))
+
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Print a read-only Prolific reconciliation report")

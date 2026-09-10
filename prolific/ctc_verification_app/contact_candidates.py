@@ -109,13 +109,57 @@ def _ts(value: datetime) -> str: return value.astimezone(timezone.utc).isoformat
 
 _MANUAL_EVIDENCE = {"draft", "archived_result", "read_error", "other_session_result", "save_error", "identity_mismatch", "local_read_error"}
 
-def _manual(entry: dict[str, Any], sid: str, study: str, pid: Any, evidence: set[str], reason: str) -> ContactDecision:
-    identity = pid if isinstance(pid, str) and pid else None
+def queue_manual_review(entry: dict[str, Any], sid: str, study: Any, pid: Any, evidence: set[str], reason: str) -> ContactDecision:
+    """Persist manual disposition while separating trusted and observed identity."""
+    evidence = set(entry.get("evidence", [])) | set(evidence)
+    trusted_identity = entry.get("identity_status") != "observed"
+    original_study = entry.get("study_id") if trusted_identity else None
+    original_pid = entry.get("participant_id") if trusted_identity else None
+    if isinstance(original_study, str):
+        if isinstance(study, str) and original_study != study:
+            entry["observed_study_id"] = study
+            evidence.add("observed_study_id_conflict")
+        elif not isinstance(study, str):
+            entry["observed_study_id"] = f"invalid:{type(study).__name__}"
+            evidence.add("observed_study_id_invalid")
+    elif isinstance(study, str):
+        entry.update({"study_id": study, "observed_study_id": study, "identity_status": "observed"})
+    else:
+        entry["observed_study_id"] = f"invalid:{type(study).__name__}"
+        evidence.add("observed_study_id_invalid")
+    if isinstance(original_pid, str):
+        if isinstance(pid, str) and original_pid != pid:
+            entry["observed_participant_id"] = pid
+            evidence.add("observed_participant_id_conflict")
+        elif not isinstance(pid, str):
+            entry["observed_participant_id"] = f"invalid:{type(pid).__name__}"
+            evidence.add("observed_participant_id_invalid")
+    elif isinstance(pid, str):
+        entry.update({"participant_id": pid, "observed_participant_id": pid, "identity_status": "observed"})
+    else:
+        entry["observed_participant_id"] = f"invalid:{type(pid).__name__}"
+        evidence.add("observed_participant_id_invalid")
+    if entry.get("session_id") not in {None, sid}:
+        entry["observed_session_id"] = sid
+        evidence.add("observed_session_id_conflict")
+    else:
+        entry.setdefault("session_id", sid)
     complete = sorted(evidence | {reason})
-    message = APPROVED_MESSAGE.format(SESSION_ID=sid)
-    entry.update({"state": "manual_review", "study_id": study, "participant_id": identity,
-                  "reason": reason, "evidence": complete, "message": message})
-    return ContactDecision(sid, "manual_review", complete, message, identity, study, reason)
+    entry.update({"state": "manual_review", "reason": reason, "evidence": complete})
+    trusted_study = original_study if isinstance(original_study, str) else (entry.get("study_id") if entry.get("identity_status") == "observed" else None)
+    trusted_pid = original_pid if isinstance(original_pid, str) else (entry.get("participant_id") if entry.get("identity_status") == "observed" else None)
+    return ContactDecision(sid, "manual_review", complete, participant_id=trusted_pid, study_id=trusted_study, reason=reason)
+
+
+def _manual(entry: dict[str, Any], sid: str, study: Any, pid: Any, evidence: set[str], reason: str) -> ContactDecision:
+    decision = queue_manual_review(entry, sid, study, pid, evidence, reason)
+    entry["message"] = APPROVED_MESSAGE.format(SESSION_ID=sid)
+    return decision
+
+
+def outbound_attempted(entry: dict[str, Any]) -> bool:
+    """Irreversible barrier: an outbound operation may never be started twice."""
+    return bool(entry.get("send_attempted_at") or entry.get("send_attempt_count") or entry.get("send_operation"))
 
 
 def _local_manual_reason(row: dict[str, Any], evidence: set[str], *, fresh: bool = False) -> str | None:
@@ -128,7 +172,7 @@ def _local_manual_reason(row: dict[str, Any], evidence: set[str], *, fresh: bool
         return "fresh_uncertain_local_evidence" if fresh else "uncertain_local_evidence"
     return None
 
-def _run(report: dict[str, Any], ledger: ContactLedger, fresh: FreshReconciliation, now: datetime, wait_minutes: int) -> dict[str, Any]:
+def _run(report: dict[str, Any], ledger: ContactLedger, fresh: FreshReconciliation, now: datetime, wait_minutes: int, candidate_origin: str) -> dict[str, Any]:
     if report.get("status") != "ok": return {"status": "pending", "decisions": [], "error": report.get("error", "reconciliation unavailable")}
     study = report.get("study_id")
     if not isinstance(study, str) or not study: return {"status": "manual_review", "decisions": [{"decision": "manual_review", "evidence": ["missing_study_id"]}]}
@@ -140,15 +184,32 @@ def _run(report: dict[str, Any], ledger: ContactLedger, fresh: FreshReconciliati
         evidence = {str(item) for item in row.get("evidence", []) if isinstance(item, str)}
         evidence.update(f"local_error:{item}" for item in row.get("errors", []) if isinstance(item, str) and item)
         entry = sessions.setdefault(sid, {"state": "observed"})
+        if entry.get("state") == "manual_review":
+            continue
+        if outbound_attempted(entry):
+            if entry.get("state") == "sent" or entry.get("send_outcome") == "accepted" or entry.get("message_id"):
+                decisions.append(queue_manual_review(entry, sid, study, pid, {"acknowledged_send"}, "acknowledged_send_requires_confirmation"))
+                continue
+            if entry.get("state") not in {"sending", "delivery_unknown"}:
+                entry.update({"state": "delivery_unknown", "reason": "outbound_attempt_requires_recovery"})
+            continue
         manual_reason = _local_manual_reason(row, evidence)
         if manual_reason:
             decisions.append(_manual(entry, sid, study, pid, evidence, manual_reason)); continue
         if row.get("classification") != "awaiting_without_final_result":
-            entry["state"] = "resolved"; continue
+            if entry.get("first_missing_at"):
+                decisions.append(queue_manual_review(entry, sid, study, pid, evidence, "answer_or_status_arrived_after_missing_detection"))
+            else:
+                entry["state"] = "resolved"
+            continue
         if not isinstance(pid, str) or not pid:
             decisions.append(_manual(entry, sid, study, pid, evidence, "missing_participant_identity")); continue
         if bool(row.get("return_requested")):
-            entry["state"] = "contacted"; decisions.append(ContactDecision(sid, "already_contacted", ["platform_return_requested"])); continue
+            if entry.get("first_missing_at"):
+                decisions.append(queue_manual_review(entry, sid, study, pid, evidence, "prior_contact_after_missing_detection"))
+            else:
+                entry["state"] = "contacted"
+            continue
         if entry.get("study_id") and (entry.get("study_id"), entry.get("participant_id")) != (study, pid):
             decisions.append(_manual(entry, sid, study, pid, evidence, "identity_changed_since_observation")); continue
         if not entry.get("first_missing_at"):
@@ -176,27 +237,29 @@ def _run(report: dict[str, Any], ledger: ContactLedger, fresh: FreshReconciliati
         if manual_reason:
             decisions.append(_manual(entry, sid, study, pid, current_evidence, manual_reason)); continue
         if (current.get("status") != "AWAITING REVIEW" or current.get("classification") != "awaiting_without_final_result"):
-            entry["state"] = "resolved"; decisions.append(ContactDecision(sid, "cancelled", ["fresh_status_or_result_changed"])); continue
+            decisions.append(queue_manual_review(entry, sid, study, pid, current_evidence, "answer_or_status_arrived_after_missing_detection")); continue
         if bool(current.get("return_requested")):
-            entry["state"] = "contacted"; decisions.append(ContactDecision(sid, "already_contacted", ["platform_return_requested"])); continue
+            decisions.append(queue_manual_review(entry, sid, study, pid, current_evidence, "prior_contact_after_missing_detection")); continue
         history = fresh.inspect_messages(session_id=sid, participant_id=pid, study_id=study)
         if history != "clear":
-            if history == "already_contacted":
-                entry.update({"state": "contacted", "reason": "prior_outbound_return_request", "evidence": ["fresh_message_history_already_contacted"]})
-                decisions.append(ContactDecision(sid, "already_contacted", entry["evidence"], participant_id=pid, study_id=study, reason=entry["reason"])); continue
+            if history == "prior_contact":
+                decisions.append(queue_manual_review(entry, sid, study, pid, {"prior_contact"}, "prior_contact_after_missing_detection")); continue
             decisions.append(_manual(entry, sid, study, pid, {"fresh_message_history_" + history}, "message_history_not_proven_clear")); continue
         candidate_evidence = set(entry.get("evidence", [])) | current_evidence | {"fresh_reconciliation", "fresh_message_history_clear"}
-        entry.update({"state": "candidate", "candidate_at": _ts(now), "candidate_evidence": sorted(candidate_evidence), "candidate_message": APPROVED_MESSAGE.format(SESSION_ID=sid)})
+        if candidate_origin == "unknown":
+            decisions.append(queue_manual_review(entry, sid, study, pid, candidate_evidence, "candidate_origin_unknown")); continue
+        entry.update({"state": "candidate", "candidate_at": _ts(now), "candidate_origin": candidate_origin, "candidate_evidence": sorted(candidate_evidence), "candidate_message": APPROVED_MESSAGE.format(SESSION_ID=sid)})
         decisions.append(ContactDecision(sid, "candidate", entry["candidate_evidence"], entry["candidate_message"]))
     ledger.write(state)
     return {"status": "ok", "study_id": study, "decisions": [d.as_dict() for d in decisions], "writes_performed": True}
 
-def build_contact_candidates(report: dict[str, Any], ledger: ContactLedger, fresh: FreshReconciliation, *, now: datetime | str | None = None, wait_minutes: int = WAIT_MINUTES) -> dict[str, Any]:
+def build_contact_candidates(report: dict[str, Any], ledger: ContactLedger, fresh: FreshReconciliation, *, now: datetime | str | None = None, wait_minutes: int = WAIT_MINUTES, candidate_origin: str) -> dict[str, Any]:
     if wait_minutes != WAIT_MINUTES: raise ValueError("wait_minutes must be exactly ten minutes")
+    if candidate_origin not in {"new", "historical", "unknown"}: raise ValueError("candidate_origin must be new, historical, or unknown")
     reference = _dt(now or datetime.now(timezone.utc))
     if hasattr(ledger, "locked"):
-        with ledger.locked(): return _run(report, ledger, fresh, reference, wait_minutes)
-    return _run(report, ledger, fresh, reference, wait_minutes)
+        with ledger.locked(): return _run(report, ledger, fresh, reference, wait_minutes, candidate_origin)
+    return _run(report, ledger, fresh, reference, wait_minutes, candidate_origin)
 
 
 class ProlificFreshReconciliation:
@@ -211,7 +274,12 @@ class ProlificFreshReconciliation:
         from .reconciliation import reconcile_current_state
         return reconcile_current_state(self.reader, self.data_dir, self.study_id, self.valid_completion_codes)
 
+    def send_message(self, *, recipient_id: str, body: str, study_id: str) -> dict[str, Any]:
+        """Delegate the single ordinary-message operation to the real API client."""
+        return self.reader.send_message(recipient_id=recipient_id, body=body, study_id=study_id)
+
     def inspect_messages(self, *, session_id: str, participant_id: str, study_id: str) -> str:
+        """Classify complete ordered participant/researcher history without inference."""
         if self.scope is None:
             return "unavailable"
         try:
@@ -222,27 +290,38 @@ class ProlificFreshReconciliation:
             now = self.now or datetime.now(timezone.utc)
             if detail.get("study_id") != study_id or participant != participant_id:
                 return "ambiguous"
-            if detail.get("return_requested"):
-                return "already_contacted"
             if not self.scope.valid_for(detail.get("started_at"), now):
                 return "unavailable"
+            if detail.get("return_requested"):
+                return "prior_contact"
             payload = self.reader.get_messages(user_id=participant_id, created_after=_ts(self.scope.coverage_start), workspace_id=self.scope.workspace_id)
             if not isinstance(payload, dict) or not isinstance(payload.get("results"), list):
                 return "unavailable"
-            for message in payload["results"]:
-                if not isinstance(message, dict):
-                    return "ambiguous"
-                sender = message.get("sender_id")
-                body = str(message.get("body", ""))
-                outbound = sender == self.scope.researcher_id
-                inbound = sender == participant_id
-                return_language = "return" in body.lower() and "submission" in body.lower()
-                if outbound and session_id in body and return_language:
-                    return "already_contacted"
-                if inbound or (outbound and return_language):
-                    return "ambiguous"
-                if sender not in {self.scope.researcher_id, participant_id}:
-                    return "ambiguous"
+            messages = payload["results"]
+            if any(not isinstance(message, dict) or not isinstance(message.get("created_at"), str) or not isinstance(message.get("sender_id"), str) for message in messages):
+                return "ambiguous"
+            if any(message["sender_id"] not in {self.scope.researcher_id, participant_id} for message in messages):
+                return "ambiguous"
+            ordered = sorted(messages, key=lambda message: _dt(message["created_at"]))
+            timestamps = [_dt(message["created_at"]) for message in ordered]
+            if len(timestamps) != len(set(timestamps)):
+                return "ambiguous"
+            if not ordered:
+                return "clear"
+            last_researcher = max((message for message in ordered if message["sender_id"] == self.scope.researcher_id), key=lambda message: _dt(message["created_at"]), default=None)
+            if last_researcher is None:
+                return "participant_reply"
+            last_outgoing_time = _dt(last_researcher["created_at"])
+            for message in ordered:
+                if message["sender_id"] == participant_id and _dt(message["created_at"]) > last_outgoing_time:
+                    return "participant_reply"
+            for message in ordered:
+                if message["sender_id"] == self.scope.researcher_id:
+                    body = str(message.get("body", "")).lower()
+                    if "return" in body and "submission" in body:
+                        return "prior_contact"
+            if detail.get("return_requested"):
+                return "prior_contact"
             return "clear"
         except Exception:
             return "unavailable"
