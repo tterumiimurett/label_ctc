@@ -33,12 +33,12 @@ def _recover_without_resend(entry: dict[str, Any], session_id: str, participant_
     try:
         history = fresh.inspect_messages(session_id=session_id, participant_id=participant_id, study_id=study_id)
     except Exception as error:
-        entry.update({"state": "delivery_unknown", "recovery": "history_query_failed", "error": str(error)})
-        return _decision(session_id, "delivery_unknown", "history_query_failed")
+        entry.update({"recovery": "history_query_failed", "error": str(error)})
+        return _manual(entry, session_id, study_id, participant_id, "delivery_history_unavailable")
     if history == "prior_contact":
         return _manual(entry, session_id, study_id, participant_id, "prior_contact_after_attempt")
-    entry.update({"state": "delivery_unknown", "recovery": "not_confirmed"})
-    return _decision(session_id, "delivery_unknown", "reconciliation_required")
+    entry.update({"recovery": "not_confirmed", "recovery_outcome": "unresolved"})
+    return _manual(entry, session_id, study_id, participant_id, "delivery_not_confirmed")
 
 
 def send_approved_return_requests(
@@ -79,7 +79,12 @@ def send_approved_return_requests(
                         entry.update({"state": "manual_review", "reason": "attempt_identity_unavailable"})
                         decisions.append(_decision(session_id, "manual_review", "attempt_identity_unavailable"))
                 else:
-                    decisions.append(_decision(session_id, "manual_review", "fresh_submission_missing"))
+                    participant_id = entry.get("participant_id")
+                    study_id = entry.get("study_id")
+                    if isinstance(participant_id, str) and isinstance(study_id, str):
+                        decisions.append(_manual(entry, session_id, study_id, participant_id, "fresh_submission_missing"))
+                    else:
+                        decisions.append(_decision(session_id, "manual_review", "fresh_submission_missing"))
                 continue
             participant_id, study_id = row.get("participant_id"), row.get("study_id")
             if entry.get("participant_id") != participant_id or entry.get("study_id") != study_id:
@@ -87,17 +92,15 @@ def send_approved_return_requests(
             if not isinstance(participant_id, str) or not isinstance(study_id, str):
                 decisions.append(_decision(session_id, "manual_review", "missing_identity")); continue
             if entry.get("state") == "sent" or entry.get("send_outcome") == "accepted" or entry.get("message_id"):
-                entry["state"] = "sent"
-                decisions.append(_decision(session_id, "sent", "already_acknowledged")); continue
+                decisions.append(_manual(entry, session_id, study_id, participant_id, "acknowledged_send_requires_confirmation")); continue
             if outbound_attempted(entry) or entry.get("state") in {"sending", "delivery_unknown"}:
                 decisions.append(_recover_without_resend(entry, session_id, participant_id, study_id, fresh)); continue
             latest_report = fresh.reconcile()
             if latest_report.get("status") != "ok":
-                entry.update({"state": "delivery_unknown", "reason": "latest_reconciliation_unavailable"})
-                decisions.append(_decision(session_id, "delivery_unknown", "latest_reconciliation_unavailable")); continue
+                decisions.append(_manual(entry, session_id, study_id, participant_id, "latest_reconciliation_unavailable")); continue
             row = next((item for item in latest_report.get("submissions", []) if isinstance(item, dict) and item.get("session_id") == session_id), None)
             if not isinstance(row, dict):
-                decisions.append(_decision(session_id, "cancelled", "fresh_submission_missing")); continue
+                decisions.append(_manual(entry, session_id, study_id, participant_id, "fresh_submission_missing")); continue
             participant_id, study_id = row.get("participant_id"), row.get("study_id")
             if entry.get("participant_id") != participant_id or entry.get("study_id") != study_id:
                 decisions.append(_manual(entry, session_id, study_id or "", participant_id or "", "fresh_identity_changed")); continue
@@ -112,8 +115,8 @@ def send_approved_return_requests(
             try:
                 history = fresh.inspect_messages(session_id=session_id, participant_id=participant_id, study_id=study_id)
             except Exception as error:
-                entry.update({"state": "delivery_unknown", "reason": "message_history_query_failed", "error": str(error)})
-                decisions.append(_decision(session_id, "delivery_unknown", "message_history_query_failed"))
+                entry.update({"reason": "message_history_query_failed", "error": str(error)})
+                decisions.append(_manual(entry, session_id, study_id, participant_id, "message_history_query_failed"))
                 continue
             if history == "prior_contact":
                 decisions.append(_manual(entry, session_id, study_id, participant_id, "prior_contact_requires_confirmation")); continue

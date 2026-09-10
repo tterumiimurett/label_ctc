@@ -157,7 +157,7 @@ def _run(report: dict[str, Any], ledger: ContactLedger, fresh: FreshReconciliati
             continue
         if outbound_attempted(entry):
             if entry.get("state") == "sent" or entry.get("send_outcome") == "accepted" or entry.get("message_id"):
-                entry["state"] = "sent"
+                decisions.append(queue_manual_review(entry, sid, study, pid, {"acknowledged_send"}, "acknowledged_send_requires_confirmation"))
                 continue
             if entry.get("state") not in {"sending", "delivery_unknown"}:
                 entry.update({"state": "delivery_unknown", "reason": "outbound_attempt_requires_recovery"})

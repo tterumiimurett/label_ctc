@@ -108,7 +108,7 @@ class Ticket06OutboundTest(unittest.TestCase):
             build=build_contact_candidates(report(), JsonContactLedger(ledger_path), adapter, candidate_origin="new", now="2026-09-09T00:10:00Z")
             self.assertEqual(JsonContactLedger(ledger_path).read()["sessions"]["S1"]["state"], "delivery_unknown")
             adapter.error=None; second=send_approved_return_requests(report(), JsonContactLedger(ledger_path), adapter, approved_sessions={"S1"}, enabled=True)
-            self.assertEqual(second["decisions"][0]["decision"], "delivery_unknown"); self.assertEqual(len(adapter.sent), 1)
+            self.assertEqual(second["decisions"][0]["decision"], "manual_review"); self.assertEqual(len(adapter.sent), 1)
 
     def test_successful_send_remains_protected_if_state_is_mutated(self):
         with tempfile.TemporaryDirectory() as d:
@@ -117,7 +117,9 @@ class Ticket06OutboundTest(unittest.TestCase):
             adapter=Adapter(); send_approved_return_requests(report(), ledger, adapter, approved_sessions={"S1"}, enabled=True)
             value=ledger.read(); value["sessions"]["S1"]["state"]="candidate"; ledger.write(value)
             result=send_approved_return_requests(report(), ledger, adapter, approved_sessions={"S1"}, enabled=True)
-            self.assertEqual(result["decisions"][0]["decision"], "sent"); self.assertEqual(len(adapter.sent), 1)
+            self.assertEqual(result["decisions"][0]["decision"], "manual_review"); self.assertEqual(len(adapter.sent), 1)
+            saved=JsonContactLedger(ledger_path).read()["sessions"]["S1"]
+            self.assertEqual(saved["state"], "manual_review"); self.assertEqual(saved["message_id"], "M1"); self.assertEqual(saved["send_outcome"], "accepted")
 
     def test_latest_reconciliation_cancels_after_result_arrives(self):
         with tempfile.TemporaryDirectory() as d:
@@ -166,16 +168,37 @@ class Ticket06OutboundTest(unittest.TestCase):
             for thread in threads: thread.start()
             for thread in threads: thread.join()
             self.assertEqual(sum(len(adapter.sent) for adapter in adapters), 1)
-            self.assertEqual(sorted(result["decisions"][0]["decision"] for result in results), ["sent", "sent"])
+            self.assertEqual(sorted(result["decisions"][0]["decision"] for result in results), ["manual_review", "sent"])
 
     def test_restart_reconciles_sending_and_unknown_without_send(self):
         with tempfile.TemporaryDirectory() as d:
             ledger=JsonContactLedger(Path(d)/"c.json"); ledger.write({"sessions":{"S1":{"state":"sending","study_id":"STUDY","participant_id":"P1"}}})
             adapter=Adapter(history="clear"); result=send_approved_return_requests(report(), ledger, adapter, enabled=True)
-            self.assertEqual(result["decisions"][0]["decision"], "delivery_unknown"); self.assertEqual(adapter.sent, [])
+            self.assertEqual(result["decisions"][0]["decision"], "manual_review"); self.assertEqual(adapter.sent, [])
+            self.assertEqual(ledger.read()["sessions"]["S1"]["state"], "manual_review")
             ledger.write({"sessions":{"S1":{"state":"delivery_unknown","study_id":"STUDY","participant_id":"P1"}}}); adapter.history="prior_contact"
             result=send_approved_return_requests(report(), ledger, adapter, approved_sessions={"S1"}, enabled=True)
             self.assertEqual(result["decisions"][0]["decision"], "manual_review"); self.assertEqual(adapter.sent, [])
+
+    def test_missing_latest_row_persists_manual_without_synthetic_identity(self):
+        with tempfile.TemporaryDirectory() as d:
+            ledger=JsonContactLedger(Path(d)/"c.json"); ledger.write({"sessions":{"S1":{"state":"candidate","candidate_origin":"new","study_id":"STUDY","participant_id":"P1"}}})
+            class Missing(Adapter):
+                def reconcile(self): return {"status":"ok","study_id":"STUDY","submissions":[]}
+            adapter=Missing(); result=send_approved_return_requests(report(), ledger, adapter, enabled=True)
+            saved=ledger.read()["sessions"]["S1"]
+            self.assertEqual(result["decisions"][0]["decision"], "manual_review"); self.assertEqual(saved["state"], "manual_review")
+            self.assertEqual(saved["participant_id"], "P1"); self.assertEqual(saved["study_id"], "STUDY"); self.assertEqual(adapter.sent, [])
+
+    def test_history_failure_before_post_persists_manual_without_attempt(self):
+        with tempfile.TemporaryDirectory() as d:
+            ledger=JsonContactLedger(Path(d)/"c.json"); ledger.write({"sessions":{"S1":{"state":"candidate","candidate_origin":"new","study_id":"STUDY","participant_id":"P1"}}})
+            class Fails(Adapter):
+                def inspect_messages(self, **kwargs): raise OSError("history unavailable")
+            adapter=Fails(); result=send_approved_return_requests(report(), ledger, adapter, enabled=True)
+            saved=ledger.read()["sessions"]["S1"]
+            self.assertEqual(result["decisions"][0]["decision"], "manual_review"); self.assertEqual(saved["state"], "manual_review")
+            self.assertNotIn("send_attempted_at", saved); self.assertEqual(adapter.sent, [])
 
     def test_malformed_success_response_is_not_sent(self):
         with tempfile.TemporaryDirectory() as d:

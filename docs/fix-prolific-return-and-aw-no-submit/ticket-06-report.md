@@ -1,49 +1,32 @@
 # Ticket 06 implementation report
 
-Implemented an opt-in outbound engine for approved missing-result candidates. It uses the existing fresh reconciliation and message-history interfaces, rechecks current state before sending, sends exactly one ordinary message with the approved wording, and records a durable `sending` intent before the POST. Candidate approval is separate from activation; `enabled=False` is the default and callers must provide explicit session IDs. Delivery errors are reconciled once and become `delivery_unknown` when not confirmed; they are never blindly retried. Sending does not mark a submission RETURNED or alter review, payment, or allocation state.
+## Final behavior
 
-The real adapter uses the documented `POST /api/v1/messages/` contract with `recipient_id`, `body`, and `study_id`. Tests use a controlled opener and synthetic records only; no production credentials, participant data, messages, or runtime state were used.
+Routine newly eligible cases may be sent automatically only when activation is enabled and the candidate carries explicit `candidate_origin: new` provenance. The sender does not require an individual approved-session list for those cases. Historical candidates require a separate explicit `historical_sessions` approval set. Unknown origin is fail-closed and enters the manual queue.
 
-## Review
+All outbound lifecycle transitions use the shared durable ledger and lock. The sender persists `sending` and attempt metadata before the POST. A first POST timeout or malformed response may remain `delivery_unknown` as the delivery observation, but any recovery examination—clear, inaccessible, unresolved, or prior-contact history—persists `manual_review` without resending. Missing latest submissions, latest reconciliation failures, history failures before POST, arrived answers/status, drafts, archives, other-session results, identity changes, and acknowledged sends all persist manual review. Accepted `message_id`, `send_outcome`, timestamps, original identity, and evidence remain in the ledger when a sent case is requeued for confirmation.
 
-Standards review: fixed the initial formatting/line-length issues in the new module and adapter method. No remaining documented-standard or baseline-smell findings were identified in the isolated diff.
-
-Spec review: the implementation covers fresh recheck, one operation, durable pre-send state, default-off activation, separate candidate approval, unknown delivery handling, and no RETURNED/payment/review mutation. Historical approval remains an operational prerequisite; this ticket does not send historical candidates implicitly.
-
-## Verification
-
-- `python3 -m unittest tests.test_ticket_06_outbound -v` — 5 passed
-- `python3 -m unittest discover -s tests -v` — 76 passed
-- `python3 -m py_compile prolific/ctc_verification_app/outbound.py prolific/ctc_verification_app/reconciliation.py`
-
-## Operational prerequisites
-
-Before any future live use, an operator must verify credentials, workspace/message visibility, current candidate and history approval, and the production API contract/read-only state. Live sending remains disabled by default and was not executed here.
-
-## Defect-fix demonstration (integrated branch)
-
-The reproduced defects are covered by controlled synthetic tests: concurrent calls sharing the JSON ledger produce one send and one manual-review result; a latest draft, archive, other-session result, local error, or `return_requested` blocks sending; changing the approved participant from `P1` to `P9` produces manual review; interrupted `sending`/`delivery_unknown` states query history and never resend; and a malformed response is recorded as delivery unknown rather than sent. The composed adapter is `ProlificFreshReconciliation` delegating its one outbound operation to `ProlificSubmissionClient.send_message`.
-
-The exact approved body remains the `APPROVED_MESSAGE` template with the candidate session ID. The demonstration used synthetic `STUDY`/`S1`/`P1` records and controlled HTTP/openers only. Activation is still explicit (`enabled=False` by default), candidate IDs and message-history clearance are independently required, and no real message was sent.
-
-Post-fix verification: 11 focused Ticket 06 tests and 87 full-suite tests passed.
-
-
-## Revised human-review policy demonstration — 2026-09-10
-
-The integrated policy distinguishes routine new cases from historical backlog using durable ledger provenance: candidates created by the current ten-minute/fresh-reconciliation flow carry `candidate_origin: new` and may auto-execute only when activation is enabled; legacy candidates without that provenance remain visible but require a separately supplied `historical_sessions` approval list. No participant/session list is required for routine new cases, and activation remains default-off. This is a local policy distinction, not an inference from completion code or stale exports.
-
-Synthetic controlled outcomes: empty complete history is eligible; a researcher-only older outgoing message with no newer participant reply is eligible; a participant reply after the latest researcher outgoing message, participant-only history, missing timestamps, or failed history access is manual; a known prior return request or platform `return_requested` is manual with no POST; a final answer arriving at the per-recipient fresh check is durable manual review with no POST; drafts, archives, other-session evidence, identity drift, and read errors are manual. The exact approved ordinary wording remains unchanged, and exception cases do not receive it automatically.
-
-The cross-ticket timeout sequence remains protected: timeout records the attempt before the POST, candidate rebuilding preserves `delivery_unknown`, recovery queries history without resending, and acknowledged `sent` remains protected even if state is mutated. Controlled HTTP tests validate the real client POST shape and the composed fresh-reconciliation adapter; no real send occurred.
-
-Operational prerequisites remain: human approval of the activation rule, credentials and workspace/message visibility, verified API contract and message-history coverage, explicit historical backlog list approval, production scheduling/HTTPS configuration, and a separate live read-only validation.
-
+Chat eligibility uses complete ordered history: empty history and researcher-only history with no newer participant reply are clear; participant-only history, newer participant replies, unknown senders, equal timestamps, missing timestamps, and unreadable history are manual/ambiguous. A known prior request or platform `return_requested` is manual and never POSTed. No Session-ID text inference or LLM is used.
 
 ## Origin contract for Ticket 8
 
-`build_contact_candidates(..., candidate_origin=...)` now requires an explicit durable provenance value: `new` means the current processing run is authorized as routine-new after its configured activation/rule boundary; `historical` means backlog and must be named in the sender's separate `historical_sessions` approval set; `unknown` is fail-closed and queues manual review rather than creating an auto-eligible candidate. The builder persists the selected origin on the candidate. Ticket 8 must derive and persist this value from its processing/backfill/activation context, never infer `new` from first observation time, AW status, or absence of a prior ledger row.
+`build_contact_candidates(..., candidate_origin=...)` requires one of `new`, `historical`, or `unknown`. Ticket 8 must derive this from a durable processing/activation or backfill context and persist it. It must never infer `new` from first observation time, AW status, completion-code class, or absence of a ledger row. `new` is the only auto-eligible origin; `historical` is eligible only when named in `historical_sessions`; `unknown` queues manual review.
 
-Normal sender iteration includes `candidate`, `sending`, `delivery_unknown`, and `sent` ledger entries. Interrupted attempts are recovered without a new POST even when no per-session approval list is supplied. Chat history rejects unknown senders and equal timestamps as ambiguous/manual.
+## Reproduction evidence
 
-The revised blocker suite includes candidate-builder-to-sender regeneration, timeout/unknown recovery, unknown/equal-time history, and no-list interrupted recovery. No human policy issue was introduced by these known-defect fixes; root dual-axis review remains required.
+`PYTHONPATH=. python3 /tmp/ticket06-spec-review-repro.py` now reports: unknown origin `manual_review`/0 POSTs; historical origin `candidate`/0 POSTs pending separate approval; authorized new origin `sent`/1 POST; answer arrival `manual_review`; return requested `manual_review`; clear/prior-contact/unavailable recovery all `manual_review`/0 POSTs; candidate rebuilding preserves manual state; missing latest row persists manual with the original stored identity; and acknowledged sent reprocessing persists manual while retaining send evidence.
+
+These are synthetic controlled adapters/JSON ledgers only. No production API, participant data, message, archive, deployment, or runtime mutation was used.
+
+## Verification
+
+- Focused Ticket 06/Ticket 5 tests: 34 passed
+- Full suite: 95 passed
+- Public reviewer reproduction: passed with the expected ledger states
+- `git diff --check`: clean
+
+Root’s independent dual-axis review remains pending. This report does not claim review approval or production authorization.
+
+## Operator prerequisites
+
+Before any live activation: root review must pass; an operator must approve the activation/rule context, verify credentials and workspace/message visibility, validate current read-only API state and history coverage, separately approve any historical backlog list, and configure the controlled scheduler/HTTPS environment. Live sending remains disabled by default and was not performed here.
