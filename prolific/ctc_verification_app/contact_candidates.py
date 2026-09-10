@@ -162,6 +162,20 @@ def outbound_attempted(entry: dict[str, Any]) -> bool:
     return bool(entry.get("send_attempted_at") or entry.get("send_attempt_count") or entry.get("send_operation"))
 
 
+def _complete_answer_arrival(row: dict[str, Any], study: str, participant_id: Any) -> bool:
+    """Return true only for an identity-matched complete answer still in AW."""
+    if row.get("status") != "AWAITING REVIEW" or row.get("classification") != "matched":
+        return False
+    if row.get("study_id") != study or row.get("participant_id") != participant_id:
+        return False
+    if not isinstance(participant_id, str) or not participant_id:
+        return False
+    if row.get("return_requested") or row.get("errors"):
+        return False
+    evidence = {item for item in row.get("evidence", []) if isinstance(item, str)}
+    return not evidence.intersection(_MANUAL_EVIDENCE | {"other_session_result", "identity_mismatch"})
+
+
 def _local_manual_reason(row: dict[str, Any], evidence: set[str], *, fresh: bool = False) -> str | None:
     classification = row.get("classification")
     if classification in {"local_read_error", "identity_mismatch"}:
@@ -197,7 +211,12 @@ def _run(report: dict[str, Any], ledger: ContactLedger, fresh: FreshReconciliati
         if manual_reason:
             decisions.append(_manual(entry, sid, study, pid, evidence, manual_reason)); continue
         if row.get("classification") != "awaiting_without_final_result":
-            if entry.get("first_missing_at"):
+            if entry.get("first_missing_at") and entry.get("state") == "manual_review":
+                continue
+            if _complete_answer_arrival(row, study, pid):
+                entry["state"] = "resolved"
+                entry["resolution"] = "complete_answer_arrived"
+            elif entry.get("first_missing_at"):
                 decisions.append(queue_manual_review(entry, sid, study, pid, evidence, "answer_or_status_arrived_after_missing_detection"))
             else:
                 entry["state"] = "resolved"
@@ -236,6 +255,11 @@ def _run(report: dict[str, Any], ledger: ContactLedger, fresh: FreshReconciliati
         manual_reason = _local_manual_reason(current, current_evidence, fresh=True)
         if manual_reason:
             decisions.append(_manual(entry, sid, study, pid, current_evidence, manual_reason)); continue
+        if _complete_answer_arrival(current, study, pid):
+            if entry.get("state") != "manual_review":
+                entry["state"] = "resolved"
+                entry["resolution"] = "complete_answer_arrived"
+            continue
         if (current.get("status") != "AWAITING REVIEW" or current.get("classification") != "awaiting_without_final_result"):
             decisions.append(queue_manual_review(entry, sid, study, pid, current_evidence, "answer_or_status_arrived_after_missing_detection")); continue
         if bool(current.get("return_requested")):

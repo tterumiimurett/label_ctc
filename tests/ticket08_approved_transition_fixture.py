@@ -76,14 +76,16 @@ try:
             request = Request(f'http://127.0.0.1:{receiver.server_port}/', data=raw, headers={'Content-Type': 'application/json', 'X-Prolific-Request-Signature': sig, 'X-Prolific-Request-Timestamp': ts, 'X-Event-ID': eid, 'X-Timestamp': ts})
             with urlopen(request) as response:
                 return json.loads(response.read())
-        first = event('E1')
         mode = sys.argv[1] if len(sys.argv) > 1 else 'positive'
-        if mode == 'answer':
+        def submit_answer():
             worker = {'prolific_pid': 'P1', 'study_id': 'STUDY', 'session_id': 'S1'}
             assignment = store.assign(worker)
             payload = {'schema_version': 'ctc-verification-v1', 'worker': worker, 'assignment': assignment['assignment'], 'tasks': [{'candidate_id': t['candidate_id'], 'task_id': t['task_id'], 'relevant_interruption': False} for t in assignment['tasks']]}
             submit_result = store.submit(payload)
             assert submit_result['status'] == 'ok', submit_result
+        if mode in {'answer', 'initial_answer'}:
+            submit_answer()
+        first = event('E1')
         if mode == 'approved':
             state['status'] = 'APPROVED'
         now[0] += timedelta(minutes=10)
@@ -95,8 +97,10 @@ try:
         followup = c2.scheduled_reassessment()
         print(json.dumps({'mode': mode, 'first': first, 'after_ten_minutes': second, 'followup': followup, 'ledger': ledger.read(), 'message_GETs': [p for p in gets if '/messages/' in p], 'POSTs': posts}, indent=2))
         assert len(posts) == (1 if mode == 'positive' else 0), 'Unexpected POST count'
-        if mode != 'positive':
+        if mode == 'approved':
             assert ledger.read()['sessions']['S1']['state'] == 'manual_review', 'Missing durable manual disposition'
+        if mode in {'answer', 'initial_answer'}:
+            assert ledger.read()['sessions']['S1']['state'] == 'resolved', 'Complete answer did not resolve waiting case'
 finally:
     if receiver:
         receiver.shutdown()
