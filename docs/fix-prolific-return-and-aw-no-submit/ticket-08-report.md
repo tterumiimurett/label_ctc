@@ -1,6 +1,6 @@
 # Ticket 8 implementation report
 
-Branch: `codex/prolific-ticket-08-20260910`. Final implementation checkpoint: `f018997`; pagination correction is this follow-up commit.
+Final reviewed implementation: `356078c`; merged into main as `d72663b`. Current acceptance: [completion-audit.md](completion-audit.md).
 
 ## Reproducible evidence
 
@@ -74,7 +74,7 @@ Receiver and scheduler are default-off; `--execute` is required for any controll
 
 ## Human/live gates
 
-No production GET, write, webhook enablement, deployment, restart, or participant message was performed. Live prerequisites remain: authorized credentials, verified workspace/message visibility, HTTPS receiver/subscription inventory, scheduler ownership, and human approval of routine policy, historical action/contact lists, and production activation. No human is asked to repeat agent-executable isolated tests.
+The implementation task made no live calls. Root completed authorized real API read-only reconciliation and code classification (see completion-audit.md); credentials and read access were verified. No production writes, webhook enablement, deployment, restart, or participant messages were performed. Before activation, verify workspace/message visibility, HTTPS receiver/subscription inventory and scheduler ownership, then obtain explicit production/historical-action authorization. Previously confirmed business rules are not re-submitted for approval.
 
 
 The documented CLI preview/approve/status/receiver/scheduler/disable/restart sequence was executed by `python3 tests/ticket08_cli_smoke.py > artifacts/ticket08/cli-smoke-final.json` against temporary sanitized data; it returned approved, status disabled=false, preview-only receiver response, scheduler cycle observed, disabled, and status disabled=true after restart. The harness dynamically binds its local port, signs the receiver request with request and event timestamps, and cleans up all processes and temporary files. Receiver/scheduler remain default-off unless `--execute` is explicitly supplied.

@@ -1,6 +1,6 @@
 # Fix Prolific RETURNED and awaiting review without local results
 
-状态：已确认业务规则的规格；测试边界待用户核对。未实现、未部署，未发布 issue。
+状态：已实现、审查并集成验收，合并d72663b；未部署或启用生产。最终证据见completion-audit.md。
 
 
 ## 最新优先修订：等待期间答案到达
