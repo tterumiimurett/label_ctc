@@ -8,9 +8,9 @@ class Ticket08Test(unittest.TestCase):
   d=tempfile.TemporaryDirectory(); root=Path(d.name); journal=ActionJournal(root/'actions.jsonl')
   trigger=Mock(); trigger.periodic.return_value={'report':{'status':'ok','writes_performed':False,'submissions':[]}}
   adapter=Mock(); adapter.reconcile.return_value={'status':'ok','submissions':[]}
-  return d,root,ActivationController(trigger=trigger,store=Mock(),ledger=Mock(),adapter=adapter,journal=journal,study_id='STUDY',production_enabled=production)
+  return d,root,ActivationController(trigger=trigger,store=Mock(),ledger=Mock(),adapter=adapter,journal=journal,study_id='STUDY',production_enabled=production,activation_boundary='1970-01-01T00:00:00Z')
  def test_provenance_is_durable_and_unknown_is_manual(self):
-  d,r,c=self.setup(); self.assertEqual(c.derive_candidate_origin({'run_kind':'event','event_id':'E','activation_boundary':'2026-01-01','study_id':'STUDY'}, accepted_event={'event_id':'E','study_id':'STUDY'}),'new'); self.assertEqual(c.derive_candidate_origin({'run_kind':'backfill','historical_snapshot':True}),'historical'); self.assertEqual(c.derive_candidate_origin({'run_kind':'manual'}),'unknown'); d.cleanup()
+  d,r,c=self.setup(); self.assertEqual(c.derive_candidate_origin({'run_kind':'event','event_id':'E','activation_boundary':'1970-01-01','study_id':'STUDY'}, accepted_event={'event_id':'E','study_id':'STUDY','event_timestamp':100,'activation_timestamp':0}),'new'); self.assertEqual(c.derive_candidate_origin({'run_kind':'backfill','historical_snapshot':True}),'historical'); self.assertEqual(c.derive_candidate_origin({'run_kind':'manual'}),'unknown'); d.cleanup()
  def test_journal_is_intent_before_effect_and_kill_switch_is_shared(self):
   d,r,c=self.setup(); event=c.journal.begin('archive',{'session_id':'S'}); self.assertTrue(event); self.assertEqual(json.loads((r/'actions.jsonl').read_text())['kind'],'intent'); c.journal.disable('stop'); self.assertIsNone(c.journal.begin('archive',{})); d.cleanup()
  def test_production_requires_explicit_approval(self):
@@ -45,9 +45,9 @@ class RealComponentIntegrationTest(unittest.TestCase):
                 port=server.server_address[1]; client=ProlificSubmissionClient('isolated','http://127.0.0.1:'+str(port)+'/api/v1',retries=0)
                 trigger=ReconciliationTrigger(client,root/'data','STUDY',JsonTriggerStore(root/'events.json'))
                 from prolific.ctc_verification_app.activation import ActionJournal, ActivationController
-                controller=ActivationController(trigger=trigger,store=store,ledger=JsonContactLedger(root/'contacts.json'),adapter=RealApiAdapter(client,root/'data','STUDY'),journal=ActionJournal(root/'actions.jsonl'),study_id='STUDY',approvals=ApprovalStore(root/'approval.json'))
+                controller=ActivationController(trigger=trigger,store=store,ledger=JsonContactLedger(root/'contacts.json'),adapter=RealApiAdapter(client,root/'data','STUDY'),journal=ActionJournal(root/'actions.jsonl'),study_id='STUDY',approvals=ApprovalStore(root/'approval.json'),activation_boundary='1970-01-01T00:00:00Z')
                 body=json.dumps({'event_type':'submission.status.change','resource_id':'S1'}).encode(); secret='secret'; ts='100'; sig=base64.b64encode(hmac.new(secret.encode(),ts.encode()+body,hashlib.sha256).digest()).decode()
-                result=controller.handle_signed_event(body,{'X-Prolific-Request-Signature':sig,'X-Prolific-Request-Timestamp':ts,'X-Event-ID':'E1','X-Timestamp':'100'},secret,{'run_kind':'event','event_id':'E1','activation_boundary':'2026-01-01'})
+                result=controller.handle_signed_event(body,{'X-Prolific-Request-Signature':sig,'X-Prolific-Request-Timestamp':ts,'X-Event-ID':'E1','X-Timestamp':'100'},secret,{'run_kind':'event','event_id':'E1','activation_boundary':'1970-01-01','study_id':'STUDY'})
                 self.assertEqual(result['status'],'ok'); self.assertEqual(result['origin'],'new'); self.assertEqual(result['results'][0]['outcome']['action'],'released_claim')
             finally: server.shutdown(); server.server_close(); thread.join()
 
@@ -78,8 +78,8 @@ class FullHttpMatrixTest(unittest.TestCase):
             try:
                 base='http://127.0.0.1:%d/api/v1'%api.server_address[1]; client=ProlificSubmissionClient('isolated',base,retries=0)
                 trigger=ReconciliationTrigger(client,root/'data','STUDY',JsonTriggerStore(root/'events.json'))
-                controller=ActivationController(trigger=trigger,store=store,ledger=JsonContactLedger(root/'contacts.json'),adapter=RealApiAdapter(client,root/'data','STUDY'),journal=ActionJournal(root/'actions.jsonl'),study_id='STUDY',approvals=ApprovalStore(root/'approval.json'))
-                receiver=make_activation_server(controller,'secret',{'run_kind':'event','activation_boundary':'2026-01-01','study_id':'STUDY'}); rt=threading.Thread(target=receiver.serve_forever); rt.start()
+                controller=ActivationController(trigger=trigger,store=store,ledger=JsonContactLedger(root/'contacts.json'),adapter=RealApiAdapter(client,root/'data','STUDY'),journal=ActionJournal(root/'actions.jsonl'),study_id='STUDY',approvals=ApprovalStore(root/'approval.json'),activation_boundary='1970-01-01T00:00:00Z')
+                receiver=make_activation_server(controller,'secret',{'run_kind':'event','activation_boundary':'1970-01-01','study_id':'STUDY'}); rt=threading.Thread(target=receiver.serve_forever); rt.start()
                 body=json.dumps({'event_type':'submission.status.change','resource_id':'S1'}).encode(); ts='100'; sig=base64.b64encode(hmac.new(b'secret',ts.encode()+body,hashlib.sha256).digest()).decode()
                 request=urllib.request.Request('http://127.0.0.1:%d/'%receiver.server_address[1],data=body,method='POST',headers={'X-Prolific-Request-Signature':sig,'X-Prolific-Request-Timestamp':ts,'X-Event-ID':'E1','X-Timestamp':'100','Content-Type':'application/json'})
                 response=json.loads(urllib.request.urlopen(request).read())
@@ -208,7 +208,7 @@ class FullHttpMatrixTest(unittest.TestCase):
                     'controlled-secret',
                     {
                         'run_kind': 'event',
-                        'activation_boundary': '2026-01-01T00:00:00Z',
+                        'activation_boundary': '1970-01-01T00:00:00Z',
                         'study_id': 'STUDY',
                     },
                 )
@@ -235,7 +235,7 @@ class FullHttpMatrixTest(unittest.TestCase):
                     },
                 )
                 response = json.loads(urllib.request.urlopen(request).read())
-                self.assertEqual(response['status'], 'ok')
+                self.assertEqual(response['status'], 'ok', response)
                 lifecycle = json.loads((root / 'data' / 'returned-lifecycle.json').read_text(encoding='utf-8'))
                 self.assertEqual(lifecycle['TIMEOUT-1']['status'], 'TIMED_OUT')
                 self.assertNotIn('TIMEOUT-1', json.loads((root / 'data' / 'assignments.json').read_text(encoding='utf-8')))

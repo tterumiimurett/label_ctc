@@ -51,6 +51,7 @@ class Approval:
     sessions: tuple[str,...]
     historical_sessions: tuple[str,...]
     routine_sessions: tuple[str,...] = ()
+    routine_enabled: bool = False
     approved_at: str = ''
     approved_by: str = ''
 
@@ -69,14 +70,16 @@ class ApprovalStore:
             h=self._lock()
             try:
                 if not self.path.exists(): return None
-                value=json.loads(self.path.read_text(encoding='utf-8')); return Approval(value['study_id'],value['preview_sha256'],tuple(value['sessions']),tuple(value['historical_sessions']),tuple(value.get('routine_sessions',())),value.get('approved_at',''),value.get('approved_by',''))
+                value=json.loads(self.path.read_text(encoding='utf-8')); return Approval(value['study_id'],value['preview_sha256'],tuple(value['sessions']),tuple(value['historical_sessions']),tuple(value.get('routine_sessions',())),value.get('routine_enabled',False),value.get('approved_at',''),value.get('approved_by',''))
             finally: fcntl.flock(h,fcntl.LOCK_UN); h.close()
 
 class RealApiAdapter:
     """Adapter used by activation; reads current API state through the reviewed reader."""
-    def __init__(self, reader, data_dir: Path, study_id: str, scope: VerifiedMessageScope|None=None):
-        self.reader=reader; self.data_dir=data_dir; self.study_id=study_id; self.fresh=ProlificFreshReconciliation(reader,data_dir,study_id,scope=scope)
-    def reconcile(self): return self.fresh.reconcile()
+    def __init__(self, reader, data_dir: Path, study_id: str, scope: VerifiedMessageScope | None = None, clock: Any = None):
+        self.reader=reader; self.data_dir=data_dir; self.study_id=study_id; self.fresh=ProlificFreshReconciliation(reader,data_dir,study_id,scope=scope,now=clock() if clock else None); self.clock=clock
+    def reconcile(self):
+        if self.clock: self.fresh.now=self.clock()
+        return self.fresh.reconcile()
     def inspect_messages(self, **kwargs): return self.fresh.inspect_messages(**kwargs)
     def send_message(self, **kwargs): return self.fresh.send_message(**kwargs)
 
@@ -102,13 +105,16 @@ class GuardedOutboundAdapter:
         return response
 
 class ActivationController:
-    def __init__(self, *, trigger, store, ledger, adapter, journal:ActionJournal, study_id:str, approvals:ApprovalStore|None=None, production_enabled=False):
-        self.trigger=trigger; self.store=store; self.ledger=ledger; self.adapter=adapter; self.journal=journal; self.study_id=study_id; self.approvals=approvals; self.production_enabled=production_enabled
-    @staticmethod
-    def derive_candidate_origin(context: Path | dict[str, Any], *, accepted_event: dict[str, Any] | None = None) -> str:
+    def __init__(self, *, trigger, store, ledger, adapter, journal: ActionJournal, study_id: str, approvals: ApprovalStore | None = None, production_enabled: bool = False, clock: Any = None, activation_boundary: str | None = None):
+        self.trigger=trigger; self.store=store; self.ledger=ledger; self.adapter=adapter; self.journal=journal; self.study_id=study_id; self.approvals=approvals; self.production_enabled=production_enabled; self.clock=clock; self.activation_boundary=activation_boundary
+    def _parse_boundary(self, value: Any) -> datetime | None:
+        if not value: return None
+        parsed = datetime.fromisoformat(str(value).replace('Z', '+00:00'))
+        return parsed.replace(tzinfo=timezone.utc) if parsed.tzinfo is None else parsed
+    def derive_candidate_origin(self, context: Path | dict[str, Any], *, accepted_event: dict[str, Any] | None = None) -> str:
         value=json.loads(context.read_text(encoding='utf-8')) if isinstance(context,Path) else context
         if not isinstance(value,dict): return 'unknown'
-        if value.get('run_kind')=='event' and accepted_event and value.get('event_id')==accepted_event.get('event_id') and value.get('study_id')==accepted_event.get('study_id') and value.get('activation_boundary'):
+        if value.get('run_kind')=='event' and accepted_event and value.get('event_id')==accepted_event.get('event_id') and value.get('study_id')==accepted_event.get('study_id') and (self._parse_boundary(value.get('activation_boundary')) == self._parse_boundary(self.activation_boundary)) and accepted_event.get('event_timestamp', 0) >= accepted_event.get('activation_timestamp', 0):
             return 'new'
         if value.get('run_kind')=='backfill' and value.get('historical_snapshot') is True: return 'historical'
         return 'unknown'
@@ -129,21 +135,34 @@ class ActivationController:
         if preview.get('study_id')!=self.study_id or not approved_by.strip(): raise ValueError('approval identity/study mismatch')
         allowed={r['session_id'] for r in preview['actions']};
         if not sessions <= allowed or not historical_sessions <= allowed: raise ValueError('approval contains unlisted session')
-        approval=Approval(self.study_id,preview['preview_sha256'],tuple(sorted(sessions)),tuple(sorted(historical_sessions)),tuple(sorted(sessions-set(historical_sessions))),utc_now(),approved_by); self.approvals.save(approval); return approval
+        approval=Approval(self.study_id,preview['preview_sha256'],tuple(sorted(sessions)),tuple(sorted(historical_sessions)),tuple(sorted(sessions-set(historical_sessions))),False,utc_now(),approved_by); self.approvals.save(approval); return approval
     def current_reconcile(self): return self.trigger.periodic()
     def handle_signed_event(self, body, headers, secret, context):
         result=self.trigger.handle(body,headers,secret)
         if result.status not in {'reconciled'}: return result
         payload=json.loads(body); report=result.report or {}; context_value=json.loads(context.read_text(encoding='utf-8')) if isinstance(context,Path) else context
-        context_value={**context_value,'event_id':headers.get('X-Event-ID') or headers.get('x-event-id'),'study_id':self.study_id}
-        return self.execute(provenance_context=context_value, report=report, accepted_event=context_value)
+        event_id=headers.get('X-Event-ID') or headers.get('x-event-id')
+        state = self.trigger.store._read() if hasattr(self.trigger.store, '_read') else {}
+        event_record = state.get('events', {}).get(event_id, {})
+        if not event_record:
+            event_record = next((item for item in state.get('events', {}).values() if item.get('payload', {}).get('resource_id') == json.loads(body).get('resource_id') and item.get('stage') == 'completed'), {})
+        payload_event = event_record.get('payload', {})
+        accepted = {'event_id': event_id, 'resource_id': payload_event.get('resource_id'), 'study_id': self.study_id, 'event_timestamp': event_record.get('timestamp', 0), 'activation_timestamp': self._activation_epoch()}
+        if event_record.get('stage') != 'completed' or not accepted['resource_id']:
+            return {'status': 'pending', 'reason': 'accepted_event_not_durable'}
+        context_value = json.loads(context.read_text(encoding='utf-8')) if isinstance(context, Path) else dict(context)
+        context_value['activation_boundary'] = self.activation_boundary
+        return self.execute(provenance_context=context_value, report=report, accepted_event=accepted)
+    def _activation_epoch(self) -> int:
+        if not self.activation_boundary: return 0
+        return int(datetime.fromisoformat(self.activation_boundary.replace('Z', '+00:00')).timestamp())
     def execute(self, *, provenance_context, report=None, accepted_event=None):
         if self.production_enabled and self.approvals is None: raise PermissionError('persisted approval store is required')
         if report is None: report=self.current_reconcile().get('report',{})
         if report.get('status')!='ok': return {'status':'pending','report':report}
         preview=self.preview(report); approval=self.approvals.load() if self.approvals else None
         if self.production_enabled:
-            if not approval or approval.study_id!=self.study_id or approval.preview_sha256!=preview['preview_sha256']: return {'status':'blocked','reason':'approval_missing_or_stale'}
+            if not approval or approval.study_id != self.study_id or not approval.routine_enabled: return {'status':'blocked','reason':'routine_policy_approval_missing'}
         origin=self.derive_candidate_origin(provenance_context,accepted_event=accepted_event)
         selected=set(approval.sessions) if approval else {r['session_id'] for r in preview['actions'] if r['action']!='contact_candidate'}
         results=[]
@@ -173,9 +192,9 @@ class ActivationController:
         from .outbound import send_approved_return_requests
         fresh=self.adapter.reconcile()
         if fresh.get('status')!='ok': return {'status':'pending','origin':origin,'results':results,'report':fresh}
-        candidate_report=build_contact_candidates(fresh,self.ledger,self.adapter,candidate_origin=origin)
+        candidate_report=build_contact_candidates(fresh,self.ledger,self.adapter,candidate_origin=origin,now=self.clock() if self.clock else None)
         historical=set(approval.historical_sessions) if approval else set()
-        outbound=send_approved_return_requests(candidate_report,self.ledger,GuardedOutboundAdapter(self.adapter,self.journal),approved_sessions=set(approval.routine_sessions) if approval else set(),historical_sessions=historical,enabled=self.production_enabled)
+        outbound=send_approved_return_requests(candidate_report,self.ledger,GuardedOutboundAdapter(self.adapter,self.journal),approved_sessions={item['session_id'] for item in candidate_report.get('decisions', []) if item.get('decision') == 'candidate'} if approval and approval.routine_enabled and origin == 'new' else set(approval.routine_sessions) if approval else set(),historical_sessions=historical,enabled=self.production_enabled)
         return {'status':'ok','origin':origin,'results':results,'preview':preview,'candidates':candidate_report,'outbound':outbound}
 
 
