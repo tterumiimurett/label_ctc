@@ -8,6 +8,19 @@ from typing import Any
 
 from prolific.ctc_verification_app.contact_candidates import ProlificFreshReconciliation, VerifiedMessageScope
 from prolific.ctc_verification_app.activation_cli import _verified_scope
+from prolific.ctc_verification_app.reconciliation import ProlificSubmissionClient
+
+
+class MembershipClient(ProlificSubmissionClient):
+    def __init__(self, pages: dict[str, dict[str, Any]]) -> None:
+        self.pages = pages
+        self.base_url = "https://controlled.test/api/v1"
+        self.scheme = "https"
+        self.origin = "controlled.test"
+
+    def _get(self, path: str, query: dict[str, Any] | None = None) -> dict[str, Any]:
+        del query
+        return self.pages[path]
 
 
 class PersonalReader:
@@ -95,6 +108,41 @@ class PersonalMessageScopeTest(unittest.TestCase):
         conflict = PersonalReader([{"sender_id": "RESEARCHER", "datetime_created": "2026-09-09T00:00:00Z", "created_at": "2026-09-09T00:01:00Z", "body": "x"}])
         self.assertEqual(self.inspect(invalid), "unavailable")
         self.assertEqual(self.inspect(conflict), "unavailable")
+
+    def test_membership_listing_rejects_hidden_second_member_and_count_mismatch(self):
+        client = MembershipClient({
+            "workspaces/WORKSPACE/members/": {
+                "results": [{"id": "RESEARCHER"}],
+                "meta": {"count": 2},
+                "_links": {"self": {"href": "controlled"}, "related": []},
+            }
+        })
+        with self.assertRaises(ValueError):
+            client.list_workspace_members("WORKSPACE")
+
+    def test_membership_listing_rejects_foreign_or_looping_continuations(self):
+        base = {
+            "results": [{"id": "RESEARCHER"}],
+            "_links": {"next": {"href": "https://foreign.test/api/v1/workspaces/WORKSPACE/members/?page=2"}},
+        }
+        with self.assertRaises(ValueError):
+            MembershipClient({"workspaces/WORKSPACE/members/": base}).list_workspace_members("WORKSPACE")
+        loop = {
+            "results": [{"id": "RESEARCHER"}],
+            "_links": {"next": {"href": "https://controlled.test/api/v1/workspaces/WORKSPACE/members/?page=2"}},
+        }
+        page = {"results": [], "_links": {"next": {"href": "https://controlled.test/api/v1/workspaces/WORKSPACE/members/?page=2"}}}
+        with self.assertRaises(ValueError):
+            MembershipClient({"workspaces/WORKSPACE/members/": loop, "https://controlled.test/api/v1/workspaces/WORKSPACE/members/?page=2": page}).list_workspace_members("WORKSPACE")
+
+    def test_actual_complete_membership_shape_is_supported(self):
+        client = MembershipClient({
+            "workspaces/WORKSPACE/members/": {
+                "results": [{"id": "RESEARCHER"}],
+                "_links": {"self": {"href": "controlled"}, "related": []},
+            }
+        })
+        self.assertEqual(client.list_workspace_members("WORKSPACE")["results"], [{"id": "RESEARCHER"}])
 
     def test_personal_scope_fails_closed_on_membership_or_permission_change(self):
         self.assertEqual(self.inspect(PersonalReader(members=[{"id": "RESEARCHER"}, {"id": "OTHER"}])), "unavailable")

@@ -312,8 +312,40 @@ class ProlificSubmissionClient:
         return self._get("users/me/")
 
     def list_workspace_members(self, workspace_id: str) -> dict[str, Any]:
-        """Read current workspace membership for explicit personal-scope proof."""
-        return self._get(f"workspaces/{workspace_id}/members/")
+        """Read a complete, same-resource workspace membership listing."""
+        resource_path = urlparse(
+            urljoin(self.base_url + "/", f"workspaces/{workspace_id}/members/")
+        ).path.rstrip("/")
+        response = self._get(f"workspaces/{workspace_id}/members/")
+        if not isinstance(response, dict) or not isinstance(response.get("results"), list):
+            raise ValueError("workspace membership response must contain results")
+        combined = dict(response)
+        combined["results"] = list(response["results"])
+        expected_count = _pagination_count(response, "workspace membership")
+        seen_urls: set[str] = set()
+        next_url = _next_page_href(response, "workspace membership")
+        while next_url:
+            parsed = urlparse(next_url)
+            if (parsed.scheme, parsed.netloc) != (self.scheme, self.origin):
+                raise ValueError("workspace membership continuation leaves API origin")
+            if parsed.path.rstrip("/") != resource_path:
+                raise ValueError("workspace membership continuation changes resource path")
+            if next_url in seen_urls:
+                raise ValueError("workspace membership pagination loop")
+            seen_urls.add(next_url)
+            page = self._get(next_url)
+            if not isinstance(page, dict) or not isinstance(page.get("results"), list):
+                raise ValueError("workspace membership page must contain results")
+            combined["results"].extend(page["results"])
+            page_count = _pagination_count(page, "workspace membership")
+            if page_count is not None and expected_count is not None and page_count != expected_count:
+                raise ValueError("workspace membership count changed during pagination")
+            if expected_count is None:
+                expected_count = page_count
+            next_url = _next_page_href(page, "workspace membership")
+        if expected_count is not None and len(combined["results"]) != expected_count:
+            raise ValueError("workspace membership count does not match complete results")
+        return combined
 
     def _validate_message_continuation(self, next_url: str, query: dict[str, Any]) -> None:
         parsed = urlparse(next_url)
