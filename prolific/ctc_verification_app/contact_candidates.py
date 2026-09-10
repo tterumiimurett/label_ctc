@@ -109,21 +109,38 @@ def _ts(value: datetime) -> str: return value.astimezone(timezone.utc).isoformat
 
 _MANUAL_EVIDENCE = {"draft", "archived_result", "read_error", "other_session_result", "save_error", "identity_mismatch", "local_read_error"}
 
-def queue_manual_review(entry: dict[str, Any], sid: str, study: str, pid: Any, evidence: set[str], reason: str) -> ContactDecision:
-    identity = pid if isinstance(pid, str) and pid else None
-    complete = sorted(evidence | {reason})
-    entry.update({"state": "manual_review", "study_id": study, "participant_id": identity,
-                  "reason": reason, "evidence": complete})
-    return ContactDecision(sid, "manual_review", complete, participant_id=identity, study_id=study, reason=reason)
+def queue_manual_review(entry: dict[str, Any], sid: str, study: Any, pid: Any, evidence: set[str], reason: str) -> ContactDecision:
+    """Persist manual disposition without overwriting trusted original identity."""
+    original_study = entry.get("study_id")
+    original_pid = entry.get("participant_id")
+    if isinstance(original_study, str) and isinstance(study, str) and original_study != study:
+        entry["observed_study_id"] = study
+        evidence = set(evidence) | {"observed_study_id_conflict"}
+    elif not isinstance(study, str):
+        entry["observed_study_id"] = repr(study)
+        evidence = set(evidence) | {"observed_study_id_invalid"}
+    if isinstance(original_pid, str) and isinstance(pid, str) and original_pid != pid:
+        entry["observed_participant_id"] = pid
+        evidence = set(evidence) | {"observed_participant_id_conflict"}
+    elif not isinstance(pid, str):
+        entry["observed_participant_id"] = repr(pid)
+        evidence = set(evidence) | {"observed_participant_id_invalid"}
+    if entry.get("session_id") not in {None, sid}:
+        entry["observed_session_id"] = sid
+        evidence = set(evidence) | {"observed_session_id_conflict"}
+    else:
+        entry.setdefault("session_id", sid)
+    complete = sorted(set(evidence) | {reason})
+    entry.update({"state": "manual_review", "reason": reason, "evidence": complete})
+    trusted_study = original_study if isinstance(original_study, str) else None
+    trusted_pid = original_pid if isinstance(original_pid, str) else None
+    return ContactDecision(sid, "manual_review", complete, participant_id=trusted_pid, study_id=trusted_study, reason=reason)
 
 
-def _manual(entry: dict[str, Any], sid: str, study: str, pid: Any, evidence: set[str], reason: str) -> ContactDecision:
-    identity = pid if isinstance(pid, str) and pid else None
-    complete = sorted(evidence | {reason})
-    message = APPROVED_MESSAGE.format(SESSION_ID=sid)
-    entry.update({"state": "manual_review", "study_id": study, "participant_id": identity,
-                  "reason": reason, "evidence": complete, "message": message})
-    return ContactDecision(sid, "manual_review", complete, message, identity, study, reason)
+def _manual(entry: dict[str, Any], sid: str, study: Any, pid: Any, evidence: set[str], reason: str) -> ContactDecision:
+    decision = queue_manual_review(entry, sid, study, pid, evidence, reason)
+    entry["message"] = APPROVED_MESSAGE.format(SESSION_ID=sid)
+    return decision
 
 
 def outbound_attempted(entry: dict[str, Any]) -> bool:

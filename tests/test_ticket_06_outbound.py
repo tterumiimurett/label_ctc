@@ -154,6 +154,25 @@ class Ticket06OutboundTest(unittest.TestCase):
             adapter=Adapter(); adapter.reconcile=lambda: {**report(), "submissions":[{**report()["submissions"][0], "participant_id":"P9"}]}
             result=send_approved_return_requests(report(), ledger, adapter, approved_sessions={"S1"}, enabled=True)
             self.assertEqual(result["decisions"][0]["decision"], "manual_review"); self.assertEqual(adapter.sent, [])
+            saved=ledger.read()["sessions"]["S1"]
+            self.assertEqual(saved["participant_id"], "P1"); self.assertEqual(saved["observed_participant_id"], "P9")
+
+    def test_malformed_or_nonstring_identity_persists_manual_without_inventing_identity(self):
+        with tempfile.TemporaryDirectory() as d:
+            ledger=JsonContactLedger(Path(d)/"c.json")
+            ledger.write({"sessions":{"S1":{"state":"candidate","candidate_origin":"new"}}})
+            class Empty(Adapter):
+                def reconcile(self): return {"status":"ok","study_id":"STUDY","submissions":[]}
+            result=send_approved_return_requests(report(), ledger, Empty(), enabled=True)
+            saved=ledger.read()["sessions"]["S1"]
+            self.assertEqual(result["decisions"][0]["decision"], "manual_review")
+            self.assertEqual(saved["state"], "manual_review"); self.assertNotIn("participant_id", saved); self.assertNotIn("study_id", saved)
+            ledger.write({"sessions":{"S1":{"state":"candidate","candidate_origin":"new","study_id":"STUDY","participant_id":"ORIGINAL","send_attempt_count":1,"send_outcome":"unknown"}}})
+            class Bad(Adapter):
+                def reconcile(self): return {"status":"ok","study_id":"STUDY","submissions":[{"session_id":"S1","study_id":"STUDY","participant_id":None,"status":"AWAITING REVIEW","classification":"awaiting_without_final_result"}]}
+            result=send_approved_return_requests(report(), ledger, Bad(), enabled=True)
+            saved=ledger.read()["sessions"]["S1"]
+            self.assertEqual(saved["state"], "manual_review"); self.assertEqual(saved["participant_id"], "ORIGINAL"); self.assertIn("observed_participant_id_invalid", saved["evidence"]); self.assertEqual(saved["send_attempt_count"], 1)
 
     def test_concurrent_process_like_calls_send_at_most_once(self):
         import threading

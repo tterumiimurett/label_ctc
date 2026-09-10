@@ -76,21 +76,20 @@ def send_approved_return_requests(
                     if isinstance(participant_id, str) and isinstance(study_id, str):
                         decisions.append(_recover_without_resend(entry, session_id, participant_id, study_id, fresh))
                     else:
-                        entry.update({"state": "manual_review", "reason": "attempt_identity_unavailable"})
-                        decisions.append(_decision(session_id, "manual_review", "attempt_identity_unavailable"))
+                        decisions.append(_manual(entry, session_id, entry.get("study_id"), entry.get("participant_id"), "attempt_identity_unavailable"))
                 else:
                     participant_id = entry.get("participant_id")
                     study_id = entry.get("study_id")
                     if isinstance(participant_id, str) and isinstance(study_id, str):
                         decisions.append(_manual(entry, session_id, study_id, participant_id, "fresh_submission_missing"))
                     else:
-                        decisions.append(_decision(session_id, "manual_review", "fresh_submission_missing"))
+                        decisions.append(_manual(entry, session_id, entry.get("study_id"), entry.get("participant_id"), "fresh_submission_missing"))
                 continue
             participant_id, study_id = row.get("participant_id"), row.get("study_id")
             if entry.get("participant_id") != participant_id or entry.get("study_id") != study_id:
-                decisions.append(_manual(entry, session_id, study_id or "", participant_id or "", "fresh_identity_changed")); continue
+                decisions.append(_manual(entry, session_id, study_id, participant_id, "fresh_identity_changed")); continue
             if not isinstance(participant_id, str) or not isinstance(study_id, str):
-                decisions.append(_decision(session_id, "manual_review", "missing_identity")); continue
+                decisions.append(_manual(entry, session_id, study_id, participant_id, "missing_identity")); continue
             if entry.get("state") == "sent" or entry.get("send_outcome") == "accepted" or entry.get("message_id"):
                 decisions.append(_manual(entry, session_id, study_id, participant_id, "acknowledged_send_requires_confirmation")); continue
             if outbound_attempted(entry) or entry.get("state") in {"sending", "delivery_unknown"}:
@@ -103,13 +102,12 @@ def send_approved_return_requests(
                 decisions.append(_manual(entry, session_id, study_id, participant_id, "fresh_submission_missing")); continue
             participant_id, study_id = row.get("participant_id"), row.get("study_id")
             if entry.get("participant_id") != participant_id or entry.get("study_id") != study_id:
-                decisions.append(_manual(entry, session_id, study_id or "", participant_id or "", "fresh_identity_changed")); continue
+                decisions.append(_manual(entry, session_id, study_id, participant_id, "fresh_identity_changed")); continue
             evidence = {str(item) for item in row.get("evidence", []) if isinstance(item, str)}
             evidence.update(str(item) for item in row.get("errors", []) if isinstance(item, str))
             blocked = evidence & {"draft", "archived_result", "other_session_result", "read_error", "local_read_error", "identity_mismatch", "save_error"}
             if blocked or row.get("errors") or row.get("return_requested"):
-                entry.update({"state": "manual_review", "reason": "fresh_uncertain_evidence", "evidence": sorted(evidence | ({"return_requested"} if row.get("return_requested") else set()))})
-                decisions.append(_decision(session_id, "manual_review", "fresh_uncertain_evidence")); continue
+                decisions.append(_manual(entry, session_id, study_id, participant_id, "fresh_uncertain_evidence")); continue
             if row.get("status") != "AWAITING REVIEW" or row.get("classification") != "awaiting_without_final_result":
                 decisions.append(_manual(entry, session_id, study_id, participant_id, "answer_or_status_arrived_after_missing_detection")); continue
             try:
@@ -121,8 +119,7 @@ def send_approved_return_requests(
             if history == "prior_contact":
                 decisions.append(_manual(entry, session_id, study_id, participant_id, "prior_contact_requires_confirmation")); continue
             if history != "clear":
-                entry.update({"state": "manual_review", "reason": "message_history_not_clear", "evidence": ["message_history_not_clear"]})
-                decisions.append(_decision(session_id, "manual_review", "message_history_not_clear")); continue
+                decisions.append(_manual(entry, session_id, study_id, participant_id, "message_history_not_clear")); continue
             body = APPROVED_MESSAGE.format(SESSION_ID=session_id)
             entry.update({"state": "sending", "send_attempted_at": _timestamp(), "send_body": body, "send_operation": "ordinary_message", "send_attempt_count": 1})
             ledger.write(state)

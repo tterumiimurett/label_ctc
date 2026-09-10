@@ -21,7 +21,7 @@ These are synthetic controlled adapters/JSON ledgers only. No production API, pa
 ## Verification
 
 - Focused Ticket 06/Ticket 5 tests: 34 passed
-- Full suite: 95 passed
+- Full suite: 96 passed
 - Public reviewer reproduction: passed with the expected ledger states
 - `git diff --check`: clean
 
@@ -30,3 +30,10 @@ Root’s independent dual-axis review remains pending. This report does not clai
 ## Operator prerequisites
 
 Before any live activation: root review must pass; an operator must approve the activation/rule context, verify credentials and workspace/message visibility, validate current read-only API state and history coverage, separately approve any historical backlog list, and configure the controlled scheduler/HTTPS environment. Live sending remains disabled by default and was not performed here.
+
+
+## Identity-preservation review fix
+
+Manual queue transitions now preserve the original ledger `study_id`, `participant_id`, and session identity, along with all irreversible attempt fields. A fresh conflicting identity is recorded separately as `observed_study_id`/`observed_participant_id` with conflict evidence; malformed or missing values are recorded as invalid observations and never promoted to trusted identity. Builder and outbound callers use the same helper.
+
+The expanded synthetic reproduction now also verifies original identity preservation and malformed-identity manual queuing. Root independent dual-axis review remains pending.
