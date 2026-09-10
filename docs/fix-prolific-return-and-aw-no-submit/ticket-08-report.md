@@ -9,10 +9,11 @@ Run from the repository root:
 ```sh
 python3 -m unittest discover -s tests -v
 python3 -m unittest tests.test_ticket_08_authentic_recovery tests.test_ticket_08_concurrent_disable tests.test_ticket_08_crossresource tests.test_ticket_08_lifecycle_guards -v
+python3 -m unittest tests.test_ticket_08_lifecycle_guards.NoOpLifecycleRegressionTest tests.test_ticket_08_concurrent_disable.ConcurrentDisableIntegrationTest -v
 NODE_PATH=/tmp/ticket1-ctc/node_modules node tests/browser_ticket_01_ctc.cjs
 ```
 
-Current full-suite evidence: **125 tests passed**. Browser evidence is at [`artifacts/ticket08/browser-final.json`](../../artifacts/ticket08/browser-final.json): visible task/instructions, audio playback, no-task state, network failure, invalid JSON, and null-payload states.
+Current full-suite evidence: **126 tests passed**. Browser evidence is at [`artifacts/ticket08/browser-final.json`](../../artifacts/ticket08/browser-final.json): visible task/instructions, audio playback, no-task state, network failure, invalid JSON, and null-payload states.
 
 Controlled integration evidence covers signed receiver/archive and timeout paths, routine NEW ten-minute message delivery, reconstructed scheduler state, cross-resource isolation, disconnected POST restart recovery, concurrent disable, durable lifecycle manual outcomes, consent-source validation, historical approval records, and missed-event surfacing. These are isolated localhost/temp-store tests only.
 
@@ -58,3 +59,6 @@ Receiver and scheduler are default-off; `--execute` is required for any controll
 ## Human/live gates
 
 No production GET, write, webhook enablement, deployment, restart, or participant message was performed. Live prerequisites remain: authorized credentials, verified workspace/message visibility, HTTPS receiver/subscription inventory, scheduler ownership, and human approval of routine policy, historical action/contact lists, and production activation. No human is asked to repeat agent-executable isolated tests.
+
+
+The documented CLI preview/approve/status/disable sequence was executed against temporary sanitized data; it returned approved, status disabled=false, disabled, status disabled=true. Receiver/scheduler commands are exercised by the controlled HTTP integration tests and remain default-off unless `--execute` is explicitly supplied.

@@ -243,8 +243,11 @@ class ActivationController:
         selected={r['session_id'] for r in preview['actions'] if r['action'] != 'contact_candidate'}
         historical=set(approval.historical_sessions)
         results=[]
+        lifecycle_actions = {'release_claim', 'archive_returned_result', 'archive_timed_out_result', 'contact_candidate', 'manual_review'}
         for row in preview['actions']:
             sid=row['session_id'];
+            if row.get('action') not in lifecycle_actions:
+                continue
             if sid not in selected or row['study_id']!=self.study_id or not isinstance(row['participant_id'],str): continue
             if origin == 'historical' and sid not in historical:
                 reason = 'historical lifecycle action requires explicit approval'

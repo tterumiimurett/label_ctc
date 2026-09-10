@@ -1,4 +1,5 @@
 import json
+import tempfile
 import subprocess
 import sys
 import unittest
@@ -52,3 +53,20 @@ class ConsentAndHistoricalContractTest(unittest.TestCase):
         approval = Approval('STUDY', 'digest', ('S1',), ('S1',), (), True, 'now', 'reviewer', ({'session_id': 'S1', 'study_id': 'STUDY', 'participant_id': 'P1', 'action': 'release_claim', 'preview_sha256': 'digest'},))
         self.assertEqual(approval.historical_records[0]['participant_id'], 'P1')
         self.assertNotEqual(approval.historical_records, ())
+
+
+class NoOpLifecycleRegressionTest(unittest.TestCase):
+    def test_normal_completed_none_is_not_historical_manual(self):
+        from unittest.mock import Mock
+        from prolific.ctc_verification_app.activation import ActionJournal, ActivationController, Approval, ApprovalStore
+        from prolific.ctc_verification_app.contact_candidates import JsonContactLedger
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            adapter = Mock()
+            adapter.reconcile.return_value = {'status': 'ok', 'submissions': []}
+            approvals = ApprovalStore(root / 'approval.json')
+            approvals.save(Approval('STUDY', '', (), (), (), True, 'now', 'reviewer'))
+            controller = ActivationController(trigger=Mock(), store=Mock(), ledger=JsonContactLedger(root / 'contacts.json'), adapter=adapter, journal=ActionJournal(root / 'journal'), study_id='STUDY', approvals=approvals, production_enabled=True)
+            result = controller.execute(provenance_context={'run_kind': 'backfill', 'historical_snapshot': True}, report={'status': 'ok', 'submissions': [{'session_id': 'S', 'study_id': 'STUDY', 'participant_id': 'P', 'status': 'APPROVED', 'classification': 'complete_result', 'proposed_action': 'none'}]})
+            self.assertEqual(result['results'], [])
+            self.assertNotIn('S', result['preview']['historical_sessions'])
