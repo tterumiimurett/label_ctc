@@ -1,4 +1,4 @@
-"""Pinned fd8bac6 real HTTP positive-path acceptance attempt; localhost/temp only."""
+"""Controlled local-HTTP cross-resource scheduler regression."""
 import base64,hashlib,hmac,json,sys,tempfile,threading
 from datetime import datetime,timedelta,timezone
 from pathlib import Path
@@ -52,7 +52,27 @@ try:
    raw=json.dumps({'event_type':'submission.status.change','resource_id':'S1'}).encode();ts=str(int(now[0].timestamp()));sig=base64.b64encode(hmac.new(b'synthetic-secret',ts.encode()+raw,hashlib.sha256).digest()).decode()
    request=Request(f'http://127.0.0.1:{receiver.server_port}/',data=raw,headers={'Content-Type':'application/json','X-Prolific-Request-Signature':sig,'X-Prolific-Request-Timestamp':ts,'X-Event-ID':eid,'X-Timestamp':ts})
    with urlopen(request) as response:return json.loads(response.read())
-  first=event('E1');now[0]+=timedelta(minutes=10);second=c.scheduled_reassessment()
+  first = event('E1')
+  now[0] += timedelta(minutes=10)
+  # Reconstruct every durable component before the scheduler reassessment.
+  client2 = ProlificSubmissionClient('synthetic-only', f'http://127.0.0.1:{api.server_port}/api/v1', retries=0)
+  trigger2 = ReconciliationTrigger(client2, root / 'data', 'STUDY', JsonTriggerStore(root / 'events.json'), now=clock)
+  adapter2 = RealApiAdapter(client2, root / 'data', 'STUDY', scope=scope, clock=clock)
+  store2 = VerificationStore([], [str(candidate)], root / 'data', 1, 1, 'https://example.test/complete', False)
+  ledger2 = JsonContactLedger(root / 'contacts.json')
+  c2 = ActivationController(
+      trigger=trigger2,
+      store=store2,
+      ledger=ledger2,
+      adapter=adapter2,
+      journal=ActionJournal(root / 'journal.jsonl'),
+      study_id='STUDY',
+      approvals=ApprovalStore(root / 'approval.json'),
+      production_enabled=True,
+      clock=clock,
+      activation_boundary=boundary,
+  )
+  second = c2.scheduled_reassessment()
   print(json.dumps({'first':first,'after_ten_minutes':second,'ledger':ledger.read(),'message_GETs':[p for p in gets if '/messages/' in p],'POSTs':posts},indent=2))
   assert len(posts)==1 and posts[0]['body']['recipient_id']=='P1' and all(item['body']['recipient_id']!='P-OLD' for item in posts), 'cross-resource isolation failed'
 finally:
