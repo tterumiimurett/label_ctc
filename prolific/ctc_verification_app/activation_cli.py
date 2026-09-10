@@ -59,7 +59,8 @@ def build_controller(config: dict[str, Any], journal: ActionJournal, *, execute:
         [], list(config["auto_labels"]), data_dir, int(config.get("bundle_size", 1)),
         int(config.get("redundancy", 1)), str(config.get("completion_url", "https://app.prolific.com/submissions/complete")), False,
     )
-    adapter = RealApiAdapter(client, data_dir, study_id, scope=scope)
+    consent_path = Path(config["consent_evidence_path"]) if config.get("consent_evidence_path") else None
+    adapter = RealApiAdapter(client, data_dir, study_id, scope=scope, consent_evidence_path=consent_path)
     return ActivationController(
         trigger=trigger, store=store, ledger=JsonContactLedger(data_dir / "contacts.json"), adapter=adapter,
         journal=journal, study_id=study_id, approvals=ApprovalStore(data_dir / "approval.json"),

@@ -64,6 +64,7 @@ class Approval:
     routine_enabled: bool = False
     approved_at: str = ''
     approved_by: str = ''
+    historical_records: tuple[dict[str, Any], ...] = ()
 
 class ApprovalStore:
     def __init__(self, path: Path): self.path=path; self.lock_path=path.with_suffix(path.suffix+'.lock'); self._thread=threading.RLock()
@@ -80,16 +81,30 @@ class ApprovalStore:
             h=self._lock()
             try:
                 if not self.path.exists(): return None
-                value=json.loads(self.path.read_text(encoding='utf-8')); return Approval(value['study_id'],value['preview_sha256'],tuple(value['sessions']),tuple(value['historical_sessions']),tuple(value.get('routine_sessions',())),value.get('routine_enabled',False),value.get('approved_at',''),value.get('approved_by',''))
+                value=json.loads(self.path.read_text(encoding='utf-8')); return Approval(value['study_id'],value['preview_sha256'],tuple(value['sessions']),tuple(value['historical_sessions']),tuple(value.get('routine_sessions',())),value.get('routine_enabled',False),value.get('approved_at',''),value.get('approved_by',''),tuple(value.get('historical_records', ())))
             finally: fcntl.flock(h,fcntl.LOCK_UN); h.close()
 
 class RealApiAdapter:
     """Adapter used by activation; reads current API state through the reviewed reader."""
-    def __init__(self, reader: Any, data_dir: Path, study_id: str, scope: VerifiedMessageScope | None = None, clock: Callable[[], datetime] | None = None):
-        self.reader=reader; self.data_dir=data_dir; self.study_id=study_id; self.fresh=ProlificFreshReconciliation(reader,data_dir,study_id,scope=scope,now=clock() if clock else None); self.clock=clock
+    def __init__(self, reader: Any, data_dir: Path, study_id: str, scope: VerifiedMessageScope | None = None, clock: Callable[[], datetime] | None = None, consent_evidence_path: Path | None = None):
+        self.reader=reader; self.data_dir=data_dir; self.study_id=study_id; self.fresh=ProlificFreshReconciliation(reader,data_dir,study_id,scope=scope,now=clock() if clock else None); self.clock=clock; self.consent_evidence_path=consent_evidence_path
     def reconcile(self) -> dict[str, Any]:
         if self.clock: self.fresh.now=self.clock()
-        return self.fresh.reconcile()
+        report = self.fresh.reconcile()
+        if self.consent_evidence_path is not None:
+            if not self.consent_evidence_path.exists():
+                report['status'] = 'pending'; report['error'] = 'configured consent evidence is unavailable'; return report
+            try:
+                evidence = json.loads(self.consent_evidence_path.read_text(encoding='utf-8'))
+                records = evidence.get('records', []) if isinstance(evidence, dict) else []
+                by_session = {r.get('session_id'): r for r in records if isinstance(r, dict)}
+                for row in report.get('submissions', []):
+                    record = by_session.get(row.get('session_id'))
+                    if isinstance(record, dict) and record.get('study_id') == row.get('study_id') and record.get('participant_id') == row.get('participant_id') and record.get('consent_withdrawn') is True:
+                        row['consent_withdrawn'] = True; row['consent_evidence'] = {'source': str(self.consent_evidence_path), 'record_id': record.get('record_id')}
+            except (OSError, ValueError, TypeError):
+                report['status'] = 'pending'; report['error'] = 'configured consent evidence is malformed'; return report
+        return report
     def inspect_messages(self, **kwargs: Any) -> str: return self.fresh.inspect_messages(**kwargs)
     def send_message(self, *, recipient_id: str, body: str, study_id: str) -> dict[str, Any]: return self.fresh.send_message(recipient_id=recipient_id, body=body, study_id=study_id)
 
@@ -179,7 +194,7 @@ class ActivationController:
         if preview.get('study_id')!=self.study_id or not approved_by.strip(): raise ValueError('approval identity/study mismatch')
         allowed={r['session_id'] for r in preview['actions']};
         if not sessions <= allowed or not historical_sessions <= allowed: raise ValueError('approval contains unlisted session')
-        approval=Approval(self.study_id,preview['preview_sha256'],tuple(sorted(sessions)),tuple(sorted(historical_sessions)),tuple(sorted(sessions-set(historical_sessions))),routine_policy,utc_now(),approved_by); self.approvals.save(approval); return approval
+        records=tuple({'session_id': r.get('session_id'), 'study_id': r.get('study_id'), 'participant_id': r.get('participant_id'), 'action': r.get('action'), 'preview_sha256': preview.get('preview_sha256')} for r in preview.get('actions', []) if r.get('session_id') in historical_sessions); approval=Approval(self.study_id,preview['preview_sha256'],tuple(sorted(sessions)),tuple(sorted(historical_sessions)),tuple(sorted(sessions-set(historical_sessions))),routine_policy,utc_now(),approved_by,records); self.approvals.save(approval); return approval
     def current_reconcile(self) -> dict[str, Any]: return self.trigger.periodic()
     def handle_signed_event(self, body: bytes, headers: dict[str, str], secret: str, context: Path | dict[str, Any]) -> dict[str, Any] | Any:
         result=self.trigger.handle(body,headers,secret)
@@ -211,6 +226,10 @@ class ActivationController:
             report = {**report, 'submissions': [row for row in report.get('submissions', []) if row.get('session_id') == session_id]}
         preview=self.preview(report); approval=self.approvals.load() if self.approvals else None
         if not self.production_enabled:
+            for row in preview['actions']:
+                if row.get('action') != 'contact_candidate':
+                    evidence = {'session_id': row.get('session_id'), 'study_id': row.get('study_id'), 'participant_id': row.get('participant_id'), 'fresh_report': report}
+                    self.journal.manual(str(row.get('action')), evidence, 'explicit execution approval is required', evidence)
             return {'status':'preview_only','reason':'explicit execution approval is required','preview':preview,'results':[]}
         if not approval or approval.study_id != self.study_id or not approval.routine_enabled:
             return {'status':'blocked','reason':'routine_policy_approval_missing','preview':preview,'results':[]}
@@ -227,6 +246,14 @@ class ActivationController:
                 self.journal.manual(row['action'], evidence, reason, evidence)
                 results.append({'session_id': sid, 'action': row['action'], 'outcome': {'status': 'manual_review', 'reason': reason, 'evidence': evidence}})
                 continue
+            if origin == 'historical':
+                matching = [record for record in approval.historical_records if record.get('session_id') == sid and record.get('action') == row.get('action') and record.get('study_id') == row.get('study_id') and record.get('participant_id') == row.get('participant_id') and record.get('preview_sha256') == approval.preview_sha256]
+                if not matching:
+                    reason = 'historical approval record does not match current identity/action/digest'
+                    evidence = {'session_id': sid, 'study_id': row.get('study_id'), 'participant_id': row.get('participant_id'), 'action': row.get('action'), 'preview_sha256': approval.preview_sha256}
+                    self.journal.manual(row['action'], evidence, reason, evidence)
+                    results.append({'session_id': sid, 'action': row['action'], 'outcome': {'status': 'manual_review', 'reason': reason, 'evidence': evidence}})
+                    continue
             if origin == 'unknown':
                 reason = 'lifecycle provenance is unknown'
                 evidence = {'session_id': sid, 'origin': origin, 'study_id': row.get('study_id')}

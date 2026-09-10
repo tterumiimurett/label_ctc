@@ -28,3 +28,6 @@ No authorized live credential/workspace/HTTPS production receiver inventory was 
 ## CLI acceptance shape
 
 A controlled fixture configuration must contain `study_id`, `data_dir`, `base_url`, `token`, `auto_labels`, `verified_message_scope` (researcher/workspace IDs, coverage interval, visibility verification, note, checked/expiry times), `activation_boundary`, and explicit `routine_policy: true`. Run `python3 -m prolific.ctc_verification_app.activation_cli --journal <journal> receiver --config <fixture.json> --secret <fixture-secret>` for default-off reception; add `--execute` only against an approved local controlled API fixture. `approve --routine-policy` records the future-NEW rule, while `--historical-session` remains a separate explicit list.
+
+
+Consent evidence schema: optional CLI `consent_evidence_path` points to UTF-8 JSON `{"records":[{"record_id":"...","session_id":"...","study_id":"...","participant_id":"...","consent_withdrawn":true}]}`. Records are identity-bound; missing or malformed configured evidence yields pending/manual handling. RETURNED status alone never implies consent withdrawal.
