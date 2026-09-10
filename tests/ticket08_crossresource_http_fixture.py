@@ -57,7 +57,7 @@ try:
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)
         candidate = root / 'candidates.jsonl'
-        candidate.write_text(json.dumps({'candidate_key': 'K', 'pred_is_ctc': True, 'audio_verify': {'verify_is_ctc': True}, 'tos_audio': {'outer_url': 'http://127.0.0.1/unused.wav'}}) + '\n')
+        candidate.write_text(json.dumps({'candidate_key': 'K', 'pred_is_ctc': True, 'audio_verify': {'verify_is_ctc': True}, 'tos_audio': {'outer_url': 'http://127.0.0.1/unused.wav'}}) + '\n', encoding='utf-8')
         store = VerificationStore([], [str(candidate)], root / 'data', 1, 1, 'https://example.test/complete', False)
         assert store.assign({'prolific_pid': 'P1', 'study_id': 'STUDY', 'session_id': 'S1'})['status'] == 'ok'
         client = ProlificSubmissionClient('synthetic-only', f'http://127.0.0.1:{api.server_port}/api/v1', retries=0)

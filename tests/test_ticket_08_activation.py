@@ -26,7 +26,7 @@ class Ticket08Test(unittest.TestCase):
         d, r, c = self.setup()
         event = c.journal.begin('archive', {'session_id': 'S'})
         self.assertTrue(event)
-        self.assertEqual(json.loads((r / 'actions.jsonl').read_text())['kind'], 'intent')
+        self.assertEqual(json.loads((r / 'actions.jsonl').read_text(encoding="utf-8"))['kind'], 'intent')
         c.journal.disable('stop')
         self.assertIsNone(c.journal.begin('archive', {}))
         d.cleanup()
@@ -58,7 +58,7 @@ class RealComponentIntegrationTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
             candidate = root / 'candidates.jsonl'
-            candidate.write_text(json.dumps({'candidate_key': 'k', 'pred_is_ctc': True, 'audio_verify': {'verify_is_ctc': True}, 'tos_audio': {'outer_url': 'https://x/a.wav'}}) + '\n')
+            candidate.write_text(json.dumps({'candidate_key': 'k', 'pred_is_ctc': True, 'audio_verify': {'verify_is_ctc': True}, 'tos_audio': {'outer_url': 'https://x/a.wav'}}) + '\n', encoding='utf-8')
             store = VerificationStore([], [str(candidate)], root / 'data', 1, 1, 'https://x/complete', False)
             self.assertEqual(store.assign({'prolific_pid': 'P1', 'study_id': 'STUDY', 'session_id': 'S1'})['status'], 'ok')
             state = {'id': 'S1', 'study_id': 'STUDY', 'participant': 'P1', 'status': 'RETURNED'}
@@ -112,7 +112,7 @@ class FullHttpMatrixTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
             candidate = root / 'candidates.jsonl'
-            candidate.write_text(json.dumps({'candidate_key': 'k', 'pred_is_ctc': True, 'audio_verify': {'verify_is_ctc': True}, 'tos_audio': {'outer_url': 'https://x/a.wav'}}) + '\n')
+            candidate.write_text(json.dumps({'candidate_key': 'k', 'pred_is_ctc': True, 'audio_verify': {'verify_is_ctc': True}, 'tos_audio': {'outer_url': 'https://x/a.wav'}}) + '\n', encoding='utf-8')
             store = VerificationStore([], [str(candidate)], root / 'data', 1, 1, 'https://x/complete', False)
             assignment = store.assign({'prolific_pid': 'P1', 'study_id': 'STUDY', 'session_id': 'S1'})
             payload = {'schema_version': 'ctc-verification-v1', 'worker': {'prolific_pid': 'P1', 'study_id': 'STUDY', 'session_id': 'S1'}, 'assignment': assignment['assignment'], 'tasks': [{'candidate_id': assignment['tasks'][0]['candidate_id'], 'task_id': assignment['tasks'][0].get('task_id') or assignment['tasks'][0].get('id') or assignment['tasks'][0]['candidate_id'], 'relevant_interruption': False}]}

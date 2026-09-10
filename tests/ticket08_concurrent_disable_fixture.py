@@ -67,7 +67,7 @@ try:
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)
         candidate = root / 'candidates.jsonl'
-        candidate.write_text(json.dumps({'candidate_key': 'K', 'pred_is_ctc': True, 'audio_verify': {'verify_is_ctc': True}, 'tos_audio': {'outer_url': 'http://localhost/a.wav'}}) + '\n')
+        candidate.write_text(json.dumps({'candidate_key': 'K', 'pred_is_ctc': True, 'audio_verify': {'verify_is_ctc': True}, 'tos_audio': {'outer_url': 'http://localhost/a.wav'}}) + '\n', encoding='utf-8')
         store = VerificationStore([], [str(candidate)], root / 'data', 1, 3, 'https://example.test/complete', False)
         for sid in states:
             assert store.assign({'prolific_pid': 'P' + sid, 'study_id': 'STUDY', 'session_id': sid})['status'] == 'ok'
@@ -113,8 +113,8 @@ try:
         later = event('E3', 'S3')
         restart = controller().scheduled_reassessment()
         ledger = JsonContactLedger(root / 'contacts.json').read()
-        assignments = json.loads(store.assignments_path.read_text())
-        print(json.dumps({'POSTs': posts, 'ledger': ledger, 'later_lifecycle': later, 'restart': restart, 'S3_assignment_preserved': 'S3' in assignments, 'scheduler_error': result.get('error'), 'journal': (root / 'journal.jsonl').read_text()}, indent=2))
+        assignments = json.loads(store.assignments_path.read_text(encoding="utf-8"))
+        print(json.dumps({'POSTs': posts, 'ledger': ledger, 'later_lifecycle': later, 'restart': restart, 'S3_assignment_preserved': 'S3' in assignments, 'scheduler_error': result.get('error'), 'journal': (root / 'journal.jsonl').read_text(encoding='utf-8')}, indent=2))
         assert len(posts) == 1, 'Second HTTP message POST occurred after disable'
         assert 'S3' in assignments, 'Lifecycle effect occurred after disable'
 finally:
