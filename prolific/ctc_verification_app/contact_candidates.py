@@ -141,7 +141,7 @@ def _local_manual_reason(row: dict[str, Any], evidence: set[str], *, fresh: bool
         return "fresh_uncertain_local_evidence" if fresh else "uncertain_local_evidence"
     return None
 
-def _run(report: dict[str, Any], ledger: ContactLedger, fresh: FreshReconciliation, now: datetime, wait_minutes: int) -> dict[str, Any]:
+def _run(report: dict[str, Any], ledger: ContactLedger, fresh: FreshReconciliation, now: datetime, wait_minutes: int, candidate_origin: str) -> dict[str, Any]:
     if report.get("status") != "ok": return {"status": "pending", "decisions": [], "error": report.get("error", "reconciliation unavailable")}
     study = report.get("study_id")
     if not isinstance(study, str) or not study: return {"status": "manual_review", "decisions": [{"decision": "manual_review", "evidence": ["missing_study_id"]}]}
@@ -209,17 +209,20 @@ def _run(report: dict[str, Any], ledger: ContactLedger, fresh: FreshReconciliati
                 decisions.append(queue_manual_review(entry, sid, study, pid, {"prior_contact"}, "prior_contact_after_missing_detection")); continue
             decisions.append(_manual(entry, sid, study, pid, {"fresh_message_history_" + history}, "message_history_not_proven_clear")); continue
         candidate_evidence = set(entry.get("evidence", [])) | current_evidence | {"fresh_reconciliation", "fresh_message_history_clear"}
-        entry.update({"state": "candidate", "candidate_at": _ts(now), "candidate_origin": "new", "candidate_evidence": sorted(candidate_evidence), "candidate_message": APPROVED_MESSAGE.format(SESSION_ID=sid)})
+        if candidate_origin == "unknown":
+            decisions.append(queue_manual_review(entry, sid, study, pid, candidate_evidence, "candidate_origin_unknown")); continue
+        entry.update({"state": "candidate", "candidate_at": _ts(now), "candidate_origin": candidate_origin, "candidate_evidence": sorted(candidate_evidence), "candidate_message": APPROVED_MESSAGE.format(SESSION_ID=sid)})
         decisions.append(ContactDecision(sid, "candidate", entry["candidate_evidence"], entry["candidate_message"]))
     ledger.write(state)
     return {"status": "ok", "study_id": study, "decisions": [d.as_dict() for d in decisions], "writes_performed": True}
 
-def build_contact_candidates(report: dict[str, Any], ledger: ContactLedger, fresh: FreshReconciliation, *, now: datetime | str | None = None, wait_minutes: int = WAIT_MINUTES) -> dict[str, Any]:
+def build_contact_candidates(report: dict[str, Any], ledger: ContactLedger, fresh: FreshReconciliation, *, now: datetime | str | None = None, wait_minutes: int = WAIT_MINUTES, candidate_origin: str) -> dict[str, Any]:
     if wait_minutes != WAIT_MINUTES: raise ValueError("wait_minutes must be exactly ten minutes")
+    if candidate_origin not in {"new", "historical", "unknown"}: raise ValueError("candidate_origin must be new, historical, or unknown")
     reference = _dt(now or datetime.now(timezone.utc))
     if hasattr(ledger, "locked"):
-        with ledger.locked(): return _run(report, ledger, fresh, reference, wait_minutes)
-    return _run(report, ledger, fresh, reference, wait_minutes)
+        with ledger.locked(): return _run(report, ledger, fresh, reference, wait_minutes, candidate_origin)
+    return _run(report, ledger, fresh, reference, wait_minutes, candidate_origin)
 
 
 class ProlificFreshReconciliation:
@@ -260,7 +263,12 @@ class ProlificFreshReconciliation:
             messages = payload["results"]
             if any(not isinstance(message, dict) or not isinstance(message.get("created_at"), str) or not isinstance(message.get("sender_id"), str) for message in messages):
                 return "ambiguous"
+            if any(message["sender_id"] not in {self.scope.researcher_id, participant_id} for message in messages):
+                return "ambiguous"
             ordered = sorted(messages, key=lambda message: _dt(message["created_at"]))
+            timestamps = [_dt(message["created_at"]) for message in ordered]
+            if len(timestamps) != len(set(timestamps)):
+                return "ambiguous"
             if not ordered:
                 return "clear"
             last_researcher = max((message for message in ordered if message["sender_id"] == self.scope.researcher_id), key=lambda message: _dt(message["created_at"]), default=None)

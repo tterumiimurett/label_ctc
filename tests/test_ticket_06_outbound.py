@@ -52,8 +52,10 @@ class Ticket06OutboundTest(unittest.TestCase):
             value=report()
             result=send_approved_return_requests(value, ledger, adapter, enabled=True)
             self.assertEqual(result["decisions"][0]["decision"], "sent"); self.assertEqual(len(adapter.sent), 1)
-            adapter2=Adapter(); value["submissions"][0]["session_id"]="OLD"; value["submissions"][0]["participant_id"]="P2"
-            result=send_approved_return_requests(value, ledger, adapter2, enabled=True)
+            adapter2=Adapter(); old_ledger=JsonContactLedger(Path(d)/"old.json")
+            old_ledger.write({"sessions":{"OLD":{"state":"candidate","study_id":"STUDY","participant_id":"P2"}}})
+            value["submissions"][0]["session_id"]="OLD"; value["submissions"][0]["participant_id"]="P2"
+            result=send_approved_return_requests(value, old_ledger, adapter2, enabled=True)
             self.assertEqual(result["decisions"][0]["reason"], "historical_candidate_requires_explicit_approval"); self.assertEqual(adapter2.sent, [])
 
     def test_ordered_chat_rules(self):
@@ -70,6 +72,10 @@ class Ticket06OutboundTest(unittest.TestCase):
         self.assertEqual(adapter(old).inspect_messages(session_id="S1",participant_id="P1",study_id="STUDY"), "clear")
         newer=[*old,{"sender_id":"P1","created_at":"2026-08-21T00:00:00Z","body":"I completed"}]
         self.assertEqual(adapter(newer).inspect_messages(session_id="S1",participant_id="P1",study_id="STUDY"), "participant_reply")
+        unknown=[{"sender_id":"R","created_at":"2026-08-20T00:00:00Z","body":"hello"},{"sender_id":"OTHER","created_at":"2026-08-21T00:00:00Z","body":"?"}]
+        self.assertEqual(adapter(unknown).inspect_messages(session_id="S1",participant_id="P1",study_id="STUDY"), "ambiguous")
+        tied=[{"sender_id":"R","created_at":"2026-08-20T00:00:00Z","body":"hello"},{"sender_id":"P1","created_at":"2026-08-20T00:00:00Z","body":"?"}]
+        self.assertEqual(adapter(tied).inspect_messages(session_id="S1",participant_id="P1",study_id="STUDY"), "ambiguous")
         only_participant=[{"sender_id":"P1","created_at":"2026-08-20T00:00:00Z","body":"help"}]
         prior=[{"sender_id":"R","created_at":"2026-08-20T00:00:00Z","body":"Please return this submission"}]
         class ReturnedReader:
@@ -99,7 +105,7 @@ class Ticket06OutboundTest(unittest.TestCase):
             adapter=Adapter(error=TimeoutError("timeout"))
             first=send_approved_return_requests(report(), ledger, adapter, approved_sessions={"S1"}, enabled=True)
             self.assertEqual(first["decisions"][0]["decision"], "delivery_unknown")
-            build=build_contact_candidates(report(), JsonContactLedger(ledger_path), adapter, now="2026-09-09T00:10:00Z")
+            build=build_contact_candidates(report(), JsonContactLedger(ledger_path), adapter, candidate_origin="new", now="2026-09-09T00:10:00Z")
             self.assertEqual(JsonContactLedger(ledger_path).read()["sessions"]["S1"]["state"], "delivery_unknown")
             adapter.error=None; second=send_approved_return_requests(report(), JsonContactLedger(ledger_path), adapter, approved_sessions={"S1"}, enabled=True)
             self.assertEqual(second["decisions"][0]["decision"], "delivery_unknown"); self.assertEqual(len(adapter.sent), 1)
@@ -165,7 +171,7 @@ class Ticket06OutboundTest(unittest.TestCase):
     def test_restart_reconciles_sending_and_unknown_without_send(self):
         with tempfile.TemporaryDirectory() as d:
             ledger=JsonContactLedger(Path(d)/"c.json"); ledger.write({"sessions":{"S1":{"state":"sending","study_id":"STUDY","participant_id":"P1"}}})
-            adapter=Adapter(history="clear"); result=send_approved_return_requests(report(), ledger, adapter, approved_sessions={"S1"}, enabled=True)
+            adapter=Adapter(history="clear"); result=send_approved_return_requests(report(), ledger, adapter, enabled=True)
             self.assertEqual(result["decisions"][0]["decision"], "delivery_unknown"); self.assertEqual(adapter.sent, [])
             ledger.write({"sessions":{"S1":{"state":"delivery_unknown","study_id":"STUDY","participant_id":"P1"}}}); adapter.history="prior_contact"
             result=send_approved_return_requests(report(), ledger, adapter, approved_sessions={"S1"}, enabled=True)

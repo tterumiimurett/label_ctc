@@ -38,3 +38,12 @@ Synthetic controlled outcomes: empty complete history is eligible; a researcher-
 The cross-ticket timeout sequence remains protected: timeout records the attempt before the POST, candidate rebuilding preserves `delivery_unknown`, recovery queries history without resending, and acknowledged `sent` remains protected even if state is mutated. Controlled HTTP tests validate the real client POST shape and the composed fresh-reconciliation adapter; no real send occurred.
 
 Operational prerequisites remain: human approval of the activation rule, credentials and workspace/message visibility, verified API contract and message-history coverage, explicit historical backlog list approval, production scheduling/HTTPS configuration, and a separate live read-only validation.
+
+
+## Origin contract for Ticket 8
+
+`build_contact_candidates(..., candidate_origin=...)` now requires an explicit durable provenance value: `new` means the current processing run is authorized as routine-new after its configured activation/rule boundary; `historical` means backlog and must be named in the sender's separate `historical_sessions` approval set; `unknown` is fail-closed and queues manual review rather than creating an auto-eligible candidate. The builder persists the selected origin on the candidate. Ticket 8 must derive and persist this value from its processing/backfill/activation context, never infer `new` from first observation time, AW status, or absence of a prior ledger row.
+
+Normal sender iteration includes `candidate`, `sending`, `delivery_unknown`, and `sent` ledger entries. Interrupted attempts are recovered without a new POST even when no per-session approval list is supplied. Chat history rejects unknown senders and equal timestamps as ambiguous/manual.
+
+The revised blocker suite includes candidate-builder-to-sender regeneration, timeout/unknown recovery, unknown/equal-time history, and no-list interrupted recovery. No human policy issue was introduced by these known-defect fixes; root dual-axis review remains required.

@@ -62,7 +62,7 @@ def send_approved_return_requests(
         current = {row.get("session_id"): row for row in current_report.get("submissions", []) if isinstance(row, dict)}
         explicitly_approved = historical_sessions if historical_sessions is not None else (approved_sessions or set())
         session_ids = set(explicitly_approved)
-        session_ids.update(session_id for session_id, entry in sessions.items() if isinstance(entry, dict) and entry.get("state") == "candidate")
+        session_ids.update(session_id for session_id, entry in sessions.items() if isinstance(entry, dict) and entry.get("state") in {"candidate", "sending", "delivery_unknown", "sent"})
         for session_id in sorted(session_ids):
             entry = sessions.get(session_id)
             if not isinstance(entry, dict) or entry.get("state") not in {"candidate", "sending", "delivery_unknown", "sent"}:
@@ -71,7 +71,16 @@ def send_approved_return_requests(
                 decisions.append(_decision(session_id, "manual_review", "historical_candidate_requires_explicit_approval")); continue
             row = current.get(session_id)
             if not isinstance(row, dict):
-                decisions.append(_decision(session_id, "cancelled", "fresh_submission_missing")); continue
+                if outbound_attempted(entry) or entry.get("state") in {"sending", "delivery_unknown"}:
+                    participant_id, study_id = entry.get("participant_id"), entry.get("study_id")
+                    if isinstance(participant_id, str) and isinstance(study_id, str):
+                        decisions.append(_recover_without_resend(entry, session_id, participant_id, study_id, fresh))
+                    else:
+                        entry.update({"state": "manual_review", "reason": "attempt_identity_unavailable"})
+                        decisions.append(_decision(session_id, "manual_review", "attempt_identity_unavailable"))
+                else:
+                    decisions.append(_decision(session_id, "manual_review", "fresh_submission_missing"))
+                continue
             participant_id, study_id = row.get("participant_id"), row.get("study_id")
             if entry.get("participant_id") != participant_id or entry.get("study_id") != study_id:
                 decisions.append(_manual(entry, session_id, study_id or "", participant_id or "", "fresh_identity_changed")); continue
