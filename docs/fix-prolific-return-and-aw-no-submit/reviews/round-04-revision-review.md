@@ -55,3 +55,7 @@ At `9e0833a`, both reviewers confirmed two remaining identity paths: manual rout
 ## Ticket 6 identity fix re-review
 
 At `249d7df`, root expanded reproduction and 96 full tests pass all earlier cases. Standards passes. Spec identified two new helper regressions: first-observed manual cases drop valid observed study/participant if no original ledger identity exists; fresh uncertainty drops concrete draft/error/return-request details and prior evidence. Repros appended to the shared isolated script. Original task resumed in `ticket-06-evidence-fix.*` to preserve observed identities and cumulative concrete evidence. Not approved for merge; no new human decision required.
+
+## Ticket 6 accepted and merged
+
+Final `4b116b8` passes independent Standards and Spec reviews with no remaining human matters under the user-confirmed conditional gate. Root expanded public repro passes and 97 branch tests pass; main merge `86cec8f` passes all 107 integrated tests. Ticket 4 and 6 round complete. Ticket 8 must verify integrated trustworthy new/historical classification, real read-only prerequisites and isolated end-to-end/browser evidence. Production activation and historical messaging remain separately gated.

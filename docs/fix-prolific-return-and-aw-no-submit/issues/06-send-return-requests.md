@@ -1,6 +1,6 @@
 # 06: 典型缺失结果自动请求退回，例外进入人工队列
 
-**Status:** Revised after human review 2026-09-10 — implementation/re-review required
+**Status:** Implemented, independently reviewed and merged (86cec8f); production not activated
 
 **Publication label:** ready-for-agent
 
