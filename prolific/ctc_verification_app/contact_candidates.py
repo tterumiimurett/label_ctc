@@ -110,30 +110,44 @@ def _ts(value: datetime) -> str: return value.astimezone(timezone.utc).isoformat
 _MANUAL_EVIDENCE = {"draft", "archived_result", "read_error", "other_session_result", "save_error", "identity_mismatch", "local_read_error"}
 
 def queue_manual_review(entry: dict[str, Any], sid: str, study: Any, pid: Any, evidence: set[str], reason: str) -> ContactDecision:
-    """Persist manual disposition without overwriting trusted original identity."""
-    original_study = entry.get("study_id")
-    original_pid = entry.get("participant_id")
-    if isinstance(original_study, str) and isinstance(study, str) and original_study != study:
-        entry["observed_study_id"] = study
-        evidence = set(evidence) | {"observed_study_id_conflict"}
-    elif not isinstance(study, str):
-        entry["observed_study_id"] = repr(study)
-        evidence = set(evidence) | {"observed_study_id_invalid"}
-    if isinstance(original_pid, str) and isinstance(pid, str) and original_pid != pid:
-        entry["observed_participant_id"] = pid
-        evidence = set(evidence) | {"observed_participant_id_conflict"}
-    elif not isinstance(pid, str):
-        entry["observed_participant_id"] = repr(pid)
-        evidence = set(evidence) | {"observed_participant_id_invalid"}
+    """Persist manual disposition while separating trusted and observed identity."""
+    evidence = set(entry.get("evidence", [])) | set(evidence)
+    trusted_identity = entry.get("identity_status") != "observed"
+    original_study = entry.get("study_id") if trusted_identity else None
+    original_pid = entry.get("participant_id") if trusted_identity else None
+    if isinstance(original_study, str):
+        if isinstance(study, str) and original_study != study:
+            entry["observed_study_id"] = study
+            evidence.add("observed_study_id_conflict")
+        elif not isinstance(study, str):
+            entry["observed_study_id"] = f"invalid:{type(study).__name__}"
+            evidence.add("observed_study_id_invalid")
+    elif isinstance(study, str):
+        entry.update({"study_id": study, "observed_study_id": study, "identity_status": "observed"})
+    else:
+        entry["observed_study_id"] = f"invalid:{type(study).__name__}"
+        evidence.add("observed_study_id_invalid")
+    if isinstance(original_pid, str):
+        if isinstance(pid, str) and original_pid != pid:
+            entry["observed_participant_id"] = pid
+            evidence.add("observed_participant_id_conflict")
+        elif not isinstance(pid, str):
+            entry["observed_participant_id"] = f"invalid:{type(pid).__name__}"
+            evidence.add("observed_participant_id_invalid")
+    elif isinstance(pid, str):
+        entry.update({"participant_id": pid, "observed_participant_id": pid, "identity_status": "observed"})
+    else:
+        entry["observed_participant_id"] = f"invalid:{type(pid).__name__}"
+        evidence.add("observed_participant_id_invalid")
     if entry.get("session_id") not in {None, sid}:
         entry["observed_session_id"] = sid
-        evidence = set(evidence) | {"observed_session_id_conflict"}
+        evidence.add("observed_session_id_conflict")
     else:
         entry.setdefault("session_id", sid)
-    complete = sorted(set(evidence) | {reason})
+    complete = sorted(evidence | {reason})
     entry.update({"state": "manual_review", "reason": reason, "evidence": complete})
-    trusted_study = original_study if isinstance(original_study, str) else None
-    trusted_pid = original_pid if isinstance(original_pid, str) else None
+    trusted_study = original_study if isinstance(original_study, str) else (entry.get("study_id") if entry.get("identity_status") == "observed" else None)
+    trusted_pid = original_pid if isinstance(original_pid, str) else (entry.get("participant_id") if entry.get("identity_status") == "observed" else None)
     return ContactDecision(sid, "manual_review", complete, participant_id=trusted_pid, study_id=trusted_study, reason=reason)
 
 

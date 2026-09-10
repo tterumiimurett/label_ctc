@@ -157,6 +157,22 @@ class Ticket06OutboundTest(unittest.TestCase):
             saved=ledger.read()["sessions"]["S1"]
             self.assertEqual(saved["participant_id"], "P1"); self.assertEqual(saved["observed_participant_id"], "P9")
 
+    def test_builder_manual_queue_preserves_observed_identity_and_evidence(self):
+        with tempfile.TemporaryDirectory() as d:
+            ledger=JsonContactLedger(Path(d)/"c.json")
+            draft_report={"status":"ok","study_id":"STUDY","submissions":[{"session_id":"S1","study_id":"STUDY","participant_id":"P1","status":"AWAITING REVIEW","classification":"awaiting_without_final_result","evidence":["draft"],"errors":[] }]}
+            result=build_contact_candidates(draft_report, ledger, Adapter(), candidate_origin="new", now="2026-09-10T00:00:00Z")
+            saved=ledger.read()["sessions"]["S1"]
+            self.assertEqual(result["decisions"][0]["decision"], "manual_review"); self.assertEqual(saved["state"], "manual_review")
+            self.assertEqual(saved["study_id"], "STUDY"); self.assertEqual(saved["participant_id"], "P1"); self.assertEqual(saved["identity_status"], "observed"); self.assertIn("draft", saved["evidence"])
+            entry={"state":"observed","study_id":"STUDY","participant_id":"P1","first_missing_at":"2026-09-10T00:00:00Z","evidence":["original_observation"]}
+            ledger.write({"sessions":{"S1":entry}})
+            initial={**draft_report, "submissions":[{**draft_report["submissions"][0],"evidence":[],"classification":"awaiting_without_final_result"}]}
+            fresh=Adapter(); fresh.reconcile=lambda: {**initial, "submissions":[{**initial["submissions"][0],"evidence":["draft","read_error"]}]}
+            build_contact_candidates(initial, ledger, fresh, candidate_origin="new", now="2026-09-10T00:11:00Z")
+            saved=ledger.read()["sessions"]["S1"]
+            self.assertEqual(saved["state"], "manual_review"); self.assertEqual(saved["participant_id"], "P1"); self.assertIn("original_observation", saved["evidence"]); self.assertIn("read_error", saved["evidence"])
+
     def test_malformed_or_nonstring_identity_persists_manual_without_inventing_identity(self):
         with tempfile.TemporaryDirectory() as d:
             ledger=JsonContactLedger(Path(d)/"c.json")

@@ -24,8 +24,8 @@ def _decision(session_id: str, decision: str, reason: str | None = None) -> dict
     return result
 
 
-def _manual(entry: dict[str, Any], session_id: str, study_id: str, participant_id: str, reason: str) -> dict[str, Any]:
-    return queue_manual_review(entry, session_id, study_id, participant_id, {reason}, reason).as_dict()
+def _manual(entry: dict[str, Any], session_id: str, study_id: Any, participant_id: Any, reason: str, evidence: set[str] | None = None) -> dict[str, Any]:
+    return queue_manual_review(entry, session_id, study_id, participant_id, evidence or set(), reason).as_dict()
 
 
 def _recover_without_resend(entry: dict[str, Any], session_id: str, participant_id: str, study_id: str, fresh: OutboundAdapter) -> dict[str, str] | None:
@@ -33,12 +33,12 @@ def _recover_without_resend(entry: dict[str, Any], session_id: str, participant_
     try:
         history = fresh.inspect_messages(session_id=session_id, participant_id=participant_id, study_id=study_id)
     except Exception as error:
-        entry.update({"recovery": "history_query_failed", "error": str(error)})
-        return _manual(entry, session_id, study_id, participant_id, "delivery_history_unavailable")
+        entry.update({"recovery": "history_query_failed", "error_type": type(error).__name__})
+        return _manual(entry, session_id, study_id, participant_id, "delivery_history_unavailable", {"history_query_failed"})
     if history == "prior_contact":
-        return _manual(entry, session_id, study_id, participant_id, "prior_contact_after_attempt")
+        return _manual(entry, session_id, study_id, participant_id, "prior_contact_after_attempt", {"prior_contact"})
     entry.update({"recovery": "not_confirmed", "recovery_outcome": "unresolved"})
-    return _manual(entry, session_id, study_id, participant_id, "delivery_not_confirmed")
+    return _manual(entry, session_id, study_id, participant_id, "delivery_not_confirmed", {"delivery_unresolved"})
 
 
 def send_approved_return_requests(
@@ -107,19 +107,19 @@ def send_approved_return_requests(
             evidence.update(str(item) for item in row.get("errors", []) if isinstance(item, str))
             blocked = evidence & {"draft", "archived_result", "other_session_result", "read_error", "local_read_error", "identity_mismatch", "save_error"}
             if blocked or row.get("errors") or row.get("return_requested"):
-                decisions.append(_manual(entry, session_id, study_id, participant_id, "fresh_uncertain_evidence")); continue
+                decisions.append(_manual(entry, session_id, study_id, participant_id, "fresh_uncertain_evidence", evidence | ({"return_requested"} if row.get("return_requested") else set()))); continue
             if row.get("status") != "AWAITING REVIEW" or row.get("classification") != "awaiting_without_final_result":
                 decisions.append(_manual(entry, session_id, study_id, participant_id, "answer_or_status_arrived_after_missing_detection")); continue
             try:
                 history = fresh.inspect_messages(session_id=session_id, participant_id=participant_id, study_id=study_id)
             except Exception as error:
-                entry.update({"reason": "message_history_query_failed", "error": str(error)})
-                decisions.append(_manual(entry, session_id, study_id, participant_id, "message_history_query_failed"))
+                entry.update({"reason": "message_history_query_failed", "error_type": type(error).__name__})
+                decisions.append(_manual(entry, session_id, study_id, participant_id, "message_history_query_failed", {"history_query_failed"}))
                 continue
             if history == "prior_contact":
-                decisions.append(_manual(entry, session_id, study_id, participant_id, "prior_contact_requires_confirmation")); continue
+                decisions.append(_manual(entry, session_id, study_id, participant_id, "prior_contact_requires_confirmation", {"prior_contact"})); continue
             if history != "clear":
-                decisions.append(_manual(entry, session_id, study_id, participant_id, "message_history_not_clear")); continue
+                decisions.append(_manual(entry, session_id, study_id, participant_id, "message_history_not_clear", {"message_history_not_clear"})); continue
             body = APPROVED_MESSAGE.format(SESSION_ID=session_id)
             entry.update({"state": "sending", "send_attempted_at": _timestamp(), "send_body": body, "send_operation": "ordinary_message", "send_attempt_count": 1})
             ledger.write(state)

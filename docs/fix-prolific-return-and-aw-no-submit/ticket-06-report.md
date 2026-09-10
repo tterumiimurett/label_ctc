@@ -21,7 +21,7 @@ These are synthetic controlled adapters/JSON ledgers only. No production API, pa
 ## Verification
 
 - Focused Ticket 06/Ticket 5 tests: 34 passed
-- Full suite: 96 passed
+- Full suite: 97 passed
 - Public reviewer reproduction: passed with the expected ledger states
 - `git diff --check`: clean
 
@@ -37,3 +37,10 @@ Before any live activation: root review must pass; an operator must approve the 
 Manual queue transitions now preserve the original ledger `study_id`, `participant_id`, and session identity, along with all irreversible attempt fields. A fresh conflicting identity is recorded separately as `observed_study_id`/`observed_participant_id` with conflict evidence; malformed or missing values are recorded as invalid observations and never promoted to trusted identity. Builder and outbound callers use the same helper.
 
 The expanded synthetic reproduction now also verifies original identity preservation and malformed-identity manual queuing. Root independent dual-axis review remains pending.
+
+
+## Evidence and observed-identity review fix
+
+`queue_manual_review` now unions existing ledger evidence with the current transition evidence. It preserves trusted original identity and irreversible send metadata; valid fresh identity is stored as a separate observed value when it conflicts, and valid supplied identity is retained as observed/untrusted when no original identity exists. Missing or malformed values are recorded only as typed invalid observations and are never promoted to trusted identity. Outbound branches pass fresh evidence categories, return-request evidence, prior-contact/history evidence, and non-secret exception types into this helper.
+
+Added ledger assertions cover initial draft cases without original identity, fresh draft/read-error evidence union, original identity mismatch, malformed/non-string identity, prior attempt evidence, and no-resend public-repro paths.
