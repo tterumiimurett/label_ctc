@@ -1,5 +1,28 @@
 # First100 独立人工审核
 
+## 当前入口：排除已审核候选后的 61 条（2026-09-10）
+
+```bash
+bash prolific/run_ctc_verification_expert_agree2_first100.sh
+```
+
+此脚本现在加载 `tables/ctc_verification_expert_agree2_remaining61_20260910.jsonl`，共 61 条。审核范围仍来自 2026-09-09 的 65 条快照，没有按新收到的众包判断扩大范围。
+
+已找到 7 条历史 researcher submissions，位于服务器的 `prolific/ctc_verification_app/data_train_first100_prolific/excluded_submissions/2026-09-08/researcher_tests/`；其中只有 4 条与该 65 条快照重合，所以本次待审核数为 65 − 4 = 61。原始 7 条结果保持原样，不随 Git 发布，也不需要下载到审核电脑。
+
+打开脚本打印的新完整链接。使用新的 study/session 和数据目录 `prolific/ctc_verification_app/data_expert_agree2_remaining61_20260910/`，避免旧 assignment 和草稿因任务数变化而被覆盖。旧 65 条与 100 条入口产生的数据均保留；新入口不会自动迁移旧草稿。当前 Candidate 1–61 重新编号，始终以 `candidate_id` 对应样本。
+
+标完并关闭服务后，在仓库根目录打包上传：
+
+```bash
+tar -czf expert_agree2_remaining61.tar.gz -C prolific/ctc_verification_app data_expert_agree2_remaining61_20260910
+```
+
+最终提交文件名为 `submissions/expert_agree2_remaining61_20260910_v1.json`。
+待新结果回传后，将 61 条新审核与 7 条历史审核按 `candidate_id` 合并，检查重复和冲突；预期共有 68 条唯一审核结果。其中 65 条属于本轮筛选集，另外 3 条历史结果保留但不计入该筛选集的误收率分母。历史审核是先前的 researcher tests，其审核条件与本轮可能不同，分析时保留来源并分别核查。
+
+下文保留先前 65 条及 100 条方案说明；当前运行以上 61 条入口。
+
 ## 优先审核：至少两人认可的 65 条（2026-09-09）
 
 现在优先使用这个较小的审核入口：
