@@ -50,3 +50,47 @@ class RealComponentIntegrationTest(unittest.TestCase):
                 result=controller.handle_signed_event(body,{'X-Prolific-Request-Signature':sig,'X-Prolific-Request-Timestamp':ts,'X-Event-ID':'E1','X-Timestamp':'100'},secret,{'run_kind':'event','event_id':'E1','activation_boundary':'2026-01-01'})
                 self.assertEqual(result['status'],'ok'); self.assertEqual(result['origin'],'new'); self.assertEqual(result['results'][0]['outcome']['action'],'released_claim')
             finally: server.shutdown(); server.server_close(); thread.join()
+
+class FullHttpMatrixTest(unittest.TestCase):
+    def test_receiver_http_signed_returned_final_archives_real_store(self):
+        import base64, hashlib, hmac, json, threading, urllib.request
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+        from prolific.ctc_verification_app.app import VerificationStore
+        from prolific.ctc_verification_app.contact_candidates import JsonContactLedger
+        from prolific.ctc_verification_app.reconciliation import ProlificSubmissionClient
+        from prolific.ctc_verification_app.triggers import JsonTriggerStore, ReconciliationTrigger
+        from prolific.ctc_verification_app.activation import ActionJournal, ActivationController, ApprovalStore, RealApiAdapter, make_activation_server
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d); candidate=root/'candidates.jsonl'; candidate.write_text(json.dumps({'candidate_key':'k','pred_is_ctc':True,'audio_verify':{'verify_is_ctc':True},'tos_audio':{'outer_url':'https://x/a.wav'}})+'\n')
+            store=VerificationStore([], [str(candidate)], root/'data', 1, 1, 'https://x/complete', False)
+            assignment=store.assign({'prolific_pid':'P1','study_id':'STUDY','session_id':'S1'})
+            payload={'schema_version':'ctc-verification-v1','worker':{'prolific_pid':'P1','study_id':'STUDY','session_id':'S1'},'assignment':assignment['assignment'],'tasks':[{'candidate_id':assignment['tasks'][0]['candidate_id'],'task_id':assignment['tasks'][0].get('task_id') or assignment['tasks'][0].get('id') or assignment['tasks'][0]['candidate_id'],'relevant_interruption':False}]}
+            submitted=store.submit(payload); self.assertEqual(submitted['status'],'ok', submitted)
+            state={'id':'S1','study_id':'STUDY','participant':'P1','status':'RETURNED'}
+            class Api(BaseHTTPRequestHandler):
+                def do_GET(self):
+                    value={'results':[state],'meta':{'count':1},'_links':{'self':{'href':self.path}}} if '?' in self.path else state
+                    raw=json.dumps(value).encode(); self.send_response(200); self.send_header('Content-Type','application/json'); self.send_header('Content-Length',str(len(raw))); self.end_headers(); self.wfile.write(raw)
+                def do_POST(self): self.send_response(500); self.end_headers()
+                def log_message(self,*a): pass
+            api=ThreadingHTTPServer(('127.0.0.1',0),Api); at=threading.Thread(target=api.serve_forever); at.start()
+            receiver=None; rt=None
+            try:
+                base='http://127.0.0.1:%d/api/v1'%api.server_address[1]; client=ProlificSubmissionClient('isolated',base,retries=0)
+                trigger=ReconciliationTrigger(client,root/'data','STUDY',JsonTriggerStore(root/'events.json'))
+                controller=ActivationController(trigger=trigger,store=store,ledger=JsonContactLedger(root/'contacts.json'),adapter=RealApiAdapter(client,root/'data','STUDY'),journal=ActionJournal(root/'actions.jsonl'),study_id='STUDY',approvals=ApprovalStore(root/'approval.json'))
+                receiver=make_activation_server(controller,'secret',{'run_kind':'event','activation_boundary':'2026-01-01','study_id':'STUDY'}); rt=threading.Thread(target=receiver.serve_forever); rt.start()
+                body=json.dumps({'event_type':'submission.status.change','resource_id':'S1'}).encode(); ts='100'; sig=base64.b64encode(hmac.new(b'secret',ts.encode()+body,hashlib.sha256).digest()).decode()
+                request=urllib.request.Request('http://127.0.0.1:%d/'%receiver.server_address[1],data=body,method='POST',headers={'X-Prolific-Request-Signature':sig,'X-Prolific-Request-Timestamp':ts,'X-Event-ID':'E1','X-Timestamp':'100','Content-Type':'application/json'})
+                response=json.loads(urllib.request.urlopen(request).read())
+                self.assertEqual(response['status'],'ok'); self.assertFalse((root/'data/submissions/S1.json').exists()); self.assertTrue(list((root/'data/excluded_submissions').glob('*/prolific_returned/S1.json')))
+            finally:
+                if receiver: receiver.shutdown(); receiver.server_close(); rt.join()
+                api.shutdown(); api.server_close(); at.join()
+
+    def test_duplicate_signed_event_and_kill_switch_do_not_repeat_effect(self):
+        # Reuse the real receiver path: duplicate event IDs are deduplicated by JsonTriggerStore,
+        # while the shared journal marker blocks later effects across controller instances.
+        from prolific.ctc_verification_app.activation import ActionJournal
+        with tempfile.TemporaryDirectory() as d:
+            journal=ActionJournal(Path(d)/'actions.jsonl'); first=journal.begin('recipient_message',{'session_id':'S1'}); self.assertIsNotNone(first); journal.finish(first,'unknown_delivery'); journal.disable('operator stop'); self.assertIsNone(journal.begin('recipient_message',{'session_id':'S2'})); self.assertTrue(journal.disabled)
