@@ -568,6 +568,7 @@ class VerificationStore:
                 continue
             if record.get("status") == "TIMED_OUT_PENDING":
                 self._resume_exclusion_lifecycle(session_id, lifecycle)
+                assignments = read_json(self.assignments_path, {})
                 continue
             if record.get("status") != "TIMED_OUT" or record.get("stage") != "claim_release":
                 continue

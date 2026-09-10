@@ -48,3 +48,8 @@ Added synthetic coverage for exact archive bytes, dated directory isolation, ide
 Human verification demo: with a temporary one-candidate store, assign S1 and submit a synthetic final result; reconcile current platform status TIMED-OUT; verify the original bytes/hash are in `prolific_timed_out`, the source and assignment are removed, S2 receives the released capacity, and S1 cannot assign/save/submit. Repeat with no result and verify no answer file is created. Inject faults after lifecycle intent, after archive write, and after assignment deletion; reconstruct the store and verify one archive/release only. Feed mismatched study/participant and then RETURNED observations; verify manual review and unchanged timeout state.
 
 Operational prerequisites remain: researcher-confirmed 14-minute study limit, current platform status obtained through the read-only API/webhook path, credentials/subscription/HTTPS receiver/scheduler inventory, and explicit human verification before root merge. No production API calls, writes, archives, messages, deployment, or runtime mutation were performed.
+
+
+## Mixed-intent recovery follow-up
+
+Fixed stale assignment-map restoration when a recovered final-answer archive intent and an answerless claim-release intent are drained together. Assignment state is reloaded after each archive recovery before subsequent releases. Added a real temporary-store regression asserting archive byte preservation, correct capacity for a new participant, no retained A/B claims, and old-session barriers. Full verification remains synthetic/local; no production operation was performed.

@@ -312,6 +312,33 @@ class CtcVerificationAssignmentTest(unittest.TestCase):
             self.assertEqual(result['status'], 'manual_review')
             self.assertEqual(json.loads(lifecycle.read_text())['S1']['status'], 'TIMED_OUT_MANUAL')
 
+    def test_mixed_timeout_recovery_reloads_assignments_between_intents(self):
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d); store=self.store(root, count=2, redundancy=1)
+            worker_a=self.worker('P1','A'); worker_b=self.worker('P2','B')
+            assignment_a=store.assign(worker_a); assignment_b=store.assign(worker_b)
+            self.assertEqual(store.submit(self.payload(worker_a, assignment_a))['status'], 'ok')
+            observed_a={'id':'A','study_id':'S1','participant':{'id':'P1'},'status':'TIMED-OUT'}
+            app=__import__('prolific.ctc_verification_app.app', fromlist=['atomic_write_json'])
+            real_write=app.atomic_write_json
+            def crash_after_a_intent(path, payload):
+                real_write(path, payload)
+                if path.name == 'returned-lifecycle.json' and payload.get('A',{}).get('stage') == 'intent':
+                    raise OSError('crash after archive intent')
+            with patch('prolific.ctc_verification_app.app.atomic_write_json', side_effect=crash_after_a_intent):
+                with self.assertRaises(OSError): store.reconcile_timed_out(observed_a)
+            lifecycle=root/'data'/'returned-lifecycle.json'; state=json.loads(lifecycle.read_text())
+            state['B']={'kind':'timeout','status':'TIMED_OUT','stage':'claim_release','session_id':'B','study_id':'S1','participant_id':'P2','assignment':json.loads((root/'data'/'assignments.json').read_text())['B'],'action':'released_claim'}
+            lifecycle.write_text(json.dumps(state))
+            recovered=self.store(root, count=2, redundancy=1)
+            self.assertEqual(recovered.assign(self.worker('P3','C'))['status'], 'ok')
+            assignments=json.loads((root/'data'/'assignments.json').read_text())
+            self.assertEqual(set(assignments), {'C'})
+            self.assertFalse((root/'data'/'submissions'/'A.json').exists())
+            self.assertTrue(list((root/'data'/'excluded_submissions').glob('*/prolific_timed_out/A.json')))
+            self.assertEqual(json.loads(lifecycle.read_text())['B']['status'], 'TIMED_OUT')
+            self.assertEqual(recovered.assign(worker_a)['status'], 'error')
+
     def test_timeout_fault_after_intent_is_recovered_by_new_assignment(self):
         with tempfile.TemporaryDirectory() as d:
             root=Path(d); store=self.store(root, count=1, redundancy=1)
