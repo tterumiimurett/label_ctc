@@ -339,6 +339,31 @@ class CtcVerificationAssignmentTest(unittest.TestCase):
             self.assertEqual(json.loads(lifecycle.read_text())['B']['status'], 'TIMED_OUT')
             self.assertEqual(recovered.assign(worker_a)['status'], 'error')
 
+    def test_public_timeout_reconcile_drains_pending_archive_before_claim_release(self):
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d); store=self.store(root, count=2, redundancy=1)
+            worker_a=self.worker('P1','A'); worker_b=self.worker('P2','B')
+            assignment_a=store.assign(worker_a); assignment_b=store.assign(worker_b)
+            self.assertEqual(store.submit(self.payload(worker_a, assignment_a))['status'], 'ok')
+            original=(root/'data'/'submissions'/'A.json').read_bytes()
+            observed_a={'id':'A','study_id':'S1','participant':{'id':'P1'},'status':'TIMED-OUT'}
+            app=__import__('prolific.ctc_verification_app.app', fromlist=['atomic_write_bytes'])
+            real_bytes=app.atomic_write_bytes
+            def crash_after_archive(path, data):
+                real_bytes(path, data)
+                raise OSError('crash after archive')
+            with patch('prolific.ctc_verification_app.app.atomic_write_bytes', side_effect=crash_after_archive):
+                with self.assertRaises(OSError): store.reconcile_timed_out(observed_a)
+            observed_b={'id':'B','study_id':'S1','participant':{'id':'P2'},'status':'TIMED-OUT'}
+            self.assertEqual(store.reconcile_timed_out(observed_b)['status'], 'processed')
+            assignments=json.loads((root/'data'/'assignments.json').read_text())
+            self.assertEqual(assignments, {})
+            archive=next((root/'data'/'excluded_submissions').glob('*/prolific_timed_out/A.json'))
+            self.assertEqual(archive.read_bytes(), original)
+            self.assertFalse((root/'data'/'submissions'/'A.json').exists())
+            self.assertEqual(store.assign(worker_a)['status'], 'error')
+            self.assertEqual(store.assign(worker_b)['status'], 'error')
+
     def test_timeout_fault_after_intent_is_recovered_by_new_assignment(self):
         with tempfile.TemporaryDirectory() as d:
             root=Path(d); store=self.store(root, count=1, redundancy=1)

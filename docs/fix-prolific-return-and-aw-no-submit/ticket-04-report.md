@@ -53,3 +53,8 @@ Operational prerequisites remain: researcher-confirmed 14-minute study limit, cu
 ## Mixed-intent recovery follow-up
 
 Fixed stale assignment-map restoration when a recovered final-answer archive intent and an answerless claim-release intent are drained together. Assignment state is reloaded after each archive recovery before subsequent releases. Added a real temporary-store regression asserting archive byte preservation, correct capacity for a new participant, no retained A/B claims, and old-session barriers. Full verification remains synthetic/local; no production operation was performed.
+
+
+## Spec review P1 follow-up
+
+The supplied synthetic repro initially reproduced the stale-map bug: B processed while assignment A was resurrected. The fix refreshes the caller's shared assignment map in place after every recovered timeout archive. The repro now reports `remaining assignments []`. The public-entry regression confirms pending archive A plus fresh answerless claim B leaves no A/B assignments, preserves A archive bytes, releases capacity correctly, and blocks both old sessions.
