@@ -167,3 +167,11 @@ Standards:0hardviolations,2nonblocking observations (misleading duplicate fixtur
 ## Answer-arrival repair review: cc98597...90866ac
 
 StandardsPASS,0hardviolations,optionalredundantmanualguards remain. Spec confirms originalidentity andknowncontact/unknownstate clearingfixed;6focusedtests passed. Spec notyetPASS: newfresh-onlydue-reconciliation branch unexercised, and5minutearrivalnotproven. Rootsentexacttestrequirements originaltask (PID1874473), no newbusinessquestion; repeatmanualwaiverremains. KeepTicket8unmerged untilfinalevidence/review.
+
+## Final answer-arrival amendment acceptance: cc98597...356078c
+
+Independent StandardsPASS0documentedviolations andSpecPASS0outstandingfindings, pinned356078ccfa3025d32e7b8515a1074e0b5c5d2095. Review-repair iterations962b0b0→90866ac→6c086ad→2260821→356078c closed identity/contactguard defects, missing fresh-only/secondrestart proof, and a positivefixtureassertionregression. Optional duplicatedfixturetail/deadguards remain nonblocking.
+
+OriginalImplementtask reports135fulltests, allsixfixturemodes passed. Root independently ran134fulltests at6c086ad; final356078c nine focused transition/guardtests passed (4.208s), including permanentpositiveonePOSTregression. Production behavior unchanged since90866ac; latercommits correcttestevidence. Tests prove real5minarrival, firstmissing→actualstore.submit→reconstruction, duefresh-onlymissingouter→matchedfresh, postresolutionnewcomponentreconstruction, resolved/noPOST/no candidate/manual; knowncontact/status/identity/uncertaindelivery exceptions preserved. No livecalls orproductionchanges for this amendment.
+
+User explicitly waived repeatmanualreview for this amendment aftertests+review. This scoped gate is now satisfied; do not askagain for missing-resultanswer-arrival approval. OtherTicket8 human gates and production authorization remain. Ticket8 branchunmerged, cleanHEAD356078c.
