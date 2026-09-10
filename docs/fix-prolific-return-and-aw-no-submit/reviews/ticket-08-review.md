@@ -35,3 +35,17 @@ Final Spec at `7a5d2d3` confirmed: answered RETURNED action still skipped; norma
 Standards: public type hints/UTF-8 still incomplete; ApprovalStore's declared lock unused with shared temporary file; disable marker durability and actual manual outcomes missing. Spec: fresh APPROVED can still invoke fabricated RETURNED; answerless RETURNED is routed through TIMED-OUT; candidate/outbound phase removed and message history stubbed unavailable; caller context masquerades as accepted event and gives whole-report origin; whole-report approval digest blocks routine new cases while CLI accepts arbitrary digest; no executable execution/receiver/scheduler or pending-intent recovery; one integration test still calls a method directly and lacks message/crash/ordering/disable proof. Reader.send_message exists and is not a finding.
 
 Original task resumed in `ticket-08-contract-fix.*`, keeping full existing phases while fixing the actual integration boundary. No new human policy decisions; complete agent-executable work before the live/human gates.
+
+## cf268b0 and db553b2 checkpoints
+
+Spec pinned cf268b0 reproduction `/tmp/ticket08-cf268b0-spec-repro.py` confirms disabled journal can still produce one message POST and normalized timeout causes zero timeout lifecycle calls. Public annotations/UTF-8/indentation, approval/routine provenance, audit/recovery and CLI execution remain unaccepted. That repro deliberately loads the old pinned code; final regressions must exercise current code.
+
+Original task added receiver HTTP coverage at `db553b2`, reporting 114 tests, actual signed listener plus real API adapter/store for RETURNED final and answerless cases. It explicitly left timeout, positive message, historical suppression, restart, late answer, concurrent disable and scheduler paths incomplete. Continue original task in `ticket-08-remaining-matrix.*`; do not treat partial test coverage as final acceptance or request human approval yet.
+
+## Bounded implementation checkpoints (not final acceptance)
+
+`99c1341` added guards/CLI hardening but still left the full matrix incomplete. Root continues implementation in the same independent task through explicit checkpoints without changing the full goal.
+
+`204edc8` adds two actual receiver HTTP timeout tests (final answer exact-byte/hash timeout archive; answerless release with no archive), duplicate event and blocked old-session checks. Implementer reports 116 full tests and browser pass. This does not prove the remaining message/provenance/restart/scheduler paths or close final dual review.
+
+Current checkpoint `ticket-08-contact-matrix.*`: actual signed receiver, controlled API message POST, real candidate ledger/verified history, ten-minute controllable clock, durable per-resource origin and routine-policy approval versus historical separation. Subsequent checkpoints remain restart/unknown delivery, late-answer/status reversal, concurrent disable, scheduler and executable human packet. Production remains untouched; no human gate requested for unfinished implementation.
