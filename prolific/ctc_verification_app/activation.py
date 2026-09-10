@@ -7,6 +7,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 from .reconciliation import reconcile_current_state
+from .contact_candidates import ProlificFreshReconciliation, VerifiedMessageScope
 
 
 def utc_now() -> str:
@@ -48,23 +49,35 @@ class Approval:
     preview_sha256: str
     sessions: tuple[str,...]
     historical_sessions: tuple[str,...]
-    approved_at: str
-    approved_by: str
+    routine_sessions: tuple[str,...] = ()
+    approved_at: str = ''
+    approved_by: str = ''
 
 class ApprovalStore:
-    def __init__(self,path:Path): self.path=path; self.lock=path.with_suffix(path.suffix+'.lock')
+    def __init__(self, path: Path): self.path=path; self.lock_path=path.with_suffix(path.suffix+'.lock'); self._thread=threading.RLock()
+    def _lock(self):
+        self.path.parent.mkdir(parents=True,exist_ok=True); h=self.lock_path.open('a+'); fcntl.flock(h,fcntl.LOCK_EX); return h
     def save(self, approval: Approval):
-        self.path.parent.mkdir(parents=True,exist_ok=True); tmp=self.path.with_name(self.path.name+'.tmp'); tmp.write_text(json.dumps(approval.__dict__,sort_keys=True)+'\n'); os.replace(tmp,self.path)
+        with self._thread:
+            h=self._lock()
+            try:
+                tmp=self.path.with_name(self.path.name+'.'+uuid.uuid4().hex+'.tmp'); tmp.write_text(json.dumps(approval.__dict__,sort_keys=True)+'\n',encoding='utf-8'); os.replace(tmp,self.path)
+            finally: fcntl.flock(h,fcntl.LOCK_UN); h.close()
     def load(self):
-        if not self.path.exists(): return None
-        value=json.loads(self.path.read_text()); return Approval(value['study_id'],value['preview_sha256'],tuple(value['sessions']),tuple(value['historical_sessions']),value['approved_at'],value['approved_by'])
+        with self._thread:
+            h=self._lock()
+            try:
+                if not self.path.exists(): return None
+                value=json.loads(self.path.read_text(encoding='utf-8')); return Approval(value['study_id'],value['preview_sha256'],tuple(value['sessions']),tuple(value['historical_sessions']),tuple(value.get('routine_sessions',())),value.get('approved_at',''),value.get('approved_by',''))
+            finally: fcntl.flock(h,fcntl.LOCK_UN); h.close()
 
 class RealApiAdapter:
     """Adapter used by activation; reads current API state through the reviewed reader."""
-    def __init__(self, reader, data_dir: Path, study_id: str): self.reader=reader; self.data_dir=data_dir; self.study_id=study_id
-    def reconcile(self): return reconcile_current_state(self.reader,self.data_dir,self.study_id)
-    def inspect_messages(self, **kwargs): return "unavailable"
-    def send_message(self, **kwargs): return self.reader.send_message(**kwargs)
+    def __init__(self, reader, data_dir: Path, study_id: str, scope: VerifiedMessageScope|None=None):
+        self.reader=reader; self.data_dir=data_dir; self.study_id=study_id; self.fresh=ProlificFreshReconciliation(reader,data_dir,study_id,scope=scope)
+    def reconcile(self): return self.fresh.reconcile()
+    def inspect_messages(self, **kwargs): return self.fresh.inspect_messages(**kwargs)
+    def send_message(self, **kwargs): return self.fresh.send_message(**kwargs)
 
 class ActivationController:
     def __init__(self, *, trigger, store, ledger, adapter, journal:ActionJournal, study_id:str, approvals:ApprovalStore|None=None, production_enabled=False):
@@ -94,7 +107,7 @@ class ActivationController:
         if preview.get('study_id')!=self.study_id or not approved_by.strip(): raise ValueError('approval identity/study mismatch')
         allowed={r['session_id'] for r in preview['actions']};
         if not sessions <= allowed or not historical_sessions <= allowed: raise ValueError('approval contains unlisted session')
-        approval=Approval(self.study_id,preview['preview_sha256'],tuple(sorted(sessions)),tuple(sorted(historical_sessions)),utc_now(),approved_by); self.approvals.save(approval); return approval
+        approval=Approval(self.study_id,preview['preview_sha256'],tuple(sorted(sessions)),tuple(sorted(historical_sessions)),tuple(sorted(sessions-set(historical_sessions))),utc_now(),approved_by); self.approvals.save(approval); return approval
     def current_reconcile(self): return self.trigger.periodic()
     def handle_signed_event(self, body, headers, secret, context):
         result=self.trigger.handle(body,headers,secret)
@@ -119,16 +132,29 @@ class ActivationController:
             fresh=self.adapter.reconcile()
             current=next((x for x in fresh.get('submissions',[]) if x.get('session_id')==sid),None)
             if fresh.get('status')!='ok' or not current or current.get('participant_id')!=row['participant_id']: continue
+            current_status=str(current.get('status','')).upper().replace('_','-')
+            if row['action']=='archive_returned_result' and current_status != 'RETURNED': continue
+            if row['action']=='archive_timed_out_result' and current_status != 'TIMED-OUT': continue
+            if row['action']=='release_claim' and current_status not in {'RETURNED','TIMED-OUT'}: continue
             action=row['action']; eid=self.journal.begin(action,{'session_id':sid,'study_id':self.study_id,'participant_id':row['participant_id']})
             if not eid: break
             try:
                 if action=='archive_returned_result': outcome=self.store.reconcile_returned({'id':sid,'study_id':self.study_id,'participant':{'id':row['participant_id']},'status':'RETURNED'})
                 elif action=='archive_timed_out_result': outcome=self.store.reconcile_timed_out({'id':sid,'study_id':self.study_id,'participant':{'id':row['participant_id']},'status':'TIMED-OUT'})
-                elif action=='release_claim': outcome=self.store.reconcile_timed_out({'id':sid,'study_id':self.study_id,'participant':{'id':row['participant_id']},'status':'TIMED-OUT'})
+                elif action=='release_claim':
+                    if current_status == 'RETURNED': outcome=self.store.reconcile_returned({'id':sid,'study_id':self.study_id,'participant':{'id':row['participant_id']},'status':'RETURNED'})
+                    else: outcome=self.store.reconcile_timed_out({'id':sid,'study_id':self.study_id,'participant':{'id':row['participant_id']},'status':'TIMED-OUT'})
                 else: outcome={'status':'manual_review','reason':'contact handled after candidate phase'}
                 result={'session_id':sid,'action':action,'outcome':outcome}; self.journal.finish(eid,'completed' if outcome.get('status') in {'processed','already_processed','manual_review'} else 'failed'); results.append(result)
             except Exception as error: self.journal.finish(eid,'failed',type(error).__name__); results.append({'session_id':sid,'action':action,'status':'failed'})
-        return {'status':'ok','origin':origin,'results':results,'preview':preview}
+        from .contact_candidates import build_contact_candidates
+        from .outbound import send_approved_return_requests
+        fresh=self.adapter.reconcile()
+        if fresh.get('status')!='ok': return {'status':'pending','origin':origin,'results':results,'report':fresh}
+        candidate_report=build_contact_candidates(fresh,self.ledger,self.adapter,candidate_origin=origin)
+        historical=set(approval.historical_sessions) if approval else set()
+        outbound=send_approved_return_requests(candidate_report,self.ledger,self.adapter,approved_sessions=set(approval.routine_sessions) if approval else set(),historical_sessions=historical,enabled=self.production_enabled)
+        return {'status':'ok','origin':origin,'results':results,'preview':preview,'candidates':candidate_report,'outbound':outbound}
 
 
 def make_activation_server(controller: ActivationController, secret: str, context: dict[str, Any], host: str='127.0.0.1', port: int=0):
