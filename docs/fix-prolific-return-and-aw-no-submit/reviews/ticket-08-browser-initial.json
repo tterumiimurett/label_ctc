@@ -1,0 +1,20 @@
+{
+  "reviewed_commit": "9cb14d5",
+  "scope": "isolated Chromium and synthetic audio, not production",
+  "exit_code": 0,
+  "result": {
+    "success": {
+      "taskVisible": true,
+      "instructionVisible": true,
+      "loadedMetadata": true,
+      "canPlay": true,
+      "currentTimeAdvanced": true
+    },
+    "noTask": "No unassigned pre-labelled candidates remain for this study. Please return the Prolific submission.",
+    "errors": {
+      "network failure": "Unable to load assignment: Failed to fetch",
+      "invalid JSON": "Unable to load assignment: Expected property name or '}' in JSON at position 1 (line 1 column 2)",
+      "null payload": "The server returned an invalid assignment response."
+    }
+  }
+}
