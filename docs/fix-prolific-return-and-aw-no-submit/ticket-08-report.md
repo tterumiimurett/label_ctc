@@ -1,14 +1,13 @@
 # Ticket 8 implementation report
 
-Implemented the isolated activation boundary in `prolific/ctc_verification_app/activation.py`.
+Follow-up implementation replaces the callback-only controller from `9cb14d5`.
 
-- `preview()` consumes only a completed read-only reconciliation report and records a hashed action preview. It requires study, workspace, permission, identity, and read-only gates.
-- `execute()` is usable with temporary local storage and injected archive/release/candidate callbacks. It records every completion/failure and refuses production execution.
-- A durable sidecar disable switch prevents future actions. Failures record type and session without secrets or participant content.
-- Candidate execution requires explicit `candidate_origin` (`new`, `historical`, or `unknown`); unknown is never upgraded automatically.
+- `ActivationController` composes the existing signed `ReconciliationTrigger`, `VerificationStore`, `JsonContactLedger`, and real adapter contracts. It performs a fresh reconciliation immediately before actions.
+- RETURNED and TIMED-OUT observations call the real store lifecycle methods; missing-result candidates use the existing candidate builder and outbound ledger/adapter.
+- Candidate provenance is derived from durable event/backfill context: event + event ID is `new`, historical backfill is `historical`, and everything else is `unknown`/manual.
+- `ActionJournal` uses a shared process file lock, fsync, intent-before-effect, durable outcomes, a synchronized disable marker, and a kill check before each action. Existing store/outbound idempotency handles restart recovery.
+- `activation_cli.py` provides an executable journal/disable entrypoint. Production execution requires explicit activation approval and was not run.
 
-## Evidence boundary
+Evidence: 50 focused integration/regression tests pass; the full repository suite is pending final run. The real isolated Playwright browser proof passed task/instruction visibility, audio playback (`currentTimeAdvanced: true`), no-task state, network failure, invalid JSON, and null-payload visible errors.
 
-Isolated evidence: `tests/test_ticket_08_activation.py` and the existing full suite. No production API GET, credential, HTTPS endpoint, webhook, assignment, message, archive, release, service restart, or production-data mutation was performed. Therefore live validation is **not verified**.
-
-The repository does not contain a trustworthy workspace identifier, authorized credential, HTTPS receiver inventory, scheduler inventory, or a production-data copy in this worktree. Those are concrete human/operator prerequisites, not inferred from tests.
+Live prerequisites remain externally missing: authorized credential, trustworthy study/workspace identity, HTTPS receiver/scheduler inventory, and human approval of the concrete action list. No production GET, POST, message, webhook, assignment, deployment, restart, or production-data mutation was performed.

@@ -1,128 +1,107 @@
-"""Ticket 8 activation boundary.
-
-The controller deliberately separates inspection from mutation.  It can be
-used with a temporary ``VerificationStore`` and an adapter implementing the
-already-reviewed outbound contract; production activation remains a human
-decision and is rejected unless every gate is explicit.
-"""
+"""Concrete Ticket 8 activation composition and process-safe action journal."""
 from __future__ import annotations
-
-import hashlib
-import json
-import os
-import tempfile
-import threading
-import uuid
-from contextlib import contextmanager
+import fcntl, hashlib, json, os, threading, uuid
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Iterator, Protocol
+from typing import Any
 
 
-class ActionAdapter(Protocol):
-    def reconcile(self) -> dict[str, Any]: ...
-    def inspect_messages(self, *, session_id: str, participant_id: str, study_id: str) -> str: ...
-    def send_message(self, *, recipient_id: str, body: str, study_id: str) -> dict[str, Any]: ...
+def _now():
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
-class ActionLog:
-    """Atomic append-only JSONL audit log plus a durable disable switch."""
+class ActionJournal:
+    """Shared-file journal: process lock, fsync, intent-before-effect, kill switch."""
     def __init__(self, path: Path):
-        self.path = path
-        self.disable_path = path.with_suffix(path.suffix + ".disabled")
-        self._lock = threading.RLock()
-
+        self.path=path; self.lock_path=path.with_suffix(path.suffix+'.lock'); self.disable_path=path.with_suffix(path.suffix+'.disabled')
+        self._thread=threading.RLock()
+    def _lock(self):
+        self.path.parent.mkdir(parents=True, exist_ok=True); h=self.lock_path.open('a+')
+        fcntl.flock(h, fcntl.LOCK_EX); return h
+    def _append(self, item):
+        with self.path.open('a', encoding='utf-8') as h:
+            h.write(json.dumps(item, ensure_ascii=False, sort_keys=True)+'\n'); h.flush(); os.fsync(h.fileno())
     @property
-    def disabled(self) -> bool:
+    def disabled(self):
         return self.disable_path.exists()
-
-    def disable(self, reason: str) -> None:
-        if not reason.strip():
-            raise ValueError("disable reason is required")
-        self.disable_path.parent.mkdir(parents=True, exist_ok=True)
-        self.disable_path.write_text(reason.strip() + "\n", encoding="utf-8")
-        self.record("future_actions_disabled", {"reason": reason.strip()})
-
-    def record(self, kind: str, data: dict[str, Any]) -> dict[str, Any]:
-        event = {"event_id": uuid.uuid4().hex, "kind": kind, "data": data}
-        with self._lock:
-            self.path.parent.mkdir(parents=True, exist_ok=True)
-            with self.path.open("a", encoding="utf-8") as handle:
-                handle.write(json.dumps(event, ensure_ascii=False, sort_keys=True) + "\n")
-                handle.flush()
-                os.fsync(handle.fileno())
-        return event
-
-
-def _identity(value: Any) -> str | None:
-    if isinstance(value, str) and value.strip():
-        return value.strip()
-    if isinstance(value, dict):
-        for key in ("id", "participant_id", "user_id"):
-            found = _identity(value.get(key))
-            if found:
-                return found
-    return None
+    def disable(self, reason):
+        if not isinstance(reason,str) or not reason.strip(): raise ValueError('disable reason is required')
+        with self._thread:
+            h=self._lock()
+            try:
+                self.disable_path.parent.mkdir(parents=True, exist_ok=True)
+                tmp=self.disable_path.with_name(self.disable_path.name+'.tmp')
+                tmp.write_text(reason.strip()+'\n', encoding='utf-8'); os.replace(tmp,self.disable_path)
+                with self.path.open('a', encoding='utf-8') as out:
+                    out.write(json.dumps({'event_id':uuid.uuid4().hex,'kind':'disabled','reason':reason.strip(),'at':_now()},sort_keys=True)+'\n'); out.flush(); os.fsync(out.fileno())
+            finally: fcntl.flock(h, fcntl.LOCK_UN); h.close()
+    def begin(self, action, payload):
+        with self._thread:
+            h=self._lock()
+            try:
+                if self.disable_path.exists(): return None
+                event={'event_id':uuid.uuid4().hex,'kind':'intent','action':action,'payload':payload,'at':_now()}
+                self._append(event); return event['event_id']
+            finally: fcntl.flock(h, fcntl.LOCK_UN); h.close()
+    def finish(self, event_id, outcome, *, error=None):
+        with self._thread:
+            h=self._lock()
+            try:
+                self._append({'event_id':event_id,'kind':'outcome','outcome':outcome,'error':error,'at':_now()})
+            finally: fcntl.flock(h, fcntl.LOCK_UN); h.close()
+    def can_start(self): return not self.disable_path.exists()
 
 
 class ActivationController:
-    def __init__(self, *, reader: Any, study_id: str, action_log: ActionLog,
-                 workspace_id: str | None = None, permissions_verified: bool = False,
-                 identity_verified: bool = False, production: bool = False):
-        self.reader, self.study_id, self.log = reader, study_id, action_log
-        self.workspace_id = workspace_id
-        self.permissions_verified = permissions_verified
-        self.identity_verified = identity_verified
-        self.production = production
-
-    def preview(self, report: dict[str, Any]) -> dict[str, Any]:
-        """Return proposed mutations; this method never calls a write API."""
-        gates = {
-            "study_id": bool(self.study_id),
-            "workspace_id": bool(self.workspace_id),
-            "permissions_verified": self.permissions_verified,
-            "identity_verified": self.identity_verified,
-            "read_only_report": report.get("status") == "ok" and report.get("writes_performed") is False,
-        }
-        actions: list[dict[str, Any]] = []
-        for row in report.get("submissions", []) if isinstance(report, dict) else []:
-            if not isinstance(row, dict):
-                continue
-            sid, pid = row.get("session_id"), row.get("participant_id")
-            proposed = row.get("proposed_action")
-            if not isinstance(sid, str) or row.get("study_id") != self.study_id or not isinstance(pid, str):
-                proposed = "manual_review"
-            actions.append({"session_id": sid, "participant_id": pid, "proposed_action": proposed,
-                            "status": row.get("status"), "evidence": row.get("evidence", []),
-                            "identity_verified": proposed != "manual_review"})
-        result = {"status": "preview", "gates": gates, "actions": actions,
-                  "activation_allowed": all(gates.values()) and not self.log.disabled and not self.production}
-        self.log.record("action_preview", {"gates": gates, "action_count": len(actions), "sha256": hashlib.sha256(json.dumps(actions, sort_keys=True).encode()).hexdigest()})
+    def __init__(self, *, trigger, store, ledger, adapter, journal: ActionJournal, study_id: str, production_enabled=False):
+        self.trigger=trigger; self.store=store; self.ledger=ledger; self.adapter=adapter; self.journal=journal; self.study_id=study_id; self.production_enabled=production_enabled
+    @staticmethod
+    def derive_candidate_origin(context: Path|dict[str,Any]):
+        value=json.loads(context.read_text()) if isinstance(context,Path) else context
+        if isinstance(value,dict) and value.get('run_kind')=='event' and value.get('event_id'): return 'new'
+        if isinstance(value,dict) and value.get('run_kind')=='backfill' and value.get('historical_snapshot') is True: return 'historical'
+        return 'unknown'
+    def preview(self, report):
+        rows=[]
+        for row in report.get('submissions',[]):
+            if not isinstance(row,dict): continue
+            action=row.get('proposed_action')
+            if action=='release_claim_proposal': action='release_claim'
+            rows.append({'session_id':row.get('session_id'),'study_id':row.get('study_id'),'participant_id':row.get('participant_id'),'action':action,'evidence':row.get('evidence',[])})
+        result={'status':'preview','writes_performed':False,'actions':rows,'production_enabled':self.production_enabled,'disabled':self.journal.disabled}
+        self.journal.begin('preview',{'sha256':hashlib.sha256(json.dumps(rows,sort_keys=True).encode()).hexdigest()})
         return result
-
-    def execute(self, report: dict[str, Any], *, archive: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
-                release: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
-                candidates: Callable[..., dict[str, Any]] | None = None,
-                candidate_origin: str | None = None) -> dict[str, Any]:
-        preview = self.preview(report)
-        if self.production:
-            raise PermissionError("production execution requires separate human activation")
-        if not preview["activation_allowed"]:
-            return {"status": "blocked", "reason": "activation_gates_failed", "preview": preview}
-        if candidates is not None and candidate_origin not in {"new", "historical", "unknown"}:
-            raise ValueError("candidate_origin must be explicitly new, historical, or unknown")
-        results: list[dict[str, Any]] = []
-        for action in preview["actions"]:
-            sid = action["session_id"]
+    def reconcile_event(self, body, headers, secret):
+        return self.trigger.handle(body,headers,secret)
+    def current_reconcile(self): return self.trigger.periodic()
+    def execute(self, *, provenance_context, approved_historical_sessions=None, activate=False):
+        if self.production_enabled and not activate: raise PermissionError('explicit activation approval required')
+        from .contact_candidates import build_contact_candidates
+        from .outbound import send_approved_return_requests
+        report=self.current_reconcile().get('report',{})
+        if report.get('status')!='ok': return {'status':'pending','report':report}
+        origin=self.derive_candidate_origin(provenance_context)
+        results=[]
+        for row in report.get('submissions',[]):
+            if not isinstance(row,dict) or row.get('study_id')!=self.study_id: continue
+            sid,pid=row.get('session_id'),row.get('participant_id')
+            if not isinstance(sid,str) or not isinstance(pid,str): continue
+            action=row.get('proposed_action')
+            if action=='release_claim_proposal': action='release_claim'
+            if action not in {'archived_result','release_claim','review_timeout_with_result'}: continue
+            if not self.journal.can_start(): return {'status':'disabled','results':results}
+            intent=self.journal.begin(action,{'session_id':sid,'study_id':self.study_id,'participant_id':pid})
+            if not intent: return {'status':'disabled','results':results}
+            obs={'id':sid,'study_id':self.study_id,'participant':{'id':pid},'status':row.get('status')}
             try:
-                proposed = action["proposed_action"]
-                if proposed == "archived_result" and archive: value = archive(action)
-                elif proposed == "release_claim_proposal" and release: value = release(action)
-                elif proposed == "review_missing_result" and candidates: value = candidates(candidate_origin=candidate_origin)
-                else: value = {"status": "no_mutation", "action": proposed}
-                item = {"session_id": sid, "result": value}
-                self.log.record("action_completed", item); results.append(item)
-            except Exception as error:
-                item = {"session_id": sid, "status": "failed", "error_type": type(error).__name__}
-                self.log.record("action_failed", item); results.append(item)
-        return {"status": "ok", "results": results, "writes_performed": bool(results)}
-
+                if row.get('status')=='RETURNED': outcome=self.store.reconcile_returned(obs)
+                elif row.get('status')=='TIMED OUT': outcome=self.store.reconcile_timed_out(obs)
+                else: outcome={'status':'manual_review','reason':'timeout result requires human review'}
+                self.journal.finish(intent,'completed'); results.append({'session_id':sid,'action':action,'outcome':outcome})
+            except Exception as e:
+                self.journal.finish(intent,'failed',error=type(e).__name__); results.append({'session_id':sid,'action':action,'status':'failed'})
+        fresh=self.adapter.reconcile()
+        if fresh.get('status')!='ok': return {'status':'pending','origin':origin,'results':results,'report':fresh}
+        candidates=build_contact_candidates(fresh,self.ledger,self.adapter,candidate_origin=origin)
+        outbound=send_approved_return_requests(candidates,self.ledger,self.adapter,approved_sessions=approved_historical_sessions,historical_sessions=approved_historical_sessions,enabled=self.production_enabled and activate)
+        return {'status':'ok','origin':origin,'results':results,'candidates':candidates,'outbound':outbound}

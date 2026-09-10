@@ -1,56 +1,22 @@
-import json
-import tempfile
-import unittest
+import json, tempfile, unittest
 from pathlib import Path
+from unittest.mock import Mock
+from prolific.ctc_verification_app.activation import ActionJournal, ActivationController
 
-from prolific.ctc_verification_app.activation import ActionLog, ActivationController
-
-
-class Ticket08ActivationTest(unittest.TestCase):
-    def report(self):
-        return {"status": "ok", "writes_performed": False, "submissions": [
-            {"session_id": "S1", "study_id": "STUDY", "participant_id": "P1",
-             "status": "RETURNED", "proposed_action": "archived_result", "evidence": ["final_result"]}
-        ]}
-
-    def test_preview_is_read_only_and_requires_all_identity_permission_gates(self):
-        with tempfile.TemporaryDirectory() as d:
-            log = ActionLog(Path(d) / "actions.jsonl")
-            controller = ActivationController(reader=object(), study_id="STUDY", action_log=log)
-            result = controller.preview(self.report())
-            self.assertFalse(result["activation_allowed"])
-            self.assertFalse(list(Path(d).glob("*.disabled")))
-            self.assertEqual(len(list(Path(d).glob("actions.jsonl"))), 1)
-
-    def test_controlled_execution_is_durable_and_can_be_disabled(self):
-        with tempfile.TemporaryDirectory() as d:
-            log = ActionLog(Path(d) / "actions.jsonl")
-            controller = ActivationController(reader=object(), study_id="STUDY", workspace_id="W",
-                                               permissions_verified=True, identity_verified=True, action_log=log)
-            seen = []
-            result = controller.execute(self.report(), archive=lambda row: seen.append(row) or {"status": "archived"})
-            self.assertEqual(result["status"], "ok")
-            self.assertEqual(seen[0]["session_id"], "S1")
-            log.disable("human gate closed")
-            blocked = controller.execute(self.report(), archive=lambda row: self.fail("must not run"))
-            self.assertEqual(blocked["status"], "blocked")
-            events = [json.loads(line) for line in Path(d, "actions.jsonl").read_text().splitlines()]
-            self.assertIn("action_completed", [event["kind"] for event in events])
-            self.assertIn("future_actions_disabled", [event["kind"] for event in events])
-
-    def test_production_execution_never_runs(self):
-        with tempfile.TemporaryDirectory() as d:
-            controller = ActivationController(reader=object(), study_id="STUDY", action_log=ActionLog(Path(d, "a")), production=True)
-            with self.assertRaises(PermissionError):
-                controller.execute(self.report())
-
-    def test_candidate_origin_is_required(self):
-        with tempfile.TemporaryDirectory() as d:
-            controller = ActivationController(reader=object(), study_id="STUDY", workspace_id="W",
-                                               permissions_verified=True, identity_verified=True, action_log=ActionLog(Path(d, "a")))
-            with self.assertRaises(ValueError):
-                controller.execute({"status": "ok", "writes_performed": False, "submissions": []}, candidates=lambda **_: {})
-
-
-if __name__ == "__main__":
-    unittest.main()
+class Ticket08Test(unittest.TestCase):
+ def setup(self, production=False):
+  d=tempfile.TemporaryDirectory(); root=Path(d.name); journal=ActionJournal(root/'actions.jsonl')
+  trigger=Mock(); trigger.periodic.return_value={'report':{'status':'ok','writes_performed':False,'submissions':[]}}
+  adapter=Mock(); adapter.reconcile.return_value={'status':'ok','submissions':[]}
+  return d,root,ActivationController(trigger=trigger,store=Mock(),ledger=Mock(),adapter=adapter,journal=journal,study_id='STUDY',production_enabled=production)
+ def test_provenance_is_durable_and_unknown_is_manual(self):
+  d,r,c=self.setup(); self.assertEqual(c.derive_candidate_origin({'run_kind':'event','event_id':'E'}),'new'); self.assertEqual(c.derive_candidate_origin({'run_kind':'backfill','historical_snapshot':True}),'historical'); self.assertEqual(c.derive_candidate_origin({'run_kind':'manual'}),'unknown'); d.cleanup()
+ def test_journal_is_intent_before_effect_and_kill_switch_is_shared(self):
+  d,r,c=self.setup(); event=c.journal.begin('archive',{'session_id':'S'}); self.assertTrue(event); self.assertEqual(json.loads((r/'actions.jsonl').read_text())['kind'],'intent'); c.journal.disable('stop'); self.assertIsNone(c.journal.begin('archive',{})); d.cleanup()
+ def test_production_requires_explicit_approval(self):
+  d,r,c=self.setup(True)
+  with self.assertRaises(PermissionError): c.execute(provenance_context={'run_kind':'event','event_id':'E'})
+  d.cleanup()
+ def test_preview_uses_actual_action_name(self):
+  d,r,c=self.setup(); out=c.preview({'submissions':[{'session_id':'S','study_id':'STUDY','participant_id':'P','proposed_action':'release_claim_proposal'}]}); self.assertEqual(out['actions'][0]['action'],'release_claim'); d.cleanup()
+if __name__=='__main__': unittest.main()
