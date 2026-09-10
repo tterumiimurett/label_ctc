@@ -1,0 +1,20 @@
+{
+  "implementation_commit": "cc98597",
+  "action_counts": {
+    "release_claim": 2651,
+    "none": 293,
+    "contact_candidate": 6,
+    "archive_returned_result": 1,
+    "archive_timed_out_result": 1
+  },
+  "focus_action_count": 8,
+  "temporary_claims_in_source_report": 0,
+  "writes_performed": false,
+  "execution_authorized": false,
+  "limitations": [
+    "release_claim proposals do not prove an active claim exists; source report has zero temporary claims",
+    "contact_candidate means eligibility must still be checked; not approved to send",
+    "historical action approval and remaining technical human acceptance are pending",
+    "report is sequential current-state read, so execution would require fresh checks"
+  ]
+}

@@ -39,3 +39,11 @@
 真实研究GET返回1个COMPLETED类型完成码；未显示或提交其值。再次读取六个缺失session详情，身份全部匹配，状态全部AWAITING REVIEW。与研究配置匹配结果：5个NOCODE、1个normal（正常完成码），不是Unknown Code。再次刷新本地快照：六个仍无最终结果，零读取错误、零身份冲突。因此AW无本地结果不能仅依赖异常完成码筛选，必须全量按session对账。上述早先unavailable是未传有效码集合的分类限制，现已针对六人解决。
 
 汇总 completion-code-followup-summary.json。私有名单 /tmp/prolific-ticket08-missing-six.csv，详情 /tmp/prolific-ticket08-missing-six-private.json，均未提交Git。未发送消息或执行归档。本轮只证明观察关联，不能证明结果为何未保存或参与者是否按过提交。研究当前状态为PAUSED；未修改平台配置。
+
+## 实际只读动作清单
+
+cc98597纯函数已由完整报告生成与审批一致格式的预览，未创建审批、控制器或生产日志。私有完整预览 /tmp/prolific-ticket08-live-action-preview-private.json；重点8条 /tmp/prolific-ticket08-focus-actions.csv。匿名汇总 live-action-preview-summary.json。
+
+重点是1条Returned结果归档、1条TimedOut结果归档、6条待进一步核验的联系候选；联系候选不是已获准发信，聊天权限与历史仍需核验。2651条release_claim是状态产生的预案，源报告实际临时占用为0，不意味着可释放2651个名额。293条无需动作。
+
+人工恢复点仍是缺失结果复查：首次发现等10分钟，复查仍缺失且聊天条件允许才发送；期间答案到达/状态改变或已联系进入人工。等待用户明确通过或修改意见。归档技术通过不代替这项，也不授权上述真实动作。
