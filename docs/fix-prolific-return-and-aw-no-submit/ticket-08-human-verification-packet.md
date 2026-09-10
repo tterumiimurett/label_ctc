@@ -1,25 +1,29 @@
 # Ticket 8 human verification packet
 
-This packet is a stop point. Do not activate production actions until a human signs each gate.
+Agent-executable isolated work is complete through the evidence commands in `ticket-08-report.md`; human review is only for decisions and live authorization.
 
-## Operator supplies
+## Code gate
 
-1. Study ID, workspace ID, authorized read-only credential, and confirmation that message visibility is permitted.
-2. Existing webhook subscription/secret inventory, HTTPS receiver and scheduler ownership. Do not overwrite existing integrations.
-3. A sanitized current-state report and a separately approved historical candidate list. Never paste tokens, completion codes, or participant data into git or chat.
+Reviewer runs:
 
-## Read-only gate
+```sh
+python3 -m unittest discover -s tests -v
+python3 -m unittest tests.test_ticket_08_crossresource tests.test_ticket_08_approved_transition -v
+NODE_PATH=/tmp/ticket1-ctc/node_modules node tests/browser_ticket_01_ctc.cjs
+```
 
-Run the reconciliation/backfill with GET-only credentials and save the report outside git. Verify pagination counts are consistent; any `platform_query_failed`, identity mismatch, storage error, or permission error is pending/manual and not absence. Confirm proposed archive/release/message actions against session, study, and participant identity.
+Expected current count: 120 passing tests. Evidence is temporary controlled HTTP/store/ledger data only; no participant or production data is used.
 
-## Isolated action gate
+## Routine policy gate
 
-Run the activation tests with a temporary `VerificationStore` and injected callbacks. Exercise RETURNED with/without answers, TIMED-OUT with/without answers, duplicate/out-of-order events, restart recovery, late answers, delivery-unknown, and action-log disable. Confirm no payment/review/return-state API is called.
+Approve or reject the routine rule bound to the study, message-visibility scope, and activation boundary. Approval permits eligible NEW cases after the ten-minute recheck; it does not approve historical sessions.
 
-## Browser gate
+## Historical gate
 
-Using the isolated preview server only, use a real browser to: load instructions; start the task; play the supplied audio and observe controls; trigger an unavailable-assignment/API failure and observe visible failure text. Capture screenshots or a screen recording. A synthetic HTTP 200 is insufficient. Do not create production allocations or use the production participant page.
+Review and separately approve the exact historical session/contact list. An unlisted historical session remains manual and receives no automatic message.
 
-## Activation decision
+## Production gate
 
-Human reviewer records: `PASS` / `FAIL` / `BLOCKED`, evidence paths, date, reviewer identity, and the exact approved session/action list. Production activation remains a separate approval. This implementation does not enable webhooks, send messages, archive/release production records, migrate data, or restart services.
+Before any production activation, a human must provide/verify authorized credential, study/workspace identity, current read-only report, existing subscription/secret inventory, HTTPS receiver, scheduler ownership, and the final action/contact lists. No payment/review/return-state changes, participant messaging, webhook enablement, deployment, restart, or production-data migration is authorized by this packet.
+
+Record `PASS`, `FAIL`, or `BLOCKED`, reviewer, timestamp, evidence paths, routine-policy decision, historical-list decision, and separate production authorization decision.

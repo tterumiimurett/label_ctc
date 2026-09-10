@@ -250,6 +250,22 @@ def _run(report: dict[str, Any], ledger: ContactLedger, fresh: FreshReconciliati
             decisions.append(queue_manual_review(entry, sid, study, pid, candidate_evidence, "candidate_origin_unknown")); continue
         entry.update({"state": "candidate", "candidate_at": _ts(now), "candidate_origin": candidate_origin, "candidate_evidence": sorted(candidate_evidence), "candidate_message": APPROVED_MESSAGE.format(SESSION_ID=sid)})
         decisions.append(ContactDecision(sid, "candidate", entry["candidate_evidence"], entry["candidate_message"]))
+    observed_rows = {row.get('session_id'): row for row in report.get('submissions', []) if isinstance(row, dict)}
+    for sid, entry in sessions.items():
+        if not isinstance(entry, dict) or entry.get('state') in {'manual_review', 'sent', 'delivery_unknown'}:
+            continue
+        current = observed_rows.get(sid)
+        if not isinstance(current, dict) or current.get('status') == 'AWAITING REVIEW':
+            continue
+        if entry.get('first_missing_at'):
+            current_study = current.get('study_id', study)
+            current_pid = current.get('participant_id', entry.get('participant_id'))
+            decision = queue_manual_review(
+                entry, sid, current_study, current_pid,
+                {f"status:{current.get('status', 'unknown')}"},
+                'answer_or_status_arrived_after_missing_detection',
+            )
+            decisions.append(decision)
     ledger.write(state)
     return {"status": "ok", "study_id": study, "decisions": [d.as_dict() for d in decisions], "writes_performed": True}
 

@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Callable, Protocol
 
 from .reconciliation import reconcile_current_state
 from .contact_candidates import ProlificFreshReconciliation, VerifiedMessageScope
@@ -23,8 +23,8 @@ class ActionJournal:
     def _append(self, value: dict[str, Any]) -> None:
         with self.path.open('a',encoding='utf-8') as h: h.write(json.dumps(value,sort_keys=True,ensure_ascii=False)+'\n'); h.flush(); os.fsync(h.fileno())
     @property
-    def disabled(self): return self.disable_path.exists()
-    def disable(self, reason: str):
+    def disabled(self) -> bool: return self.disable_path.exists()
+    def disable(self, reason: str) -> None:
         if not reason.strip(): raise ValueError('disable reason is required')
         with self._thread:
             h=self._locked()
@@ -59,13 +59,13 @@ class ApprovalStore:
     def __init__(self, path: Path): self.path=path; self.lock_path=path.with_suffix(path.suffix+'.lock'); self._thread=threading.RLock()
     def _lock(self):
         self.path.parent.mkdir(parents=True,exist_ok=True); h=self.lock_path.open('a+'); fcntl.flock(h,fcntl.LOCK_EX); return h
-    def save(self, approval: Approval):
+    def save(self, approval: Approval) -> None:
         with self._thread:
             h=self._lock()
             try:
                 tmp=self.path.with_name(self.path.name+'.'+uuid.uuid4().hex+'.tmp'); tmp.write_text(json.dumps(approval.__dict__,sort_keys=True)+'\n',encoding='utf-8'); fd=os.open(tmp, os.O_RDONLY); os.fsync(fd); os.close(fd); os.replace(tmp,self.path); parent_fd=os.open(self.path.parent, os.O_DIRECTORY); os.fsync(parent_fd); os.close(parent_fd)
             finally: fcntl.flock(h,fcntl.LOCK_UN); h.close()
-    def load(self):
+    def load(self) -> Approval | None:
         with self._thread:
             h=self._lock()
             try:
@@ -75,13 +75,13 @@ class ApprovalStore:
 
 class RealApiAdapter:
     """Adapter used by activation; reads current API state through the reviewed reader."""
-    def __init__(self, reader, data_dir: Path, study_id: str, scope: VerifiedMessageScope | None = None, clock: Any = None):
+    def __init__(self, reader: Any, data_dir: Path, study_id: str, scope: VerifiedMessageScope | None = None, clock: Callable[[], datetime] | None = None):
         self.reader=reader; self.data_dir=data_dir; self.study_id=study_id; self.fresh=ProlificFreshReconciliation(reader,data_dir,study_id,scope=scope,now=clock() if clock else None); self.clock=clock
-    def reconcile(self):
+    def reconcile(self) -> dict[str, Any]:
         if self.clock: self.fresh.now=self.clock()
         return self.fresh.reconcile()
-    def inspect_messages(self, **kwargs): return self.fresh.inspect_messages(**kwargs)
-    def send_message(self, **kwargs): return self.fresh.send_message(**kwargs)
+    def inspect_messages(self, **kwargs: Any) -> str: return self.fresh.inspect_messages(**kwargs)
+    def send_message(self, *, recipient_id: str, body: str, study_id: str) -> dict[str, Any]: return self.fresh.send_message(recipient_id=recipient_id, body=body, study_id=study_id)
 
 class GuardedOutboundAdapter:
     """Adds per-recipient intent/kill checks around the reviewed outbound adapter."""
@@ -131,13 +131,13 @@ class ActivationController:
         eid=self.journal.begin('preview',{'study_id':self.study_id,'preview_sha256':digest});
         if eid: self.journal.finish(eid,'recorded')
         return result
-    def approve(self, preview, approved_by:str, sessions:set[str], historical_sessions:set[str]):
+    def approve(self, preview: dict[str, Any], approved_by: str, sessions: set[str], historical_sessions: set[str], routine_policy: bool = False) -> Approval:
         if preview.get('study_id')!=self.study_id or not approved_by.strip(): raise ValueError('approval identity/study mismatch')
         allowed={r['session_id'] for r in preview['actions']};
         if not sessions <= allowed or not historical_sessions <= allowed: raise ValueError('approval contains unlisted session')
-        approval=Approval(self.study_id,preview['preview_sha256'],tuple(sorted(sessions)),tuple(sorted(historical_sessions)),tuple(sorted(sessions-set(historical_sessions))),False,utc_now(),approved_by); self.approvals.save(approval); return approval
-    def current_reconcile(self): return self.trigger.periodic()
-    def handle_signed_event(self, body, headers, secret, context):
+        approval=Approval(self.study_id,preview['preview_sha256'],tuple(sorted(sessions)),tuple(sorted(historical_sessions)),tuple(sorted(sessions-set(historical_sessions))),routine_policy,utc_now(),approved_by); self.approvals.save(approval); return approval
+    def current_reconcile(self) -> dict[str, Any]: return self.trigger.periodic()
+    def handle_signed_event(self, body: bytes, headers: dict[str, str], secret: str, context: Path | dict[str, Any]) -> dict[str, Any] | Any:
         result=self.trigger.handle(body,headers,secret)
         if result.status not in {'reconciled'}: return result
         payload=json.loads(body); report=result.report or {}; context_value=json.loads(context.read_text(encoding='utf-8')) if isinstance(context,Path) else context
@@ -159,7 +159,7 @@ class ActivationController:
     def _activation_epoch(self) -> int:
         if not self.activation_boundary: return 0
         return int(datetime.fromisoformat(self.activation_boundary.replace('Z', '+00:00')).timestamp())
-    def execute(self, *, provenance_context, report=None, accepted_event=None, session_id: str | None = None):
+    def execute(self, *, provenance_context: Path | dict[str, Any], report: dict[str, Any] | None = None, accepted_event: dict[str, Any] | None = None, session_id: str | None = None) -> dict[str, Any]:
         if self.production_enabled and self.approvals is None: raise PermissionError('persisted approval store is required')
         if report is None: report=self.current_reconcile().get('report',{})
         if report.get('status')!='ok': return {'status':'pending','report':report}
@@ -210,20 +210,18 @@ class ActivationController:
         report = periodic.get('report', {})
         if report.get('status') != 'ok':
             return {'status': 'pending', 'report': report, 'sessions': []}
-        state = self.trigger.store._read() if hasattr(self.trigger.store, '_read') else {}
         sessions: list[dict[str, Any]] = []
-        for event_id, event in state.get('events', {}).items():
-            if event.get('stage') != 'completed':
-                continue
+        for event in self.trigger.store.completed_events():
+            event_id = event.get('event_id')
             payload = event.get('payload', {})
-            resource_id = payload.get('resource_id')
+            resource_id = event.get('resource_id')
             row = next((item for item in report.get('submissions', []) if item.get('session_id') == resource_id), None)
             if not isinstance(row, dict):
                 continue
             accepted = {
                 'event_id': event_id, 'resource_id': resource_id,
                 'study_id': row.get('study_id'),
-                'event_timestamp': event.get('timestamp', 0),
+                'event_timestamp': event.get('event_timestamp', 0),
                 'activation_timestamp': self._activation_epoch(),
             }
             context = {
@@ -238,7 +236,7 @@ class ActivationController:
         return {'status': 'ok', 'report': report, 'sessions': sessions}
 
 
-def make_activation_server(controller: ActivationController, secret: str, context: dict[str, Any], host: str='127.0.0.1', port: int=0):
+def make_activation_server(controller: ActivationController, secret: str, context: dict[str, Any], host: str = '127.0.0.1', port: int = 0) -> ThreadingHTTPServer:
     class Handler(BaseHTTPRequestHandler):
         def do_POST(self):
             length=int(self.headers.get('Content-Length','0')); body=self.rfile.read(length)
