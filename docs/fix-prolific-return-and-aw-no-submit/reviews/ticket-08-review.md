@@ -49,3 +49,37 @@ Original task added receiver HTTP coverage at `db553b2`, reporting 114 tests, ac
 `204edc8` adds two actual receiver HTTP timeout tests (final answer exact-byte/hash timeout archive; answerless release with no archive), duplicate event and blocked old-session checks. Implementer reports 116 full tests and browser pass. This does not prove the remaining message/provenance/restart/scheduler paths or close final dual review.
 
 Current checkpoint `ticket-08-contact-matrix.*`: actual signed receiver, controlled API message POST, real candidate ledger/verified history, ten-minute controllable clock, durable per-resource origin and routine-policy approval versus historical separation. Subsequent checkpoints remain restart/unknown delivery, late-answer/status reversal, concurrent disable, scheduler and executable human packet. Production remains untouched; no human gate requested for unfinished implementation.
+
+## 6a604ba positive-path test remains insufficient
+
+The added test directly calls execute after ten minutes with a manufactured accepted_event and supplied study/event identity; it does not prove receiver/scheduler reassessment. Independent pinned fd8bac6 real HTTP repro produces candidate_origin_unknown despite verified history. No implementation changed in 6a604ba. Original task resumed in ticket-08-authentic-contact.* to fix durable event handoff and prove a routine future session without per-session preapproval. Final matrix, dual review and human gate remain pending.
+
+## cf541f6 receiver checkpoint
+
+Original task reports actual signed receiver reassessment after ten minutes, exact-one controlled message POST, 117 full tests and isolated browser pass. Independent verification pending. Continued same task in ticket-08-scheduler-recovery.* to prove scheduled reassessment without another event, restart and per-session provenance isolation, and uncertain delivery without resend. Full Ticket8 acceptance remains pending.
+
+## Independent cf541f6 verification
+
+Spec authentic positive HTTP reproduction passes with empty per-session approval lists. Cross-resource reproduction /tmp/ticket08-cf541f6-http-crossresource.py instead sends twice, including an unrelated pre-boundary OLD session without historical approval. Receiver applies one event origin to the whole report. Exact event lookup, scheduler action reassessment, and CLI boundary/scope/routine-policy wiring remain deficient. Findings queued to the active original task; no production calls occurred.
+
+Root acceptance-packet audit: current packet still describes injected callbacks, asks for exact session/action approval without distinguishing routine policy from historical list, and defers executable read-only commands and existing browser evidence. Final packet must be rewritten around tested actual components and concrete operator steps after code is fixed; it is not ready for user verification.
+
+## 0c94e50 scheduler checkpoint
+
+Original task reports one event followed by scheduler +600 seconds yields one controlled message; 117 tests/browser pass. Still explicitly missing cross-session separation, restart/unknown-send, late/status-reversal, concurrent disable and final packet. Standards cf541f6 still flags public type hints and private trigger persistence coupling. Original task resumed in ticket-08-isolation-recovery.* with complete review findings and remaining matrix; no merge/human gate yet.
+
+## 0c42926 isolation patch — regression not yet supplied
+
+Implementation adds exact public event lookup, normalized headers and resource filtering; reports 117 tests/browser pass but explicitly omits requested cross-resource regression and remaining matrix. Continued original task in ticket-08-crossresource-test.* to execute authentic multi-session receiver/scheduler and restart regression. Patch-only claim does not close Spec finding.
+
+## Independent scheduler/restart evidence at 0c94e50
+
+/tmp/ticket08-0c94e50-scheduler-review.py reconstructs real components against local HTTP. Positive one-event/restart/ten-minute scheduled case passes exact-one POST and no resend. Actual late VerificationStore.submit passes zero POST with durable manual reason. APPROVED transition sends nothing but incorrectly leaves prior missing observation indefinitely observed; original task notified to preserve identity and fresh status evidence in durable manual routing. These scoped passes do not close the remaining cross-resource, unknown-delivery, disable, CLI or final review gates.
+
+## Independent lifecycle audit at 3139e19 — effects remain unsafe
+
+/tmp/ticket08-3139e19-lifecycle-review.py uses pinned controller and real temporary VerificationStore. Claim removal occurs with production_enabled=False/no approval, fresh wrong-study/manual identity state, local read error, and explicit consent withdrawal evidence. Conversely routine-approved future sessions outside fixed lists are skipped. Scheduled reconciliation ignores discrepancies without completed events. All findings handed to active original task ticket-08-final-matrix.* PID1790798; fix real effects gates/fresh evidence/consent propagation and add regressions before acceptance. No production access occurred.
+
+## 51384f5 remains unaccepted
+
+Root inspected committed execute: lifecycle default-off and fresh validation defects remain despite completion-themed commit title. Full dual-axis review started pinned51384f5. Original task terminal; resumed same session in ticket-08-lifecycle-gates.* with actual-store reproduction and mandatory regression cases. Previous tests allowing lifecycle effects while disabled must use explicit local approval rather than weakening new guards. No merge/production.
