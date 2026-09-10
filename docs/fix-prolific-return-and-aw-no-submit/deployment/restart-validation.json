@@ -1,0 +1,40 @@
+{
+  "restart": {
+    "old_pid": 1335723,
+    "new_pid": 1899923,
+    "backup_dir": "/home/label/label_ctc/logs/deployment-backups/20260910T093911Z",
+    "backed_up_files": 386,
+    "existing_files_changed": 0,
+    "new_files": [],
+    "health": {
+      "status": "ok",
+      "task_count": 100
+    },
+    "same_completion_url": true,
+    "source_data_dir": "/home/label/label_ctc/prolific/ctc_verification_app/data_train_first100_prolific",
+    "sync_started": false,
+    "launch_session_detached": true,
+    "initial_launch_did_not_persist": true
+  },
+  "browser_preview": {
+    "url": "http://72.62.250.126/static/deployment-preview-e42ce58b/index.html",
+    "http_status": 200,
+    "task_visible": true,
+    "instructions_visible": true,
+    "audio_played": true,
+    "submit_disabled": true,
+    "production_api_requests": [],
+    "page_errors": [],
+    "production_entry_http_status": 200,
+    "production_entry_heading": "Interruption Type Annotation"
+  },
+  "production_original_files_unchanged": true,
+  "production_file_count": 386,
+  "sync_enabled": false,
+  "historical_actions_executed": false,
+  "limitations": [
+    "Preview uses synthetic audio and locally simulated assignment responses, not real participant allocation",
+    "Production /verify HTML entry checked; no real participant assignment or submission was invoked",
+    "Existing HTTP entry retained; HTTPS webhook not enabled"
+  ]
+}
