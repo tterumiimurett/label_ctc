@@ -1,0 +1,13 @@
+{
+  "real_sample": true,
+  "duration_seconds": 16.655979,
+  "option_selection_works": true,
+  "time_marker_edit_retained": true,
+  "transcript_check_retained": true,
+  "audio_reload_works": true,
+  "submit_disabled": true,
+  "production_api_requests": 0,
+  "production_original_files_unchanged": true,
+  "production_file_count": 386,
+  "user_authorization": "User explicitly requested a real research sample after the synthetic preview."
+}
