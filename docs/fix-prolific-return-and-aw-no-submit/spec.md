@@ -3,6 +3,10 @@
 状态：已确认业务规则的规格；测试边界待用户核对。未实现、未部署，未发布 issue。
 
 
+## 最新优先修订：等待期间答案到达
+
+用户确认的 [answer-arrival-amendment.md](answer-arrival-amendment.md) 覆盖下述旧版“答案到达转人工”规则；本次修改无需再次人工核验，但须测试及双轴审查。其他门槛不变。
+
 ## 2026-09-10 人工核验后的优先修订
 
 以下为用户最新批准的规则，覆盖本文旧版冲突段落及先前实现报告。具体验收以修订后的 `issues/04-timed-out-claims.md`、`issues/06-send-return-requests.md` 和 `human-review-2026-09-10.md` 为准：
