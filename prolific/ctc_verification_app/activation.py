@@ -31,6 +31,16 @@ class ActionJournal:
             try:
                 tmp=self.disable_path.with_name(self.disable_path.name+'.tmp'); tmp.write_text(reason.strip()+'\n',encoding='utf-8'); fd=os.open(tmp, os.O_RDONLY); os.fsync(fd); os.close(fd); os.replace(tmp,self.disable_path); parent_fd=os.open(self.disable_path.parent, os.O_DIRECTORY); os.fsync(parent_fd); os.close(parent_fd); self._append({'kind':'disabled','reason':reason.strip(),'at':utc_now()})
             finally: fcntl.flock(h,fcntl.LOCK_UN); h.close()
+    def manual(self, action: str, payload: dict[str, Any], reason: str, evidence: dict[str, Any]) -> None:
+        """Persist an auditable manual outcome even when no effect is allowed."""
+        with self._thread:
+            h = self._locked()
+            try:
+                self._append({"kind": "manual", "action": action, "payload": payload, "reason": reason, "evidence": evidence, "at": utc_now()})
+            finally:
+                fcntl.flock(h, fcntl.LOCK_UN)
+                h.close()
+
     def begin(self, action: str, payload: dict[str, Any]) -> str | None:
         with self._thread:
             h=self._locked()
@@ -193,10 +203,23 @@ class ActivationController:
             return {'status':'blocked','reason':'routine_policy_approval_missing','preview':preview,'results':[]}
         origin=self.derive_candidate_origin(provenance_context,accepted_event=accepted_event)
         selected={r['session_id'] for r in preview['actions'] if r['action'] != 'contact_candidate'}
+        historical=set(approval.historical_sessions)
         results=[]
         for row in preview['actions']:
             sid=row['session_id'];
             if sid not in selected or row['study_id']!=self.study_id or not isinstance(row['participant_id'],str): continue
+            if origin == 'historical' and sid not in historical:
+                reason = 'historical lifecycle action requires explicit approval'
+                evidence = {'session_id': sid, 'origin': origin, 'study_id': row.get('study_id')}
+                self.journal.manual(row['action'], evidence, reason, evidence)
+                results.append({'session_id': sid, 'action': row['action'], 'outcome': {'status': 'manual_review', 'reason': reason, 'evidence': evidence}})
+                continue
+            if origin == 'unknown':
+                reason = 'lifecycle provenance is unknown'
+                evidence = {'session_id': sid, 'origin': origin, 'study_id': row.get('study_id')}
+                self.journal.manual(row['action'], evidence, reason, evidence)
+                results.append({'session_id': sid, 'action': row['action'], 'outcome': {'status': 'manual_review', 'reason': reason, 'evidence': evidence}})
+                continue
             if self.journal.disabled: break
             fresh=self.adapter.reconcile()
             current=next((x for x in fresh.get('submissions',[]) if x.get('session_id')==sid),None)
@@ -213,6 +236,16 @@ class ActivationController:
                 results.append({'session_id':sid,'action':row['action'],'outcome':{'status':'manual_review','reason':manual_reason,'fresh_evidence':current or fresh}})
                 continue
             current_status=str(current.get('status','')).upper().replace('_','-').replace(' ', '-')
+            classification = str(current.get('classification', ''))
+            proposed_action = str(current.get('proposed_action', ''))
+            evidence_values = {str(item) for item in current.get('evidence', []) if isinstance(item, str)}
+            evidence_values.update(str(item) for item in current.get('errors', []) if isinstance(item, str))
+            if current.get('consent_withdrawn') is True or classification in {'identity_mismatch', 'local_read_error', 'read_error'} or proposed_action == 'manual_review' or current.get('errors'):
+                reason = 'fresh reconciliation classified lifecycle as manual or consent-uncertain'
+                evidence = {'session_id': sid, 'study_id': current.get('study_id'), 'participant_id': current.get('participant_id'), 'status': current.get('status'), 'classification': classification, 'proposed_action': proposed_action, 'evidence': sorted(evidence_values), 'consent_withdrawn': current.get('consent_withdrawn') is True}
+                self.journal.manual(row['action'], evidence, reason, evidence)
+                results.append({'session_id': sid, 'action': row['action'], 'outcome': {'status': 'manual_review', 'reason': reason, 'evidence': evidence}})
+                continue
             if row['action']=='archive_returned_result' and current_status != 'RETURNED': continue
             if row['action']=='archive_timed_out_result' and current_status != 'TIMED-OUT': continue
             if row['action']=='release_claim' and current_status not in {'RETURNED','TIMED-OUT'}: continue
@@ -234,7 +267,6 @@ class ActivationController:
         if session_id is not None:
             fresh = {**fresh, 'submissions': [row for row in fresh.get('submissions', []) if row.get('session_id') == session_id]}
         candidate_report=build_contact_candidates(fresh,self.ledger,self.adapter,candidate_origin=origin,now=self.clock() if self.clock else None)
-        historical=set(approval.historical_sessions) if approval else set()
         outbound=send_approved_return_requests(candidate_report,self.ledger,GuardedOutboundAdapter(self.adapter,self.journal),approved_sessions={item['session_id'] for item in candidate_report.get('decisions', []) if item.get('decision') == 'candidate'} if approval and approval.routine_enabled and origin == 'new' else set(approval.routine_sessions) if approval else set(),historical_sessions=historical,enabled=self.production_enabled)
         return {'status':'ok','origin':origin,'results':results,'preview':preview,'candidates':candidate_report,'outbound':outbound}
 
@@ -245,10 +277,13 @@ class ActivationController:
         if report.get('status') != 'ok':
             return {'status': 'pending', 'report': report, 'sessions': []}
         sessions: list[dict[str, Any]] = []
+        seen_resources: set[str] = set()
         for event in self.trigger.store.completed_events():
             event_id = event.get('event_id')
             payload = event.get('payload', {})
             resource_id = event.get('resource_id')
+            if isinstance(resource_id, str):
+                seen_resources.add(resource_id)
             row = next((item for item in report.get('submissions', []) if item.get('session_id') == resource_id), None)
             if not isinstance(row, dict):
                 continue
@@ -267,6 +302,12 @@ class ActivationController:
                 provenance_context=context, report=report,
                 accepted_event=accepted, session_id=resource_id,
             ))
+        for row in report.get('submissions', []):
+            resource_id = row.get('session_id') if isinstance(row, dict) else None
+            if not isinstance(resource_id, str) or resource_id in seen_resources:
+                continue
+            context = {'run_kind': 'backfill', 'historical_snapshot': True, 'study_id': row.get('study_id'), 'activation_boundary': self.activation_boundary}
+            sessions.append(self.execute(provenance_context=context, report=report, session_id=resource_id))
         return {'status': 'ok', 'report': report, 'sessions': sessions}
 
 

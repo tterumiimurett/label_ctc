@@ -30,8 +30,8 @@ def run(mode: str) -> dict[str, object]:
         adapter.reconcile.return_value = {**report, "submissions": [fresh]}
         approvals = ApprovalStore(root / "approval.json")
         approvals.save(Approval("STUDY", "", (), (), (), mode != "default_off", "fixture", "test"))
-        controller = ActivationController(trigger=Mock(), store=store, ledger=JsonContactLedger(root / "contacts.json"), adapter=adapter, journal=ActionJournal(root / "actions.jsonl"), study_id="STUDY", approvals=approvals if mode != "default_off" else None, production_enabled=mode != "default_off")
-        result = controller.execute(provenance_context={}, report=report)
+        controller = ActivationController(trigger=Mock(), store=store, ledger=JsonContactLedger(root / "contacts.json"), adapter=adapter, journal=ActionJournal(root / "actions.jsonl"), study_id="STUDY", approvals=approvals if mode != "default_off" else None, production_enabled=mode != "default_off", activation_boundary="1970-01-01T00:00:00Z")
+        result = controller.execute(provenance_context={'run_kind': 'event', 'event_id': 'E1', 'study_id': 'STUDY', 'activation_boundary': '1970-01-01T00:00:00Z'}, accepted_event={'event_id': 'E1', 'study_id': 'STUDY', 'event_timestamp': 100, 'activation_timestamp': 0}, report=report) if mode == 'routine' else controller.execute(provenance_context={}, report=report)
         after = (root / "data" / "assignments.json").read_bytes()
         return {"mode": mode, "result": result, "unchanged": before == after, "remaining": "S" in json.loads(after)}
 
