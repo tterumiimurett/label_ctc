@@ -1,0 +1,231 @@
+{
+  "study": "6a1bb20dfc7bbfabecc480ff",
+  "pages": [
+    {
+      "page": 1,
+      "rows": 100,
+      "unique": 100,
+      "overlap": 0,
+      "count": 2952
+    },
+    {
+      "page": 2,
+      "rows": 100,
+      "unique": 100,
+      "overlap": 0,
+      "count": 2952
+    },
+    {
+      "page": 3,
+      "rows": 100,
+      "unique": 100,
+      "overlap": 0,
+      "count": 2952
+    },
+    {
+      "page": 4,
+      "rows": 100,
+      "unique": 100,
+      "overlap": 0,
+      "count": 2952
+    },
+    {
+      "page": 5,
+      "rows": 100,
+      "unique": 100,
+      "overlap": 0,
+      "count": 2952
+    },
+    {
+      "page": 6,
+      "rows": 100,
+      "unique": 100,
+      "overlap": 0,
+      "count": 2952
+    },
+    {
+      "page": 7,
+      "rows": 100,
+      "unique": 100,
+      "overlap": 0,
+      "count": 2952
+    },
+    {
+      "page": 8,
+      "rows": 100,
+      "unique": 100,
+      "overlap": 0,
+      "count": 2952
+    },
+    {
+      "page": 9,
+      "rows": 100,
+      "unique": 100,
+      "overlap": 0,
+      "count": 2952
+    },
+    {
+      "page": 10,
+      "rows": 100,
+      "unique": 100,
+      "overlap": 0,
+      "count": 2952
+    },
+    {
+      "page": 11,
+      "rows": 100,
+      "unique": 100,
+      "overlap": 0,
+      "count": 2952
+    },
+    {
+      "page": 12,
+      "rows": 100,
+      "unique": 100,
+      "overlap": 0,
+      "count": 2952
+    },
+    {
+      "page": 13,
+      "rows": 100,
+      "unique": 100,
+      "overlap": 0,
+      "count": 2952
+    },
+    {
+      "page": 14,
+      "rows": 100,
+      "unique": 100,
+      "overlap": 0,
+      "count": 2952
+    },
+    {
+      "page": 15,
+      "rows": 100,
+      "unique": 100,
+      "overlap": 0,
+      "count": 2952
+    },
+    {
+      "page": 16,
+      "rows": 100,
+      "unique": 100,
+      "overlap": 0,
+      "count": 2952
+    },
+    {
+      "page": 17,
+      "rows": 100,
+      "unique": 100,
+      "overlap": 0,
+      "count": 2952
+    },
+    {
+      "page": 18,
+      "rows": 100,
+      "unique": 100,
+      "overlap": 0,
+      "count": 2952
+    },
+    {
+      "page": 19,
+      "rows": 100,
+      "unique": 100,
+      "overlap": 0,
+      "count": 2952
+    },
+    {
+      "page": 20,
+      "rows": 100,
+      "unique": 100,
+      "overlap": 0,
+      "count": 2952
+    },
+    {
+      "page": 21,
+      "rows": 100,
+      "unique": 100,
+      "overlap": 0,
+      "count": 2952
+    },
+    {
+      "page": 22,
+      "rows": 100,
+      "unique": 100,
+      "overlap": 0,
+      "count": 2952
+    },
+    {
+      "page": 23,
+      "rows": 100,
+      "unique": 100,
+      "overlap": 0,
+      "count": 2952
+    },
+    {
+      "page": 24,
+      "rows": 100,
+      "unique": 100,
+      "overlap": 0,
+      "count": 2952
+    },
+    {
+      "page": 25,
+      "rows": 100,
+      "unique": 100,
+      "overlap": 0,
+      "count": 2952
+    },
+    {
+      "page": 26,
+      "rows": 100,
+      "unique": 100,
+      "overlap": 0,
+      "count": 2952
+    },
+    {
+      "page": 27,
+      "rows": 100,
+      "unique": 100,
+      "overlap": 0,
+      "count": 2952
+    },
+    {
+      "page": 28,
+      "rows": 100,
+      "unique": 100,
+      "overlap": 0,
+      "count": 2952
+    },
+    {
+      "page": 29,
+      "rows": 100,
+      "unique": 100,
+      "overlap": 0,
+      "count": 2952
+    },
+    {
+      "page": 30,
+      "rows": 52,
+      "unique": 52,
+      "overlap": 0,
+      "count": 2952
+    }
+  ],
+  "rows": 2952,
+  "unique": 2952,
+  "expected": 2952,
+  "scoped_unique": 2952,
+  "only_general": 0,
+  "only_scoped": 0,
+  "scoped_next": {
+    "href": "http://api.prolific.com/api/v1/studies/6a1bb20dfc7bbfabecc480ff/submissions/?limit=0&offset=0&ordering=started_at",
+    "title": "Next"
+  },
+  "status_counts": {
+    "AWAITING REVIEW": 299,
+    "RETURNED": 2593,
+    "TIMED-OUT": 60
+  },
+  "writes_performed": false
+}

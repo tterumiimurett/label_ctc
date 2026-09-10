@@ -18,9 +18,9 @@
 
 ## 仍缺少的线上证据
 
-用户已提供 `source ~/.prolific_profile`，凭据可用且已完成只读列表请求。当前完整报告被分页完整性校验拦截：30 页共返回 2952 行，`meta.count=2952`，但去重后仅 1424 个 submission ID；原因尚未确定，不能据此认定真实研究提交总数。错误为 `unique submission count does not match meta.count`，未执行任何归档、释放或消息动作。数量证据保存在 `/tmp/prolific-ticket08-pagination-summary.json`，报告在 `/tmp/prolific-ticket08-live-reconciliation.json`。
+用户已提供 `source ~/.prolific_profile`，凭据可用。默认分页30页2952行却只有1424个唯一ID，完整性校验正确阻止报告。只读对照增加官方支持的 `ordering=started_at` 后，30页2952个ID无重复，和研究专用接口集合完全一致；平台当次状态为299 AWAITING REVIEW、2593 RETURNED、60 TIMED-OUT。这不是本地有效答案数量，也不能用于替代旧CSV时点。
 
-下一步先只读排查分页重叠及统计含义，取得完整、身份一致的线上报告后，再核验历史动作/联系名单。生产迁移、消息发送和启用服务仍需明确批准。workspace/webhook 配置清单仍待核实。
+证据见 `live-pagination-investigation.md`、`sorted-pagination-evidence.json`。原独立任务正在修复客户端未指定排序的问题，修复后须独立双轴审查，现有人工门槛保持不变。仍须通过实际修复客户端完成身份与本地答案逐条对账，取得只读动作清单；尚未执行任何归档、释放或消息动作。生产迁移、消息发送和启用服务仍需明确批准。workspace/webhook 配置清单仍待核实。
 
 ## 恢复步骤
 
