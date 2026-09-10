@@ -1,6 +1,6 @@
 # Ticket 8 implementation report
 
-Branch: `codex/prolific-ticket-08-20260910`. Final implementation checkpoint: `f018997`.
+Branch: `codex/prolific-ticket-08-20260910`. Final implementation checkpoint: `f018997`; pagination correction is this follow-up commit.
 
 ## Reproducible evidence
 
@@ -18,6 +18,10 @@ NODE_PATH=/tmp/ticket1-ctc/node_modules node tests/browser_ticket_01_ctc.cjs
 Current full-suite evidence: **127 tests passed**. Browser evidence is at [`artifacts/ticket08/browser-final.json`](../../artifacts/ticket08/browser-final.json): visible task/instructions, audio playback, no-task state, network failure, invalid JSON, and null-payload states.
 
 Controlled integration evidence covers signed receiver/archive and timeout paths, routine NEW ten-minute message delivery, reconstructed scheduler state, cross-resource isolation, disconnected POST restart recovery, concurrent disable, durable lifecycle manual outcomes, consent-source validation, historical approval records, and missed-event surfacing. These are isolated localhost/temp-store tests only.
+
+## Read-only pagination correction
+
+The documented Prolific `ordering=started_at` parameter is now sent on every submissions list page. The focused transport regression asserts the query on the first and subsequent page requests while retaining duplicate-ID, stable-count, malformed-response, and pagination-failure safeguards. Root's separate read-only evidence records 2,952 rows, 2,952 unique IDs, zero overlap, stable metadata, and equality with the study-scoped endpoint in [`sorted-pagination-evidence.json`](/home/label/label_ctc/docs/fix-prolific-return-and-aw-no-submit/sorted-pagination-evidence.json) and [`live-pagination-investigation.md`](/home/label/label_ctc/docs/fix-prolific-return-and-aw-no-submit/live-pagination-investigation.md). No live API call was made in this change.
 
 ## CLI controlled configuration
 

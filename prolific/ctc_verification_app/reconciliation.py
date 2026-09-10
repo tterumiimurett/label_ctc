@@ -15,7 +15,7 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 
 class SubmissionReader(Protocol):
-    def list_submissions(self, *, study: str, page: int = 1, page_size: int = 100) -> dict[str, Any]: ...
+    def list_submissions(self, *, study: str, page: int = 1, page_size: int = 100, ordering: str = "started_at") -> dict[str, Any]: ...
     def get_submission(self, submission_id: str) -> dict[str, Any]: ...
 
 
@@ -155,7 +155,7 @@ def _pages(reader: SubmissionReader, study_id: str, page_size: int = 100) -> lis
     next_origin: str | None = None
     while page not in seen_pages:
         seen_pages.add(page)
-        response = reader.list_submissions(study=study_id, page=page, page_size=page_size)
+        response = reader.list_submissions(study=study_id, page=page, page_size=page_size, ordering="started_at")
         if not isinstance(response, dict) or "results" not in response or not isinstance(response["results"], list):
             raise ValueError("submission response must contain a results list")
         if any(not isinstance(item, dict) for item in response["results"]):
@@ -299,8 +299,10 @@ class ProlificSubmissionClient:
                 time.sleep(2 ** attempt)
         raise RuntimeError("unreachable")
 
-    def list_submissions(self, *, study: str, page: int = 1, page_size: int = 100) -> dict[str, Any]:
-        return self._get("submissions/", {"study": study, "page": page, "page_size": page_size})
+    def list_submissions(self, *, study: str, page: int = 1, page_size: int = 100, ordering: str = "started_at") -> dict[str, Any]:
+        if ordering != "started_at":
+            raise ValueError("submission ordering must be started_at")
+        return self._get("submissions/", {"study": study, "page": page, "page_size": page_size, "ordering": ordering})
 
     def get_submission(self, submission_id: str) -> dict[str, Any]:
         return self._get(f"submissions/{submission_id}/")
