@@ -198,7 +198,7 @@ def _run(report: dict[str, Any], ledger: ContactLedger, fresh: FreshReconciliati
                 decisions.append(ContactDecision(sid, "already_contacted", entry["evidence"], participant_id=pid, study_id=study, reason=entry["reason"])); continue
             decisions.append(_manual(entry, sid, study, pid, {"fresh_message_history_" + history}, "message_history_not_proven_clear")); continue
         candidate_evidence = set(entry.get("evidence", [])) | current_evidence | {"fresh_reconciliation", "fresh_message_history_clear"}
-        entry.update({"state": "candidate", "candidate_at": _ts(now), "candidate_evidence": sorted(candidate_evidence), "candidate_message": APPROVED_MESSAGE.format(SESSION_ID=sid)})
+        entry.update({"state": "candidate", "candidate_at": _ts(now), "candidate_origin": "new", "candidate_evidence": sorted(candidate_evidence), "candidate_message": APPROVED_MESSAGE.format(SESSION_ID=sid)})
         decisions.append(ContactDecision(sid, "candidate", entry["candidate_evidence"], entry["candidate_message"]))
     ledger.write(state)
     return {"status": "ok", "study_id": study, "decisions": [d.as_dict() for d in decisions], "writes_performed": True}
@@ -228,6 +228,7 @@ class ProlificFreshReconciliation:
         return self.reader.send_message(recipient_id=recipient_id, body=body, study_id=study_id)
 
     def inspect_messages(self, *, session_id: str, participant_id: str, study_id: str) -> str:
+        """Classify complete ordered participant/researcher history without inference."""
         if self.scope is None:
             return "unavailable"
         try:
@@ -238,27 +239,33 @@ class ProlificFreshReconciliation:
             now = self.now or datetime.now(timezone.utc)
             if detail.get("study_id") != study_id or participant != participant_id:
                 return "ambiguous"
-            if detail.get("return_requested"):
-                return "already_contacted"
             if not self.scope.valid_for(detail.get("started_at"), now):
                 return "unavailable"
+            if detail.get("return_requested"):
+                return "prior_contact"
             payload = self.reader.get_messages(user_id=participant_id, created_after=_ts(self.scope.coverage_start), workspace_id=self.scope.workspace_id)
             if not isinstance(payload, dict) or not isinstance(payload.get("results"), list):
                 return "unavailable"
-            for message in payload["results"]:
-                if not isinstance(message, dict):
-                    return "ambiguous"
-                sender = message.get("sender_id")
-                body = str(message.get("body", ""))
-                outbound = sender == self.scope.researcher_id
-                inbound = sender == participant_id
-                return_language = "return" in body.lower() and "submission" in body.lower()
-                if outbound and session_id in body and return_language:
-                    return "already_contacted"
-                if inbound or (outbound and return_language):
-                    return "ambiguous"
-                if sender not in {self.scope.researcher_id, participant_id}:
-                    return "ambiguous"
+            messages = payload["results"]
+            if any(not isinstance(message, dict) or not isinstance(message.get("created_at"), str) or not isinstance(message.get("sender_id"), str) for message in messages):
+                return "ambiguous"
+            ordered = sorted(messages, key=lambda message: _dt(message["created_at"]))
+            if not ordered:
+                return "clear"
+            last_researcher = max((message for message in ordered if message["sender_id"] == self.scope.researcher_id), key=lambda message: _dt(message["created_at"]), default=None)
+            if last_researcher is None:
+                return "participant_reply"
+            last_outgoing_time = _dt(last_researcher["created_at"])
+            for message in ordered:
+                if message["sender_id"] == participant_id and _dt(message["created_at"]) > last_outgoing_time:
+                    return "participant_reply"
+            for message in ordered:
+                if message["sender_id"] == self.scope.researcher_id:
+                    body = str(message.get("body", "")).lower()
+                    if "return" in body and "submission" in body:
+                        return "prior_contact"
+            if detail.get("return_requested"):
+                return "prior_contact"
             return "clear"
         except Exception:
             return "unavailable"

@@ -121,7 +121,7 @@ class ContactCandidateTest(unittest.TestCase):
             def get_submission(self, session_id): return {"id":session_id, "study_id":"STUDY", "participant":"P1", "status":"AWAITING REVIEW", "started_at":"2026-08-15T00:00:00Z"}
             def get_messages(self, **kwargs): return {"results":[{"sender_id":"R", "body":"Please return this submission S1", "channel_id":"CH", "data":{"study_id":"STUDY"}}]}
         adapter = ProlificFreshReconciliation(Reader(), Path("/tmp"), "STUDY", scope=VerifiedMessageScope("R", "W", datetime(2026, 8, 5, tzinfo=timezone.utc), datetime(2026, 9, 1, tzinfo=timezone.utc), True, "operator verified workspace access", datetime(2026, 8, 31, tzinfo=timezone.utc), datetime(2026, 9, 2, tzinfo=timezone.utc)), now=datetime(2026, 9, 1, tzinfo=timezone.utc))
-        self.assertEqual(adapter.inspect_messages(session_id="S1", participant_id="P1", study_id="STUDY"), "already_contacted")
+        self.assertEqual(adapter.inspect_messages(session_id="S1", participant_id="P1", study_id="STUDY"), "ambiguous")
 
     def test_scope_rejects_old_session_and_stale_or_incomplete_coverage(self):
         class Reader:

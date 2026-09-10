@@ -41,6 +41,44 @@ class Ticket06OutboundTest(unittest.TestCase):
         self.assertEqual(request.method, "POST"); self.assertTrue(request.full_url.endswith("/messages/"))
         self.assertEqual(json.loads(request.data), {"recipient_id":"P1","body":"approved","study_id":"STUDY"})
         self.assertEqual(result["id"], "M1")
+    def test_new_candidates_auto_execute_but_legacy_candidates_need_history_approval(self):
+        with tempfile.TemporaryDirectory() as d:
+            ledger=JsonContactLedger(Path(d)/"c.json")
+            ledger.write({"sessions":{"NEW":{"state":"candidate","candidate_origin":"new","study_id":"STUDY","participant_id":"P1"}, "OLD":{"state":"candidate","study_id":"STUDY","participant_id":"P2"}}})
+            class CaseAdapter(Adapter):
+                def __init__(self, value): super().__init__(); self.value=value
+                def reconcile(self): return self.value
+            adapter=CaseAdapter({"status":"ok","study_id":"STUDY","submissions":[{"session_id":"NEW","study_id":"STUDY","participant_id":"P1","status":"AWAITING REVIEW","classification":"awaiting_without_final_result"}]})
+            value=report()
+            result=send_approved_return_requests(value, ledger, adapter, enabled=True)
+            self.assertEqual(result["decisions"][0]["decision"], "sent"); self.assertEqual(len(adapter.sent), 1)
+            adapter2=Adapter(); value["submissions"][0]["session_id"]="OLD"; value["submissions"][0]["participant_id"]="P2"
+            result=send_approved_return_requests(value, ledger, adapter2, enabled=True)
+            self.assertEqual(result["decisions"][0]["reason"], "historical_candidate_requires_explicit_approval"); self.assertEqual(adapter2.sent, [])
+
+    def test_ordered_chat_rules(self):
+        from datetime import datetime, timezone
+        from prolific.ctc_verification_app.contact_candidates import ProlificFreshReconciliation, VerifiedMessageScope
+        scope=VerifiedMessageScope("R", "W", datetime(2026,8,5,tzinfo=timezone.utc), datetime(2026,9,1,tzinfo=timezone.utc), True, "verified", datetime(2026,8,31,tzinfo=timezone.utc), datetime(2026,9,2,tzinfo=timezone.utc))
+        class Reader:
+            def __init__(self, messages): self.messages=messages
+            def get_submission(self, sid): return {"study_id":"STUDY","participant":"P1","started_at":"2026-08-15T00:00:00Z"}
+            def get_messages(self, **kwargs): return {"results":self.messages}
+        def adapter(messages): return ProlificFreshReconciliation(Reader(messages), Path("/tmp"), "STUDY", scope=scope, now=datetime(2026,9,1,tzinfo=timezone.utc))
+        self.assertEqual(adapter([]).inspect_messages(session_id="S1",participant_id="P1",study_id="STUDY"), "clear")
+        old=[{"sender_id":"R","created_at":"2026-08-20T00:00:00Z","body":"hello"}]
+        self.assertEqual(adapter(old).inspect_messages(session_id="S1",participant_id="P1",study_id="STUDY"), "clear")
+        newer=[*old,{"sender_id":"P1","created_at":"2026-08-21T00:00:00Z","body":"I completed"}]
+        self.assertEqual(adapter(newer).inspect_messages(session_id="S1",participant_id="P1",study_id="STUDY"), "participant_reply")
+        only_participant=[{"sender_id":"P1","created_at":"2026-08-20T00:00:00Z","body":"help"}]
+        prior=[{"sender_id":"R","created_at":"2026-08-20T00:00:00Z","body":"Please return this submission"}]
+        class ReturnedReader:
+            def get_submission(self, sid): return {"study_id":"STUDY","participant":"P1","started_at":"2026-08-15T00:00:00Z","return_requested":True}
+            def get_messages(self, **kwargs): return {"results": []}
+        self.assertEqual(ProlificFreshReconciliation(ReturnedReader(), Path("/tmp"), "STUDY", scope=scope, now=datetime(2026,9,1,tzinfo=timezone.utc)).inspect_messages(session_id="S1",participant_id="P1",study_id="STUDY"), "prior_contact")
+        self.assertEqual(adapter(prior).inspect_messages(session_id="S1",participant_id="P1",study_id="STUDY"), "prior_contact")
+        self.assertEqual(adapter(only_participant).inspect_messages(session_id="S1",participant_id="P1",study_id="STUDY"), "participant_reply")
+
     def test_disabled_by_default_and_requires_candidate_approval(self):
         ledger=JsonContactLedger(Path(tempfile.mkdtemp())/"c.json")
         adapter=Adapter()
@@ -86,7 +124,7 @@ class Ticket06OutboundTest(unittest.TestCase):
                     if self.calls > 1: value["submissions"][0]["classification"]="matched"
                     return value
             adapter=Arrives(); result=send_approved_return_requests(report(), ledger, adapter, approved_sessions={"S1"}, enabled=True)
-            self.assertEqual(result["decisions"][0]["decision"], "cancelled"); self.assertEqual(adapter.sent, [])
+            self.assertEqual(result["decisions"][0]["decision"], "manual_review"); self.assertEqual(adapter.sent, [])
 
     def test_timeout_is_unknown_and_never_retried(self):
         with tempfile.TemporaryDirectory() as d:
@@ -145,5 +183,5 @@ class Ticket06OutboundTest(unittest.TestCase):
             ledger=JsonContactLedger(Path(d)/"c.json"); ledger.write({"sessions":{"S1":{"state":"candidate","study_id":"STUDY","participant_id":"P1"}}})
             adapter=Adapter(); adapter.reconcile=lambda: {**report(), "submissions":[{**report()["submissions"][0],"classification":"matched"}]}
             result=send_approved_return_requests(report(), ledger, adapter, approved_sessions={"S1"}, enabled=True)
-            self.assertEqual(result["decisions"][0]["decision"], "cancelled"); self.assertEqual(adapter.sent, [])
+            self.assertEqual(result["decisions"][0]["decision"], "manual_review"); self.assertEqual(adapter.sent, [])
 if __name__ == "__main__": unittest.main()

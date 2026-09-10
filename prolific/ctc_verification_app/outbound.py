@@ -40,7 +40,8 @@ def _recover_without_resend(entry: dict[str, Any], session_id: str, participant_
 
 def send_approved_return_requests(
     report: dict[str, Any], ledger: ContactLedger, fresh: OutboundAdapter, *,
-    approved_sessions: set[str], enabled: bool = False,
+    approved_sessions: set[str] | None = None, enabled: bool = False,
+    historical_sessions: set[str] | None = None,
 ) -> dict[str, Any]:
     """Send one validated ordinary message per explicitly approved candidate, if enabled."""
     if not enabled:
@@ -56,10 +57,15 @@ def send_approved_return_requests(
         if current_report.get("status") != "ok":
             return {"status": "pending", "decisions": [], "writes_performed": False}
         current = {row.get("session_id"): row for row in current_report.get("submissions", []) if isinstance(row, dict)}
-        for session_id in sorted(approved_sessions):
+        explicitly_approved = historical_sessions if historical_sessions is not None else (approved_sessions or set())
+        session_ids = set(explicitly_approved)
+        session_ids.update(session_id for session_id, entry in sessions.items() if isinstance(entry, dict) and entry.get("state") == "candidate")
+        for session_id in sorted(session_ids):
             entry = sessions.get(session_id)
             if not isinstance(entry, dict) or entry.get("state") not in {"candidate", "sending", "delivery_unknown", "sent"}:
                 decisions.append(_decision(session_id, "manual_review", "not_an_approved_candidate")); continue
+            if entry.get("state") == "candidate" and entry.get("candidate_origin") != "new" and session_id not in explicitly_approved:
+                decisions.append(_decision(session_id, "manual_review", "historical_candidate_requires_explicit_approval")); continue
             row = current.get(session_id)
             if not isinstance(row, dict):
                 decisions.append(_decision(session_id, "cancelled", "fresh_submission_missing")); continue
@@ -93,19 +99,19 @@ def send_approved_return_requests(
                 entry.update({"state": "manual_review", "reason": "fresh_uncertain_evidence", "evidence": sorted(evidence | ({"return_requested"} if row.get("return_requested") else set()))})
                 decisions.append(_decision(session_id, "manual_review", "fresh_uncertain_evidence")); continue
             if row.get("status") != "AWAITING REVIEW" or row.get("classification") != "awaiting_without_final_result":
-                entry.update({"state": "cancelled", "cancelled_at": _timestamp(), "reason": "fresh_status_or_result_changed"})
-                decisions.append(_decision(session_id, "cancelled", "fresh_status_or_result_changed")); continue
+                entry.update({"state": "manual_review", "manual_review_at": _timestamp(), "reason": "answer_or_status_arrived_after_missing_detection"})
+                decisions.append(_decision(session_id, "manual_review", "answer_or_status_arrived_after_missing_detection")); continue
             try:
                 history = fresh.inspect_messages(session_id=session_id, participant_id=participant_id, study_id=study_id)
             except Exception as error:
                 entry.update({"state": "delivery_unknown", "reason": "message_history_query_failed", "error": str(error)})
                 decisions.append(_decision(session_id, "delivery_unknown", "message_history_query_failed"))
                 continue
-            if history == "already_contacted":
-                entry.update({"state": "contacted", "contacted_at": _timestamp(), "reason": "history_already_contacted"})
-                decisions.append(_decision(session_id, "already_contacted")); continue
+            if history == "prior_contact":
+                entry.update({"state": "manual_review", "reason": "prior_contact_requires_confirmation", "evidence": ["prior_contact"]})
+                decisions.append(_decision(session_id, "manual_review", "prior_contact_requires_confirmation")); continue
             if history != "clear":
-                entry.update({"state": "manual_review", "reason": "message_history_not_clear"})
+                entry.update({"state": "manual_review", "reason": "message_history_not_clear", "evidence": ["message_history_not_clear"]})
                 decisions.append(_decision(session_id, "manual_review", "message_history_not_clear")); continue
             body = APPROVED_MESSAGE.format(SESSION_ID=session_id)
             entry.update({"state": "sending", "send_attempted_at": _timestamp(), "send_body": body, "send_operation": "ordinary_message", "send_attempt_count": 1})
