@@ -136,7 +136,20 @@ def normalized_preview_digest(report: dict[str, Any], study_id: str) -> str:
     return hashlib.sha256(json.dumps(actions, sort_keys=True).encode()).hexdigest()
 
 class ActivationController:
-    def __init__(self, *, trigger, store, ledger, adapter, journal: ActionJournal, study_id: str, approvals: ApprovalStore | None = None, production_enabled: bool = False, clock: Any = None, activation_boundary: str | None = None):
+    def __init__(
+        self,
+        *,
+        trigger: Any,
+        store: Any,
+        ledger: Any,
+        adapter: Any,
+        journal: ActionJournal,
+        study_id: str,
+        approvals: ApprovalStore | None = None,
+        production_enabled: bool = False,
+        clock: Callable[[], datetime] | None = None,
+        activation_boundary: str | None = None,
+    ) -> None:
         self.trigger=trigger; self.store=store; self.ledger=ledger; self.adapter=adapter; self.journal=journal; self.study_id=study_id; self.approvals=approvals; self.production_enabled=production_enabled; self.clock=clock; self.activation_boundary=activation_boundary
     def _parse_boundary(self, value: Any) -> datetime | None:
         if not value: return None
