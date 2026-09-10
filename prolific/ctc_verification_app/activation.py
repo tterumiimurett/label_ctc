@@ -110,7 +110,14 @@ class RealApiAdapter:
                     by_session[sid] = record
                 for row in report.get('submissions', []):
                     record = by_session.get(row.get('session_id'))
-                    if isinstance(record, dict) and record.get('study_id') == row.get('study_id') and record.get('participant_id') == row.get('participant_id') and record.get('consent_withdrawn') is True:
+                    if not isinstance(record, dict):
+                        continue
+                    if record.get('study_id') != row.get('study_id') or record.get('participant_id') != row.get('participant_id'):
+                        row.setdefault('errors', []).append('consent evidence identity mismatch')
+                        row['classification'] = 'local_read_error'
+                        report['status'] = 'pending'
+                        continue
+                    if record.get('consent_withdrawn') is True:
                         row['consent_withdrawn'] = True; row['consent_evidence'] = {'source': str(self.consent_evidence_path), 'record_id': record.get('record_id')}
             except (OSError, ValueError, TypeError):
                 report['status'] = 'pending'; report['error'] = 'configured consent evidence is malformed'; return report
@@ -139,26 +146,15 @@ class GuardedOutboundAdapter:
         self.journal.finish(event_id, "accepted")
         return response
 
+def normalized_preview_actions(report: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return the single normalized action shape shared by preview and approval."""
+    mapping = {"release_claim_proposal": "release_claim", "review_returned_with_result": "archive_returned_result", "review_timeout_with_result": "archive_timed_out_result", "review_missing_result": "contact_candidate"}
+    return [{"session_id": row.get("session_id"), "study_id": row.get("study_id"), "participant_id": row.get("participant_id"), "action": mapping.get(row.get("proposed_action"), row.get("proposed_action")), "evidence": row.get("evidence", []), "status": row.get("status")} for row in report.get("submissions", []) if isinstance(row, dict)]
+
+
 def normalized_preview_digest(report: dict[str, Any], study_id: str) -> str:
-    """Compute the approval digest from the controller's normalized action contract."""
-    mapping = {
-        "release_claim_proposal": "release_claim",
-        "review_returned_with_result": "archive_returned_result",
-        "review_timeout_with_result": "archive_timed_out_result",
-        "review_missing_result": "contact_candidate",
-    }
-    actions: list[dict[str, Any]] = []
-    for row in report.get("submissions", []):
-        if isinstance(row, dict):
-            actions.append({
-                "session_id": row.get("session_id"),
-                "study_id": row.get("study_id"),
-                "participant_id": row.get("participant_id"),
-                "action": mapping.get(row.get("proposed_action"), row.get("proposed_action")),
-                "evidence": row.get("evidence", []),
-                "status": row.get("status"),
-            })
-    return hashlib.sha256(json.dumps(actions, sort_keys=True).encode()).hexdigest()
+    """Compute the approval digest from the normalized action contract."""
+    return hashlib.sha256(json.dumps(normalized_preview_actions(report), sort_keys=True).encode()).hexdigest()
 
 class ActivationController:
     def __init__(

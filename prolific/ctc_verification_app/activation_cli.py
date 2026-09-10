@@ -9,7 +9,7 @@ from typing import Any
 
 from .activation import (
     ActionJournal, ActivationController, Approval, ApprovalStore, RealApiAdapter,
-    make_activation_server, normalized_preview_digest,
+    make_activation_server, normalized_preview_actions, normalized_preview_digest,
 )
 from .app import VerificationStore
 from .contact_candidates import JsonContactLedger, VerifiedMessageScope
@@ -118,7 +118,7 @@ def main() -> int:
             historical_ids = set(args.historical_session)
             historical_records = tuple({
                 'session_id': row.get('session_id'), 'study_id': row.get('study_id'),
-                'participant_id': row.get('participant_id'), 'action': row.get('action', row.get('proposed_action')),
+                'participant_id': row.get('participant_id'), 'action': normalized_preview_actions({'submissions': [row]})[0].get('action'),
                 'preview_sha256': digest,
             } for row in report.get('submissions', []) if isinstance(row, dict) and row.get('session_id') in historical_ids)
         historical = set(args.historical_session)
