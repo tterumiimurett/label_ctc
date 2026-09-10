@@ -105,25 +105,39 @@ def _local_snapshot(data_dir: Path) -> LocalSnapshot:
 
 
 def _next_page_href(response: dict[str, Any], resource: str) -> str | None:
-    if "next" in response:
-        value = response["next"]
-    else:
-        links = response.get("_links")
-        if links is None:
-            return None
+    """Parse equivalent pagination fields without accepting contradictory metadata."""
+    top_present = "next" in response
+    top_value = response.get("next")
+    if top_present and top_value is not None and (not isinstance(top_value, str) or not top_value):
+        raise ValueError(f"{resource} next must be a URL or null")
+
+    links_present = "_links" in response
+    linked_present = False
+    linked_value: str | None = None
+    if links_present:
+        links = response["_links"]
         if not isinstance(links, dict):
             raise ValueError(f"{resource} _links must be an object")
-        next_link = links.get("next")
-        if next_link is None:
-            return None
-        if not isinstance(next_link, dict) or "href" not in next_link:
-            raise ValueError(f"{resource} _links.next must contain href")
-        value = next_link["href"]
-    if value is None:
-        return None
-    if not isinstance(value, str) or not value:
-        raise ValueError(f"{resource} next must be a URL")
-    return value
+        linked_present = "next" in links
+        if linked_present:
+            next_link = links["next"]
+            if next_link is None:
+                linked_value = None
+            elif isinstance(next_link, dict) and "href" in next_link:
+                href = next_link["href"]
+                if href is not None and (not isinstance(href, str) or not href):
+                    raise ValueError(f"{resource} _links.next.href must be a URL or null")
+                linked_value = href
+            else:
+                raise ValueError(f"{resource} _links.next must contain href")
+
+    if top_present and linked_present and top_value != linked_value:
+        raise ValueError(f"{resource} pagination metadata conflicts")
+    if top_present:
+        return top_value
+    if linked_present:
+        return linked_value
+    return None
 
 
 def _pagination_count(response: dict[str, Any], resource: str) -> int | None:

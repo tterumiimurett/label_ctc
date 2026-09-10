@@ -135,6 +135,26 @@ class PersonalMessageScopeTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             MembershipClient({"workspaces/WORKSPACE/members/": loop, "https://controlled.test/api/v1/workspaces/WORKSPACE/members/?page=2": page}).list_workspace_members("WORKSPACE")
 
+    def test_membership_listing_rejects_conflicting_continuation_fields(self):
+        payload = {
+            "results": [{"id": "RESEARCHER"}],
+            "next": None,
+            "_links": {
+                "next": {"href": "https://controlled.test/api/v1/workspaces/WORKSPACE/members/?page=2"},
+            },
+        }
+        with self.assertRaises(ValueError):
+            MembershipClient({"workspaces/WORKSPACE/members/": payload}).list_workspace_members("WORKSPACE")
+
+    def test_membership_listing_rejects_malformed_alternative_metadata(self):
+        payload = {
+            "results": [{"id": "RESEARCHER"}],
+            "next": None,
+            "_links": {"next": {"unexpected": "missing href"}},
+        }
+        with self.assertRaises(ValueError):
+            MembershipClient({"workspaces/WORKSPACE/members/": payload}).list_workspace_members("WORKSPACE")
+
     def test_actual_complete_membership_shape_is_supported(self):
         client = MembershipClient({
             "workspaces/WORKSPACE/members/": {
