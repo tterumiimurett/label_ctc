@@ -166,10 +166,12 @@ class ActivationController:
         if session_id is not None:
             report = {**report, 'submissions': [row for row in report.get('submissions', []) if row.get('session_id') == session_id]}
         preview=self.preview(report); approval=self.approvals.load() if self.approvals else None
-        if self.production_enabled:
-            if not approval or approval.study_id != self.study_id or not approval.routine_enabled: return {'status':'blocked','reason':'routine_policy_approval_missing'}
+        if not self.production_enabled:
+            return {'status':'preview_only','reason':'explicit execution approval is required','preview':preview,'results':[]}
+        if not approval or approval.study_id != self.study_id or not approval.routine_enabled:
+            return {'status':'blocked','reason':'routine_policy_approval_missing','preview':preview,'results':[]}
         origin=self.derive_candidate_origin(provenance_context,accepted_event=accepted_event)
-        selected=set(approval.sessions) if approval else {r['session_id'] for r in preview['actions'] if r['action']!='contact_candidate'}
+        selected={r['session_id'] for r in preview['actions'] if r['action'] != 'contact_candidate'}
         results=[]
         for row in preview['actions']:
             sid=row['session_id'];
@@ -177,7 +179,18 @@ class ActivationController:
             if self.journal.disabled: break
             fresh=self.adapter.reconcile()
             current=next((x for x in fresh.get('submissions',[]) if x.get('session_id')==sid),None)
-            if fresh.get('status')!='ok' or not current or current.get('participant_id')!=row['participant_id']: continue
+            manual_reason = None
+            if fresh.get('status') != 'ok':
+                manual_reason = 'fresh reconciliation failed; lifecycle mutation withheld'
+            elif not current:
+                manual_reason = 'fresh submission identity is unavailable; lifecycle mutation withheld'
+            elif current.get('study_id') != self.study_id or current.get('participant_id') != row['participant_id']:
+                manual_reason = 'fresh submission identity mismatch; lifecycle mutation withheld'
+            elif current.get('errors') or current.get('consent_withdrawn') is True:
+                manual_reason = 'fresh evidence contains read or consent uncertainty; lifecycle mutation withheld'
+            if manual_reason:
+                results.append({'session_id':sid,'action':row['action'],'outcome':{'status':'manual_review','reason':manual_reason,'fresh_evidence':current or fresh}})
+                continue
             current_status=str(current.get('status','')).upper().replace('_','-').replace(' ', '-')
             if row['action']=='archive_returned_result' and current_status != 'RETURNED': continue
             if row['action']=='archive_timed_out_result' and current_status != 'TIMED-OUT': continue

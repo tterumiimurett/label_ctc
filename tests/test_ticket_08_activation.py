@@ -1,7 +1,7 @@
 import json, tempfile, unittest
 from pathlib import Path
 from unittest.mock import Mock
-from prolific.ctc_verification_app.activation import ActionJournal, ActivationController
+from prolific.ctc_verification_app.activation import ActionJournal, ActivationController, Approval
 
 class Ticket08Test(unittest.TestCase):
  def setup(self, production=False):
@@ -44,8 +44,9 @@ class RealComponentIntegrationTest(unittest.TestCase):
             try:
                 port=server.server_address[1]; client=ProlificSubmissionClient('isolated','http://127.0.0.1:'+str(port)+'/api/v1',retries=0)
                 trigger=ReconciliationTrigger(client,root/'data','STUDY',JsonTriggerStore(root/'events.json'))
-                from prolific.ctc_verification_app.activation import ActionJournal, ActivationController
-                controller=ActivationController(trigger=trigger,store=store,ledger=JsonContactLedger(root/'contacts.json'),adapter=RealApiAdapter(client,root/'data','STUDY'),journal=ActionJournal(root/'actions.jsonl'),study_id='STUDY',approvals=ApprovalStore(root/'approval.json'),activation_boundary='1970-01-01T00:00:00Z')
+                from prolific.ctc_verification_app.activation import ActionJournal, ActivationController, Approval
+                controller=ActivationController(trigger=trigger,store=store,ledger=JsonContactLedger(root/'contacts.json'),adapter=RealApiAdapter(client,root/'data','STUDY'),journal=ActionJournal(root/'actions.jsonl'),study_id='STUDY',approvals=ApprovalStore(root/'approval.json'),activation_boundary='1970-01-01T00:00:00Z', production_enabled=True)
+                controller.approvals.save(Approval('STUDY', '', (), (), (), True, 'fixture', 'test'))
                 body=json.dumps({'event_type':'submission.status.change','resource_id':'S1'}).encode(); secret='secret'; ts='100'; sig=base64.b64encode(hmac.new(secret.encode(),ts.encode()+body,hashlib.sha256).digest()).decode()
                 result=controller.handle_signed_event(body,{'X-Prolific-Request-Signature':sig,'X-Prolific-Request-Timestamp':ts,'X-Event-ID':'E1','X-Timestamp':'100'},secret,{'run_kind':'event','event_id':'E1','activation_boundary':'1970-01-01','study_id':'STUDY'})
                 self.assertEqual(result['status'],'ok'); self.assertEqual(result['origin'],'new'); self.assertEqual(result['results'][0]['outcome']['action'],'released_claim')
@@ -59,7 +60,7 @@ class FullHttpMatrixTest(unittest.TestCase):
         from prolific.ctc_verification_app.contact_candidates import JsonContactLedger
         from prolific.ctc_verification_app.reconciliation import ProlificSubmissionClient
         from prolific.ctc_verification_app.triggers import JsonTriggerStore, ReconciliationTrigger
-        from prolific.ctc_verification_app.activation import ActionJournal, ActivationController, ApprovalStore, RealApiAdapter, make_activation_server
+        from prolific.ctc_verification_app.activation import ActionJournal, ActivationController, Approval, ApprovalStore, RealApiAdapter, make_activation_server
         with tempfile.TemporaryDirectory() as d:
             root=Path(d); candidate=root/'candidates.jsonl'; candidate.write_text(json.dumps({'candidate_key':'k','pred_is_ctc':True,'audio_verify':{'verify_is_ctc':True},'tos_audio':{'outer_url':'https://x/a.wav'}})+'\n')
             store=VerificationStore([], [str(candidate)], root/'data', 1, 1, 'https://x/complete', False)
@@ -78,7 +79,8 @@ class FullHttpMatrixTest(unittest.TestCase):
             try:
                 base='http://127.0.0.1:%d/api/v1'%api.server_address[1]; client=ProlificSubmissionClient('isolated',base,retries=0)
                 trigger=ReconciliationTrigger(client,root/'data','STUDY',JsonTriggerStore(root/'events.json'))
-                controller=ActivationController(trigger=trigger,store=store,ledger=JsonContactLedger(root/'contacts.json'),adapter=RealApiAdapter(client,root/'data','STUDY'),journal=ActionJournal(root/'actions.jsonl'),study_id='STUDY',approvals=ApprovalStore(root/'approval.json'),activation_boundary='1970-01-01T00:00:00Z')
+                controller=ActivationController(trigger=trigger,store=store,ledger=JsonContactLedger(root/'contacts.json'),adapter=RealApiAdapter(client,root/'data','STUDY'),journal=ActionJournal(root/'actions.jsonl'),study_id='STUDY',approvals=ApprovalStore(root/'approval.json'),activation_boundary='1970-01-01T00:00:00Z', production_enabled=True)
+                controller.approvals.save(Approval('STUDY', '', (), (), (), True, 'fixture', 'test'))
                 receiver=make_activation_server(controller,'secret',{'run_kind':'event','activation_boundary':'1970-01-01','study_id':'STUDY'}); rt=threading.Thread(target=receiver.serve_forever); rt.start()
                 body=json.dumps({'event_type':'submission.status.change','resource_id':'S1'}).encode(); ts='100'; sig=base64.b64encode(hmac.new(b'secret',ts.encode()+body,hashlib.sha256).digest()).decode()
                 request=urllib.request.Request('http://127.0.0.1:%d/'%receiver.server_address[1],data=body,method='POST',headers={'X-Prolific-Request-Signature':sig,'X-Prolific-Request-Timestamp':ts,'X-Event-ID':'E1','X-Timestamp':'100','Content-Type':'application/json'})
@@ -202,7 +204,9 @@ class FullHttpMatrixTest(unittest.TestCase):
                     journal=ActionJournal(root / 'actions.jsonl'),
                     study_id='STUDY',
                     approvals=ApprovalStore(root / 'approval.json'),
+                    production_enabled=True,
                 )
+                controller.approvals.save(Approval('STUDY', '', (), (), (), True, 'fixture', 'test'))
                 receiver = make_activation_server(
                     controller,
                     'controlled-secret',
