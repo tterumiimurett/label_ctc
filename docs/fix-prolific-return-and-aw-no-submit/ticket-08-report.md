@@ -58,10 +58,9 @@ The smoke harness actually tested the following operator sequence:
 
 ```sh
 python3 -m prolific.ctc_verification_app.activation_cli --journal /tmp/ticket08-controlled/journal.jsonl preview --report /tmp/ticket08-controlled/report.json
-python3 -m prolific.ctc_verification_app.activation_cli --journal /tmp/ticket08-controlled/journal.jsonl approve --approval /tmp/ticket08-controlled/approval.json --study-id STUDY-FIXTURE --preview-sha256 DIGEST --approved-by fixture-reviewer --preview-report /tmp/ticket08-controlled/report.json --routine-policy
+python3 -m prolific.ctc_verification_app.activation_cli --journal /tmp/ticket08-controlled/journal.jsonl approve --approval /tmp/ticket08-controlled/data/approval.json --study-id STUDY-FIXTURE --preview-sha256 DIGEST --approved-by fixture-reviewer --preview-report /tmp/ticket08-controlled/report.json --routine-policy
 python3 -m prolific.ctc_verification_app.activation_cli --journal /tmp/ticket08-controlled/journal.jsonl status
 python3 -m prolific.ctc_verification_app.activation_cli --journal /tmp/ticket08-controlled/journal.jsonl receiver --config /tmp/ticket08-controlled/config.json --secret CONTROLLED_SECRET --port 38991
-curl -sS -X POST http://127.0.0.1:38991/ -H 'X-Event-ID: E1' --data '{"event_type":"submission.status.change","resource_id":"S1"}'
 python3 -m prolific.ctc_verification_app.activation_cli --journal /tmp/ticket08-controlled/journal.jsonl scheduler --config /tmp/ticket08-controlled/config.json --interval 0.1
 python3 -m prolific.ctc_verification_app.activation_cli --journal /tmp/ticket08-controlled/journal.jsonl disable "fixture stop"
 python3 -m prolific.ctc_verification_app.activation_cli --journal /tmp/ticket08-controlled/journal.jsonl status
@@ -74,4 +73,4 @@ Receiver and scheduler are default-off; `--execute` is required for any controll
 No production GET, write, webhook enablement, deployment, restart, or participant message was performed. Live prerequisites remain: authorized credentials, verified workspace/message visibility, HTTPS receiver/subscription inventory, scheduler ownership, and human approval of routine policy, historical action/contact lists, and production activation. No human is asked to repeat agent-executable isolated tests.
 
 
-The documented CLI preview/approve/status/receiver/scheduler/disable/restart sequence was executed by the smoke harness against temporary sanitized data; it returned approved, status disabled=false, preview-only receiver response, scheduler cycle observed, disabled, and status disabled=true after restart. The standalone `curl` line is illustrative unless the local receiver is running; the smoke harness uses a signed request and performs cleanup. Receiver/scheduler remain default-off unless `--execute` is explicitly supplied.
+The documented CLI preview/approve/status/receiver/scheduler/disable/restart sequence was executed by `python3 tests/ticket08_cli_smoke.py > artifacts/ticket08/cli-smoke-final.json` against temporary sanitized data; it returned approved, status disabled=false, preview-only receiver response, scheduler cycle observed, disabled, and status disabled=true after restart. The harness dynamically binds its local port, signs the receiver request with request and event timestamps, and cleans up all processes and temporary files. Receiver/scheduler remain default-off unless `--execute` is explicitly supplied.
