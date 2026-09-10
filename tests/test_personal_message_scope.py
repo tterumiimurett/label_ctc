@@ -4,6 +4,7 @@ from __future__ import annotations
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 from prolific.ctc_verification_app.contact_candidates import ProlificFreshReconciliation, VerifiedMessageScope
 from prolific.ctc_verification_app.activation_cli import _verified_scope
@@ -17,22 +18,22 @@ class PersonalReader:
         self.error = error
         self.calls = []
 
-    def get_submission(self, session_id):
+    def get_submission(self, session_id: str) -> dict[str, Any]:
         return {"id": session_id, "study_id": "STUDY", "participant": "P1", "started_at": "2026-09-01T00:00:00Z"}
 
-    def get_current_user(self):
+    def get_current_user(self) -> dict[str, Any]:
         if self.error:
             raise self.error
         self.calls.append("users/me")
         return self.current
 
-    def list_workspace_members(self, workspace_id):
+    def list_workspace_members(self, workspace_id: str) -> dict[str, Any]:
         if self.error:
             raise self.error
         self.calls.append(f"members:{workspace_id}")
         return {"results": self.members}
 
-    def get_messages(self, **kwargs):
+    def get_messages(self, **kwargs: Any) -> dict[str, Any]:
         if self.error:
             raise self.error
         self.calls.append(kwargs)
@@ -94,9 +95,9 @@ class PersonalMessageScopeTest(unittest.TestCase):
         raw = {
             "mode": "personal", "researcher_id": "RESEARCHER", "workspace_id": "WORKSPACE",
             "coverage_start": "2026-08-05T00:00:00Z", "coverage_end": "2026-09-10T00:00:00Z",
-            "workspace_visibility_verified": True, "verification_note": "personal proof",
+            "workspace_visibility_verified": False, "verification_note": "personal proof",
             "checked_at": "2026-09-09T00:00:00Z", "expires_at": "2026-09-10T23:00:00Z",
-            "personal_proof": {"sole_member_id": "RESEARCHER"},
+            "personal_proof": {"proof_kind": "current_users_me_and_workspace_members", "sole_member_id": "RESEARCHER"},
         }
         scope = _verified_scope({"message_scope": raw})
         self.assertEqual(scope.mode, "personal")

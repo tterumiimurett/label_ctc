@@ -32,8 +32,10 @@ def _verified_scope(config: dict[str, Any]) -> VerifiedMessageScope:
     if mode not in {"workspace", "personal"}:
         raise ValueError("message scope mode must be workspace or personal")
     proof = raw.get("personal_proof")
-    if mode == "personal" and (not isinstance(proof, dict) or not isinstance(proof.get("sole_member_id"), str) or not proof.get("sole_member_id")):
-        raise ValueError("personal scope requires personal_proof.sole_member_id")
+    if mode == "personal" and (not isinstance(proof, dict) or proof.get("proof_kind") != "current_users_me_and_workspace_members" or not isinstance(proof.get("sole_member_id"), str) or not proof.get("sole_member_id")):
+        raise ValueError("personal scope requires current identity/membership personal_proof")
+    if mode == "personal" and raw.get("workspace_visibility_verified") is True:
+        raise ValueError("personal scope cannot claim workspace visibility")
     return VerifiedMessageScope(
         researcher_id=str(raw.get("researcher_id", "")),
         workspace_id=str(raw.get("workspace_id", "")),
