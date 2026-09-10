@@ -1,33 +1,60 @@
 # Ticket 8 implementation report
 
-Current branch: `codex/prolific-ticket-08-20260910`. Latest implementation commits include `0c42926` (resource-isolated receiver/scheduler), `204edc8` (real timeout HTTP matrix), `6a604ba`/`0c94e50`/`0c42926` follow-up integration, and the current approved-transition fix.
+Branch: `codex/prolific-ticket-08-20260910`. Latest checkpoint: `461c87f` plus fixture cleanup changes in progress.
 
-## Executable evidence
+## Reproducible evidence
 
-From the repository root:
+Run from the repository root:
 
 ```sh
 python3 -m unittest discover -s tests -v
+python3 -m unittest tests.test_ticket_08_authentic_recovery tests.test_ticket_08_concurrent_disable tests.test_ticket_08_crossresource tests.test_ticket_08_lifecycle_guards -v
 NODE_PATH=/tmp/ticket1-ctc/node_modules node tests/browser_ticket_01_ctc.cjs
-python3 -m unittest tests.test_ticket_08_crossresource tests.test_ticket_08_approved_transition -v
 ```
 
-Current evidence: full suite `124` tests passing; browser artifact: [`artifacts/ticket08/browser-final.json`](../../artifacts/ticket08/browser-final.json). The real Playwright browser proof passes task/instruction visibility, audio playback (`currentTimeAdvanced: true`), no-task state, network failure, invalid JSON, and null-payload error states. Controlled HTTP evidence includes RETURNED archive/release, TIMED-OUT archive/release, routine missing-result message delivery, durable scheduler reassessment, cross-resource receiver/scheduler isolation, and APPROVED-after-missing durable manual review, five lifecycle guard cases, authentic signed-receiver/scheduler disconnected-message recovery with reconstructed controller/store/trigger/ledger and restart/no-resend. Lifecycle manual outcomes are journaled with session/study/participant identity and fresh classification/evidence; missed periodic rows are surfaced as historical/unknown and cannot auto-contact without separate approval. Five lifecycle guard cases: default-off, wrong study, local read error, consent withdrawal, and routine empty-session policy.
+Current full-suite evidence: **125 tests passed**. Browser evidence is at [`artifacts/ticket08/browser-final.json`](../../artifacts/ticket08/browser-final.json): visible task/instructions, audio playback, no-task state, network failure, invalid JSON, and null-payload states.
 
-The authentic adapted cross-resource fixture is `tests/ticket08_crossresource_http_fixture.py`; its scheduler variant is `tests/ticket08_crossresource_scheduler_fixture.py`. The approved-transition fixture is `tests/ticket08_approved_transition_fixture.py`.
+Controlled integration evidence covers signed receiver/archive and timeout paths, routine NEW ten-minute message delivery, reconstructed scheduler state, cross-resource isolation, disconnected POST restart recovery, concurrent disable, durable lifecycle manual outcomes, consent-source validation, historical approval records, and missed-event surfacing. These are isolated localhost/temp-store tests only.
 
-## Policy separation
+## CLI controlled configuration
 
-Routine policy is represented by the persisted approval’s `routine_enabled` rule and study binding. It authorizes future eligible NEW cases; it is not a per-session NEW allowlist. Historical sessions remain separately listed and require explicit historical approval. The CLI preview command emits the normalized digest and `approve --preview-report` verifies it before persistence. The executable CLI configuration requires `verified_message_scope`, `activation_boundary`, and `routine_policy: true`; execution remains off unless the operator supplies the explicit `--execute` flag and a persisted approval. Code acceptance is evidenced by isolated tests and controlled HTTP only. Human gates remain required for production activation, live credentials/message visibility, HTTPS receiver/subscription inventory, and the historical action/contact list. Production authorization is not present and no production action was run.
+Sanitized fixture configuration:
 
-## External blockers
+```json
+{
+    "study_id": "STUDY-FIXTURE",
+    "data_dir": "/tmp/ticket08-controlled/data",
+    "base_url": "http://127.0.0.1:39001/api/v1",
+    "token": "CONTROLLED_FIXTURE_ONLY",
+    "auto_labels": [],
+    "routine_policy": true,
+    "activation_boundary": "2026-01-01T00:00:00Z",
+    "verified_message_scope": {
+        "researcher_id": "RESEARCHER-FIXTURE",
+        "workspace_id": "WORKSPACE-FIXTURE",
+        "coverage_start": "2025-12-01T00:00:00Z",
+        "coverage_end": "2026-02-01T00:00:00Z",
+        "workspace_visibility_verified": true,
+        "verification_note": "controlled fixture only",
+        "checked_at": "2026-01-01T00:00:00Z",
+        "expires_at": "2026-02-01T00:00:00Z"
+    },
+    "consent_evidence_path": "/tmp/ticket08-controlled/consent.json"
+}
+```
 
-No authorized live credential/workspace/HTTPS production receiver inventory was available. No live GET or write was attempted. These are live-operation prerequisites, not substitutes for the isolated implementation evidence.
+The executable operator sequence is:
 
+```sh
+python3 -m prolific.ctc_verification_app.activation_cli --journal /tmp/ticket08-controlled/journal.jsonl preview --report /tmp/ticket08-controlled/report.json
+python3 -m prolific.ctc_verification_app.activation_cli --journal /tmp/ticket08-controlled/journal.jsonl approve --approval /tmp/ticket08-controlled/approval.json --study-id STUDY-FIXTURE --preview-sha256 DIGEST --approved-by fixture-reviewer --preview-report /tmp/ticket08-controlled/report.json --routine-policy
+python3 -m prolific.ctc_verification_app.activation_cli --journal /tmp/ticket08-controlled/journal.jsonl receiver --config /tmp/ticket08-controlled/config.json --secret CONTROLLED_SECRET
+python3 -m prolific.ctc_verification_app.activation_cli --journal /tmp/ticket08-controlled/journal.jsonl scheduler --config /tmp/ticket08-controlled/config.json
+python3 -m prolific.ctc_verification_app.activation_cli --journal /tmp/ticket08-controlled/journal.jsonl disable "fixture stop"
+```
 
-## CLI acceptance shape
+Receiver and scheduler are default-off; `--execute` is required for any controlled mutation. Preview emits the normalized digest used by approval. Historical approvals contain exact normalized action, identity, and digest records; routine policy is independent of the changing report hash.
 
-A controlled fixture configuration must contain `study_id`, `data_dir`, `base_url`, `token`, `auto_labels`, `verified_message_scope` (researcher/workspace IDs, coverage interval, visibility verification, note, checked/expiry times), `activation_boundary`, and explicit `routine_policy: true`. Run `python3 -m prolific.ctc_verification_app.activation_cli --journal <journal> receiver --config <fixture.json> --secret <fixture-secret>` for default-off reception; add `--execute` only against an approved local controlled API fixture. `approve --routine-policy` records the future-NEW rule, while `--historical-session` remains a separate explicit list.
+## Human/live gates
 
-
-Consent evidence schema: optional CLI `consent_evidence_path` points to UTF-8 JSON `{"records":[{"record_id":"...","session_id":"...","study_id":"...","participant_id":"...","consent_withdrawn":true}]}`. Records are identity-bound; missing or malformed configured evidence yields pending/manual handling. RETURNED status alone never implies consent withdrawal.
+No production GET, write, webhook enablement, deployment, restart, or participant message was performed. Live prerequisites remain: authorized credentials, verified workspace/message visibility, HTTPS receiver/subscription inventory, scheduler ownership, and human approval of routine policy, historical action/contact lists, and production activation. No human is asked to repeat agent-executable isolated tests.
