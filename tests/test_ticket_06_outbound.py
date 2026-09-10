@@ -167,9 +167,9 @@ class Ticket06OutboundTest(unittest.TestCase):
             ledger=JsonContactLedger(Path(d)/"c.json"); ledger.write({"sessions":{"S1":{"state":"sending","study_id":"STUDY","participant_id":"P1"}}})
             adapter=Adapter(history="clear"); result=send_approved_return_requests(report(), ledger, adapter, approved_sessions={"S1"}, enabled=True)
             self.assertEqual(result["decisions"][0]["decision"], "delivery_unknown"); self.assertEqual(adapter.sent, [])
-            ledger.write({"sessions":{"S1":{"state":"delivery_unknown","study_id":"STUDY","participant_id":"P1"}}}); adapter.history="already_contacted"
+            ledger.write({"sessions":{"S1":{"state":"delivery_unknown","study_id":"STUDY","participant_id":"P1"}}}); adapter.history="prior_contact"
             result=send_approved_return_requests(report(), ledger, adapter, approved_sessions={"S1"}, enabled=True)
-            self.assertEqual(result["decisions"][0]["decision"], "sent"); self.assertEqual(adapter.sent, [])
+            self.assertEqual(result["decisions"][0]["decision"], "manual_review"); self.assertEqual(adapter.sent, [])
 
     def test_malformed_success_response_is_not_sent(self):
         with tempfile.TemporaryDirectory() as d:

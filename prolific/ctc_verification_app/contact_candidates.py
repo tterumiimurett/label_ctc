@@ -109,6 +109,14 @@ def _ts(value: datetime) -> str: return value.astimezone(timezone.utc).isoformat
 
 _MANUAL_EVIDENCE = {"draft", "archived_result", "read_error", "other_session_result", "save_error", "identity_mismatch", "local_read_error"}
 
+def queue_manual_review(entry: dict[str, Any], sid: str, study: str, pid: Any, evidence: set[str], reason: str) -> ContactDecision:
+    identity = pid if isinstance(pid, str) and pid else None
+    complete = sorted(evidence | {reason})
+    entry.update({"state": "manual_review", "study_id": study, "participant_id": identity,
+                  "reason": reason, "evidence": complete})
+    return ContactDecision(sid, "manual_review", complete, participant_id=identity, study_id=study, reason=reason)
+
+
 def _manual(entry: dict[str, Any], sid: str, study: str, pid: Any, evidence: set[str], reason: str) -> ContactDecision:
     identity = pid if isinstance(pid, str) and pid else None
     complete = sorted(evidence | {reason})
@@ -160,7 +168,11 @@ def _run(report: dict[str, Any], ledger: ContactLedger, fresh: FreshReconciliati
         if not isinstance(pid, str) or not pid:
             decisions.append(_manual(entry, sid, study, pid, evidence, "missing_participant_identity")); continue
         if bool(row.get("return_requested")):
-            entry["state"] = "contacted"; decisions.append(ContactDecision(sid, "already_contacted", ["platform_return_requested"])); continue
+            if entry.get("first_missing_at"):
+                decisions.append(queue_manual_review(entry, sid, study, pid, evidence, "prior_contact_after_missing_detection"))
+            else:
+                entry["state"] = "contacted"
+            continue
         if entry.get("study_id") and (entry.get("study_id"), entry.get("participant_id")) != (study, pid):
             decisions.append(_manual(entry, sid, study, pid, evidence, "identity_changed_since_observation")); continue
         if not entry.get("first_missing_at"):
@@ -188,14 +200,13 @@ def _run(report: dict[str, Any], ledger: ContactLedger, fresh: FreshReconciliati
         if manual_reason:
             decisions.append(_manual(entry, sid, study, pid, current_evidence, manual_reason)); continue
         if (current.get("status") != "AWAITING REVIEW" or current.get("classification") != "awaiting_without_final_result"):
-            entry["state"] = "resolved"; decisions.append(ContactDecision(sid, "cancelled", ["fresh_status_or_result_changed"])); continue
+            decisions.append(queue_manual_review(entry, sid, study, pid, current_evidence, "answer_or_status_arrived_after_missing_detection")); continue
         if bool(current.get("return_requested")):
-            entry["state"] = "contacted"; decisions.append(ContactDecision(sid, "already_contacted", ["platform_return_requested"])); continue
+            decisions.append(queue_manual_review(entry, sid, study, pid, current_evidence, "prior_contact_after_missing_detection")); continue
         history = fresh.inspect_messages(session_id=sid, participant_id=pid, study_id=study)
         if history != "clear":
-            if history == "already_contacted":
-                entry.update({"state": "contacted", "reason": "prior_outbound_return_request", "evidence": ["fresh_message_history_already_contacted"]})
-                decisions.append(ContactDecision(sid, "already_contacted", entry["evidence"], participant_id=pid, study_id=study, reason=entry["reason"])); continue
+            if history == "prior_contact":
+                decisions.append(queue_manual_review(entry, sid, study, pid, {"prior_contact"}, "prior_contact_after_missing_detection")); continue
             decisions.append(_manual(entry, sid, study, pid, {"fresh_message_history_" + history}, "message_history_not_proven_clear")); continue
         candidate_evidence = set(entry.get("evidence", [])) | current_evidence | {"fresh_reconciliation", "fresh_message_history_clear"}
         entry.update({"state": "candidate", "candidate_at": _ts(now), "candidate_origin": "new", "candidate_evidence": sorted(candidate_evidence), "candidate_message": APPROVED_MESSAGE.format(SESSION_ID=sid)})

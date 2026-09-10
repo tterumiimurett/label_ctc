@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Protocol
 
-from .contact_candidates import APPROVED_MESSAGE, ContactLedger, outbound_attempted
+from .contact_candidates import APPROVED_MESSAGE, ContactLedger, outbound_attempted, queue_manual_review
 
 
 class OutboundAdapter(Protocol):
@@ -24,6 +24,10 @@ def _decision(session_id: str, decision: str, reason: str | None = None) -> dict
     return result
 
 
+def _manual(entry: dict[str, Any], session_id: str, study_id: str, participant_id: str, reason: str) -> dict[str, Any]:
+    return queue_manual_review(entry, session_id, study_id, participant_id, {reason}, reason).as_dict()
+
+
 def _recover_without_resend(entry: dict[str, Any], session_id: str, participant_id: str, study_id: str, fresh: OutboundAdapter) -> dict[str, str] | None:
     """Reconcile an interrupted attempt; never issues a second send."""
     try:
@@ -31,9 +35,8 @@ def _recover_without_resend(entry: dict[str, Any], session_id: str, participant_
     except Exception as error:
         entry.update({"state": "delivery_unknown", "recovery": "history_query_failed", "error": str(error)})
         return _decision(session_id, "delivery_unknown", "history_query_failed")
-    if history == "already_contacted":
-        entry.update({"state": "sent", "send_outcome": "confirmed_during_recovery", "confirmed_at": _timestamp()})
-        return _decision(session_id, "sent", "confirmed_during_recovery")
+    if history == "prior_contact":
+        return _manual(entry, session_id, study_id, participant_id, "prior_contact_after_attempt")
     entry.update({"state": "delivery_unknown", "recovery": "not_confirmed"})
     return _decision(session_id, "delivery_unknown", "reconciliation_required")
 
@@ -71,10 +74,8 @@ def send_approved_return_requests(
                 decisions.append(_decision(session_id, "cancelled", "fresh_submission_missing")); continue
             participant_id, study_id = row.get("participant_id"), row.get("study_id")
             if entry.get("participant_id") != participant_id or entry.get("study_id") != study_id:
-                entry.update({"state": "manual_review", "reason": "fresh_identity_changed"})
-                decisions.append(_decision(session_id, "manual_review", "fresh_identity_changed")); continue
+                decisions.append(_manual(entry, session_id, study_id or "", participant_id or "", "fresh_identity_changed")); continue
             if not isinstance(participant_id, str) or not isinstance(study_id, str):
-                entry.update({"state": "manual_review", "reason": "missing_identity"})
                 decisions.append(_decision(session_id, "manual_review", "missing_identity")); continue
             if entry.get("state") == "sent" or entry.get("send_outcome") == "accepted" or entry.get("message_id"):
                 entry["state"] = "sent"
@@ -90,8 +91,7 @@ def send_approved_return_requests(
                 decisions.append(_decision(session_id, "cancelled", "fresh_submission_missing")); continue
             participant_id, study_id = row.get("participant_id"), row.get("study_id")
             if entry.get("participant_id") != participant_id or entry.get("study_id") != study_id:
-                entry.update({"state": "manual_review", "reason": "fresh_identity_changed"})
-                decisions.append(_decision(session_id, "manual_review", "fresh_identity_changed")); continue
+                decisions.append(_manual(entry, session_id, study_id or "", participant_id or "", "fresh_identity_changed")); continue
             evidence = {str(item) for item in row.get("evidence", []) if isinstance(item, str)}
             evidence.update(str(item) for item in row.get("errors", []) if isinstance(item, str))
             blocked = evidence & {"draft", "archived_result", "other_session_result", "read_error", "local_read_error", "identity_mismatch", "save_error"}
@@ -99,8 +99,7 @@ def send_approved_return_requests(
                 entry.update({"state": "manual_review", "reason": "fresh_uncertain_evidence", "evidence": sorted(evidence | ({"return_requested"} if row.get("return_requested") else set()))})
                 decisions.append(_decision(session_id, "manual_review", "fresh_uncertain_evidence")); continue
             if row.get("status") != "AWAITING REVIEW" or row.get("classification") != "awaiting_without_final_result":
-                entry.update({"state": "manual_review", "manual_review_at": _timestamp(), "reason": "answer_or_status_arrived_after_missing_detection"})
-                decisions.append(_decision(session_id, "manual_review", "answer_or_status_arrived_after_missing_detection")); continue
+                decisions.append(_manual(entry, session_id, study_id, participant_id, "answer_or_status_arrived_after_missing_detection")); continue
             try:
                 history = fresh.inspect_messages(session_id=session_id, participant_id=participant_id, study_id=study_id)
             except Exception as error:
@@ -108,8 +107,7 @@ def send_approved_return_requests(
                 decisions.append(_decision(session_id, "delivery_unknown", "message_history_query_failed"))
                 continue
             if history == "prior_contact":
-                entry.update({"state": "manual_review", "reason": "prior_contact_requires_confirmation", "evidence": ["prior_contact"]})
-                decisions.append(_decision(session_id, "manual_review", "prior_contact_requires_confirmation")); continue
+                decisions.append(_manual(entry, session_id, study_id, participant_id, "prior_contact_requires_confirmation")); continue
             if history != "clear":
                 entry.update({"state": "manual_review", "reason": "message_history_not_clear", "evidence": ["message_history_not_clear"]})
                 decisions.append(_decision(session_id, "manual_review", "message_history_not_clear")); continue

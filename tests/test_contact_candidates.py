@@ -243,13 +243,13 @@ class ContactCandidateTest(unittest.TestCase):
             build_contact_candidates(report(missing()), ledger, Fresh(), now="2026-09-09T00:00:00Z")
             history = Fresh("already_contacted", report(missing()))
             result = build_contact_candidates(report(missing()), ledger, history, now="2026-09-09T00:10:00Z")
-            self.assertEqual(result["decisions"][0]["decision"], "already_contacted")
+            self.assertEqual(result["decisions"][0]["decision"], "manual_review")
 
     def test_platform_return_request_is_deduplicated_without_history_guessing(self):
         with tempfile.TemporaryDirectory() as directory:
             history = Fresh("unavailable")
             result = build_contact_candidates(report(missing(return_requested=True)), JsonContactLedger(Path(directory) / "contacts.json"), history, now="2026-09-09T00:10:00Z")
-            self.assertEqual(result["decisions"][0]["decision"], "already_contacted")
+            self.assertEqual(result["decisions"], [])
             self.assertEqual(history.calls, [])
 
     def test_real_reconciliation_report_requires_fresh_synthetic_api_recheck(self):
