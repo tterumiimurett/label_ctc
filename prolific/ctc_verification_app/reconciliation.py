@@ -307,6 +307,14 @@ class ProlificSubmissionClient:
     def get_submission(self, submission_id: str) -> dict[str, Any]:
         return self._get(f"submissions/{submission_id}/")
 
+    def get_current_user(self) -> dict[str, Any]:
+        """Read the authenticated researcher identity without changing state."""
+        return self._get("users/me/")
+
+    def list_workspace_members(self, workspace_id: str) -> dict[str, Any]:
+        """Read current workspace membership for explicit personal-scope proof."""
+        return self._get(f"workspaces/{workspace_id}/members/")
+
     def _validate_message_continuation(self, next_url: str, query: dict[str, Any]) -> None:
         parsed = urlparse(next_url)
         if parsed.path.rstrip("/") != self.messages_path:
