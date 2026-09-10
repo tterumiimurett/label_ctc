@@ -82,3 +82,29 @@ The documented CLI preview/approve/status/receiver/scheduler/disable/restart seq
 ## Answer-arrival amendment
 
 The authoritative amendment is copied to [`answer-arrival-amendment.md`](answer-arrival-amendment.md) and synced into the spec and missing-result ticket. An identity-matched complete final answer in `AWAITING REVIEW` now resolves a waiting case without a message or new manual item, including initial observation and reconstructed fresh reassessment; the authentic approved-transition fixture submits through `VerificationStore`, reconstructs the stack, and repeats assessment. Status changes, prior contact, uncertain delivery, identity conflicts, drafts, errors, other-session results, existing manual records, and outbound attempts remain protected. The focused amendment tests cover initial answer, five-minute answer arrival after a durable first-missing observation, ten-minute reconstructed reassessment, due fresh-only candidate-builder answer arrival behind a fixture-local read barrier followed by a separately reconstructed scheduler stack, repeated reconstruction, approved-status manual behavior, stored-identity conflict, contacted-without-attempt metadata, and delivery-unknown recovery without attempt metadata; answer paths produce zero POSTs while guarded states remain manual/recovery-protected. The positive approved-new fixture separately proves one accepted POST, a persisted `sent` state before reconstruction, and a reconstructed follow-up `manual_review` with attempt count unchanged at one.
+
+## Explicit personal-message scope
+
+The existing workspace scope remains unchanged. A separate config may explicitly select personal history only with `message_scope.mode: "personal"` and proof for the sole-member workspace:
+
+```json
+{
+  "message_scope": {
+    "mode": "personal",
+    "researcher_id": "RESEARCHER-FIXTURE",
+    "workspace_id": "WORKSPACE-FIXTURE",
+    "coverage_start": "2026-09-01T00:00:00Z",
+    "coverage_end": "2026-09-30T00:00:00Z",
+    "workspace_visibility_verified": false,
+    "verification_note": "separate sole-member personal-history proof",
+    "checked_at": "2026-09-10T00:00:00Z",
+    "expires_at": "2026-09-10T23:59:59Z",
+    "personal_proof": {
+      "proof_kind": "current_users_me_and_workspace_members",
+      "sole_member_id": "RESEARCHER-FIXTURE"
+    }
+  }
+}
+```
+
+Personal mode verifies the authenticated `users/me` identity and current workspace membership on each history inspection, requiring exactly one matching member. It reads the authenticated participant history without adding a workspace query. Missing identity, membership changes, permission failures, incomplete paging, unknown senders, expired scope, and malformed/conflicting timestamps fail closed. Message time aliases `datetime_created`, `created_at`, and `sent_at` are accepted only when valid and non-conflicting. The verified real environment currently has no workspace-message visibility and the personal-history mode has not been activated or live-tested by this change.

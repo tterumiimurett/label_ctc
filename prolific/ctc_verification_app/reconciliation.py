@@ -105,25 +105,39 @@ def _local_snapshot(data_dir: Path) -> LocalSnapshot:
 
 
 def _next_page_href(response: dict[str, Any], resource: str) -> str | None:
-    if "next" in response:
-        value = response["next"]
-    else:
-        links = response.get("_links")
-        if links is None:
-            return None
+    """Parse equivalent pagination fields without accepting contradictory metadata."""
+    top_present = "next" in response
+    top_value = response.get("next")
+    if top_present and top_value is not None and (not isinstance(top_value, str) or not top_value):
+        raise ValueError(f"{resource} next must be a URL or null")
+
+    links_present = "_links" in response
+    linked_present = False
+    linked_value: str | None = None
+    if links_present:
+        links = response["_links"]
         if not isinstance(links, dict):
             raise ValueError(f"{resource} _links must be an object")
-        next_link = links.get("next")
-        if next_link is None:
-            return None
-        if not isinstance(next_link, dict) or "href" not in next_link:
-            raise ValueError(f"{resource} _links.next must contain href")
-        value = next_link["href"]
-    if value is None:
-        return None
-    if not isinstance(value, str) or not value:
-        raise ValueError(f"{resource} next must be a URL")
-    return value
+        linked_present = "next" in links
+        if linked_present:
+            next_link = links["next"]
+            if next_link is None:
+                linked_value = None
+            elif isinstance(next_link, dict) and "href" in next_link:
+                href = next_link["href"]
+                if href is not None and (not isinstance(href, str) or not href):
+                    raise ValueError(f"{resource} _links.next.href must be a URL or null")
+                linked_value = href
+            else:
+                raise ValueError(f"{resource} _links.next must contain href")
+
+    if top_present and linked_present and top_value != linked_value:
+        raise ValueError(f"{resource} pagination metadata conflicts")
+    if top_present:
+        return top_value
+    if linked_present:
+        return linked_value
+    return None
 
 
 def _pagination_count(response: dict[str, Any], resource: str) -> int | None:
@@ -306,6 +320,46 @@ class ProlificSubmissionClient:
 
     def get_submission(self, submission_id: str) -> dict[str, Any]:
         return self._get(f"submissions/{submission_id}/")
+
+    def get_current_user(self) -> dict[str, Any]:
+        """Read the authenticated researcher identity without changing state."""
+        return self._get("users/me/")
+
+    def list_workspace_members(self, workspace_id: str) -> dict[str, Any]:
+        """Read a complete, same-resource workspace membership listing."""
+        resource_path = urlparse(
+            urljoin(self.base_url + "/", f"workspaces/{workspace_id}/members/")
+        ).path.rstrip("/")
+        response = self._get(f"workspaces/{workspace_id}/members/")
+        if not isinstance(response, dict) or not isinstance(response.get("results"), list):
+            raise ValueError("workspace membership response must contain results")
+        combined = dict(response)
+        combined["results"] = list(response["results"])
+        expected_count = _pagination_count(response, "workspace membership")
+        seen_urls: set[str] = set()
+        next_url = _next_page_href(response, "workspace membership")
+        while next_url:
+            parsed = urlparse(next_url)
+            if (parsed.scheme, parsed.netloc) != (self.scheme, self.origin):
+                raise ValueError("workspace membership continuation leaves API origin")
+            if parsed.path.rstrip("/") != resource_path:
+                raise ValueError("workspace membership continuation changes resource path")
+            if next_url in seen_urls:
+                raise ValueError("workspace membership pagination loop")
+            seen_urls.add(next_url)
+            page = self._get(next_url)
+            if not isinstance(page, dict) or not isinstance(page.get("results"), list):
+                raise ValueError("workspace membership page must contain results")
+            combined["results"].extend(page["results"])
+            page_count = _pagination_count(page, "workspace membership")
+            if page_count is not None and expected_count is not None and page_count != expected_count:
+                raise ValueError("workspace membership count changed during pagination")
+            if expected_count is None:
+                expected_count = page_count
+            next_url = _next_page_href(page, "workspace membership")
+        if expected_count is not None and len(combined["results"]) != expected_count:
+            raise ValueError("workspace membership count does not match complete results")
+        return combined
 
     def _validate_message_continuation(self, next_url: str, query: dict[str, Any]) -> None:
         parsed = urlparse(next_url)

@@ -107,20 +107,20 @@ class ContactCandidateTest(unittest.TestCase):
                 return {"results": self.messages}
         empty = ProlificFreshReconciliation(Reader([]), Path("/tmp"), "STUDY", scope=VerifiedMessageScope("R", "W", datetime(2026, 8, 5, tzinfo=timezone.utc), datetime(2026, 9, 1, tzinfo=timezone.utc), True, "operator verified workspace access", datetime(2026, 8, 31, tzinfo=timezone.utc), datetime(2026, 9, 2, tzinfo=timezone.utc)), now=datetime(2026, 9, 1, tzinfo=timezone.utc))
         self.assertEqual(empty.inspect_messages(session_id="S1", participant_id="P1", study_id="STUDY"), "clear")
-        inbound = ProlificFreshReconciliation(Reader([{"sender_id":"P1", "body":"I completed S1", "channel_id":"CH", "data":{"study_id":"STUDY"}}]), Path("/tmp"), "STUDY", scope=VerifiedMessageScope("R", "W", datetime(2026, 8, 5, tzinfo=timezone.utc), datetime(2026, 9, 1, tzinfo=timezone.utc), True, "operator verified workspace access", datetime(2026, 8, 31, tzinfo=timezone.utc), datetime(2026, 9, 2, tzinfo=timezone.utc)), now=datetime(2026, 9, 1, tzinfo=timezone.utc))
-        self.assertEqual(inbound.inspect_messages(session_id="S1", participant_id="P1", study_id="STUDY"), "ambiguous")
+        inbound = ProlificFreshReconciliation(Reader([{"sender_id":"P1", "datetime_created":"2026-08-20T00:00:00Z", "body":"I completed S1", "channel_id":"CH", "data":{"study_id":"STUDY"}}]), Path("/tmp"), "STUDY", scope=VerifiedMessageScope("R", "W", datetime(2026, 8, 5, tzinfo=timezone.utc), datetime(2026, 9, 1, tzinfo=timezone.utc), True, "operator verified workspace access", datetime(2026, 8, 31, tzinfo=timezone.utc), datetime(2026, 9, 2, tzinfo=timezone.utc)), now=datetime(2026, 9, 1, tzinfo=timezone.utc))
+        self.assertEqual(inbound.inspect_messages(session_id="S1", participant_id="P1", study_id="STUDY"), "participant_reply")
         self.assertEqual(inbound.reader.kwargs["user_id"], "P1")
         self.assertNotIn("study_id", inbound.reader.kwargs)
 
-        outbound_without_session = ProlificFreshReconciliation(Reader([{"sender_id":"R", "body":"Please return this submission", "channel_id":"CH", "data":{"study_id":"STUDY"}}]), Path("/tmp"), "STUDY", scope=VerifiedMessageScope("R", "W", datetime(2026, 8, 5, tzinfo=timezone.utc), datetime(2026, 9, 1, tzinfo=timezone.utc), True, "operator verified workspace access", datetime(2026, 8, 31, tzinfo=timezone.utc), datetime(2026, 9, 2, tzinfo=timezone.utc)), now=datetime(2026, 9, 1, tzinfo=timezone.utc))
-        self.assertEqual(outbound_without_session.inspect_messages(session_id="S1", participant_id="P1", study_id="STUDY"), "ambiguous")
+        outbound_without_session = ProlificFreshReconciliation(Reader([{"sender_id":"R", "datetime_created":"2026-08-20T00:00:00Z", "body":"Please return this submission", "channel_id":"CH", "data":{"study_id":"STUDY"}}]), Path("/tmp"), "STUDY", scope=VerifiedMessageScope("R", "W", datetime(2026, 8, 5, tzinfo=timezone.utc), datetime(2026, 9, 1, tzinfo=timezone.utc), True, "operator verified workspace access", datetime(2026, 8, 31, tzinfo=timezone.utc), datetime(2026, 9, 2, tzinfo=timezone.utc)), now=datetime(2026, 9, 1, tzinfo=timezone.utc))
+        self.assertEqual(outbound_without_session.inspect_messages(session_id="S1", participant_id="P1", study_id="STUDY"), "prior_contact")
 
     def test_outbound_session_return_request_is_recognized(self):
         class Reader:
             def get_submission(self, session_id): return {"id":session_id, "study_id":"STUDY", "participant":"P1", "status":"AWAITING REVIEW", "started_at":"2026-08-15T00:00:00Z"}
-            def get_messages(self, **kwargs): return {"results":[{"sender_id":"R", "body":"Please return this submission S1", "channel_id":"CH", "data":{"study_id":"STUDY"}}]}
+            def get_messages(self, **kwargs): return {"results":[{"sender_id":"R", "datetime_created":"2026-08-20T00:00:00Z", "body":"Please return this submission S1", "channel_id":"CH", "data":{"study_id":"STUDY"}}]}
         adapter = ProlificFreshReconciliation(Reader(), Path("/tmp"), "STUDY", scope=VerifiedMessageScope("R", "W", datetime(2026, 8, 5, tzinfo=timezone.utc), datetime(2026, 9, 1, tzinfo=timezone.utc), True, "operator verified workspace access", datetime(2026, 8, 31, tzinfo=timezone.utc), datetime(2026, 9, 2, tzinfo=timezone.utc)), now=datetime(2026, 9, 1, tzinfo=timezone.utc))
-        self.assertEqual(adapter.inspect_messages(session_id="S1", participant_id="P1", study_id="STUDY"), "ambiguous")
+        self.assertEqual(adapter.inspect_messages(session_id="S1", participant_id="P1", study_id="STUDY"), "prior_contact")
 
     def test_scope_rejects_old_session_and_stale_or_incomplete_coverage(self):
         class Reader:
@@ -167,7 +167,7 @@ class ContactCandidateTest(unittest.TestCase):
         payloads = [
             b'{"id":"S1","study_id":"STUDY","participant":"P1","status":"AWAITING REVIEW","started_at":"2026-08-15T00:00:00Z"}',
             b'{"results": [], "_links": {"next": {"href": "https://api.test/v1/messages/?created_after=2026-08-05T00%3A00%3A00Z&user_id=P1&workspace_id=W&page=2"}}}',
-            b'{"results": [{"sender_id": "P1", "body": "You already asked me to return; I need help", "channel_id": "CH", "data": {"study_id": "STUDY"}}], "_links": {"self": {"href": "https://api.test/v1/messages/"}}}',
+            b'{"results": [{"sender_id": "P1", "datetime_created": "2026-08-20T00:00:00Z", "body": "You already asked me to return; I need help", "channel_id": "CH", "data": {"study_id": "STUDY"}}], "_links": {"self": {"href": "https://api.test/v1/messages/"}}}',
         ]
         def open_url(request, timeout):
             calls.append(request.full_url)
@@ -180,7 +180,7 @@ class ContactCandidateTest(unittest.TestCase):
             state = ProlificFreshReconciliation(client, Path("/tmp"), "STUDY", scope=scope, now=datetime(2026, 9, 1, tzinfo=timezone.utc)).inspect_messages(session_id="S1", participant_id="P1", study_id="STUDY")
 
         self.assertEqual(len(calls), 3)
-        self.assertEqual(state, "ambiguous")
+        self.assertEqual(state, "participant_reply")
         self.assertIn("user_id=P1", calls[1])
         self.assertIn("page=2", calls[2])
 

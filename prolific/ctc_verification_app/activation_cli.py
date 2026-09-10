@@ -25,18 +25,28 @@ def _configured_datetime(value: Any, name: str) -> datetime:
 
 
 def _verified_scope(config: dict[str, Any]) -> VerifiedMessageScope:
-    raw = config.get("verified_message_scope")
+    raw = config.get("message_scope", config.get("verified_message_scope"))
     if not isinstance(raw, dict):
-        raise ValueError("verified_message_scope is required")
+        raise ValueError("message_scope or verified_message_scope is required")
+    mode = raw.get("mode", "workspace")
+    if mode not in {"workspace", "personal"}:
+        raise ValueError("message scope mode must be workspace or personal")
+    proof = raw.get("personal_proof")
+    if mode == "personal" and (not isinstance(proof, dict) or proof.get("proof_kind") != "current_users_me_and_workspace_members" or not isinstance(proof.get("sole_member_id"), str) or not proof.get("sole_member_id")):
+        raise ValueError("personal scope requires current identity/membership personal_proof")
+    if mode == "personal" and raw.get("workspace_visibility_verified") is True:
+        raise ValueError("personal scope cannot claim workspace visibility")
     return VerifiedMessageScope(
         researcher_id=str(raw.get("researcher_id", "")),
         workspace_id=str(raw.get("workspace_id", "")),
         coverage_start=_configured_datetime(raw.get("coverage_start"), "coverage_start"),
         coverage_end=_configured_datetime(raw.get("coverage_end"), "coverage_end"),
-        workspace_visibility_verified=raw.get("workspace_visibility_verified") is True,
+        workspace_visibility_verified=raw.get("workspace_visibility_verified") is True if mode == "workspace" else False,
         verification_note=str(raw.get("verification_note", "")),
         checked_at=_configured_datetime(raw.get("checked_at"), "checked_at"),
         expires_at=_configured_datetime(raw.get("expires_at"), "expires_at"),
+        mode=mode,
+        personal_proof=proof if mode == "personal" else None,
     )
 
 

@@ -28,7 +28,7 @@ class FreshReconciliation(Protocol):
 
 @dataclass(frozen=True)
 class VerifiedMessageScope:
-    """Local operator evidence for an approved, accessible workspace query."""
+    """Explicit operator evidence for workspace or sole-member personal history."""
     researcher_id: str
     workspace_id: str
     coverage_start: datetime
@@ -37,9 +37,15 @@ class VerifiedMessageScope:
     verification_note: str
     checked_at: datetime | None = None
     expires_at: datetime | None = None
+    mode: str = "workspace"
+    personal_proof: dict[str, Any] | None = None
 
     def valid_for(self, started_at: Any, now: datetime) -> bool:
-        if not self.workspace_visibility_verified or not self.verification_note.strip():
+        if self.mode not in {"workspace", "personal"} or not self.verification_note.strip():
+            return False
+        if self.mode == "workspace" and not self.workspace_visibility_verified:
+            return False
+        if self.mode == "personal" and not isinstance(self.personal_proof, dict):
             return False
         if self.checked_at is None or self.expires_at is None:
             return False
@@ -318,6 +324,30 @@ def build_contact_candidates(report: dict[str, Any], ledger: ContactLedger, fres
     return _run(report, ledger, fresh, reference, wait_minutes, candidate_origin)
 
 
+def _scope_identity(value: Any) -> str | None:
+    if isinstance(value, str):
+        return value.strip() or None
+    if isinstance(value, dict):
+        for key in ("id", "user_id", "participant_id"):
+            found = _scope_identity(value.get(key))
+            if found:
+                return found
+    return None
+
+
+def _message_timestamp(message: dict[str, Any]) -> datetime:
+    """Normalize documented/observed message timestamp aliases fail-closed."""
+    values = [(key, message[key]) for key in ("created_at", "datetime_created", "sent_at") if key in message]
+    if not values or any(not isinstance(value, str) or not value for _, value in values):
+        raise ValueError("message timestamp is missing or invalid")
+    parsed = [_dt(value) for _, value in values]
+    if any(item.tzinfo is None or item.utcoffset() is None for item in parsed):
+        raise ValueError("message timestamp must include timezone")
+    if len(set(parsed)) != 1:
+        raise ValueError("message timestamps conflict")
+    return parsed[0]
+
+
 class ProlificFreshReconciliation:
     """Fresh, read-only platform/local/chat adapter used at candidate time."""
     def __init__(self, reader: Any, data_dir: Path, study_id: str, *, valid_completion_codes: set[str] | None = None, scope: VerifiedMessageScope | None = None, now: datetime | None = None):
@@ -333,6 +363,22 @@ class ProlificFreshReconciliation:
     def send_message(self, *, recipient_id: str, body: str, study_id: str) -> dict[str, Any]:
         """Delegate the single ordinary-message operation to the real API client."""
         return self.reader.send_message(recipient_id=recipient_id, body=body, study_id=study_id)
+
+    def _personal_scope_ready(self) -> bool:
+        if self.scope is None or self.scope.mode != "personal" or not isinstance(self.scope.personal_proof, dict):
+            return False
+        try:
+            current = self.reader.get_current_user()
+            current_id = _scope_identity(current)
+            members = self.reader.list_workspace_members(self.scope.workspace_id)
+            results = members.get("results") if isinstance(members, dict) else None
+            if current_id != self.scope.researcher_id or not isinstance(results, list) or len(results) != 1:
+                return False
+            member_id = _scope_identity(results[0]) if isinstance(results[0], dict) else None
+            proof_id = self.scope.personal_proof.get("sole_member_id")
+            return member_id == self.scope.researcher_id == proof_id
+        except Exception:
+            return False
 
     def inspect_messages(self, *, session_id: str, participant_id: str, study_id: str) -> str:
         """Classify complete ordered participant/researcher history without inference."""
@@ -350,26 +396,32 @@ class ProlificFreshReconciliation:
                 return "unavailable"
             if detail.get("return_requested"):
                 return "prior_contact"
-            payload = self.reader.get_messages(user_id=participant_id, created_after=_ts(self.scope.coverage_start), workspace_id=self.scope.workspace_id)
+            if self.scope.mode == "personal":
+                if not self._personal_scope_ready():
+                    return "unavailable"
+                payload = self.reader.get_messages(user_id=participant_id, created_after=_ts(self.scope.coverage_start))
+            else:
+                payload = self.reader.get_messages(user_id=participant_id, created_after=_ts(self.scope.coverage_start), workspace_id=self.scope.workspace_id)
             if not isinstance(payload, dict) or not isinstance(payload.get("results"), list):
                 return "unavailable"
             messages = payload["results"]
-            if any(not isinstance(message, dict) or not isinstance(message.get("created_at"), str) or not isinstance(message.get("sender_id"), str) for message in messages):
+            if any(not isinstance(message, dict) or not isinstance(message.get("sender_id"), str) for message in messages):
                 return "ambiguous"
             if any(message["sender_id"] not in {self.scope.researcher_id, participant_id} for message in messages):
                 return "ambiguous"
-            ordered = sorted(messages, key=lambda message: _dt(message["created_at"]))
-            timestamps = [_dt(message["created_at"]) for message in ordered]
+            timestamps_by_message = [(message, _message_timestamp(message)) for message in messages]
+            ordered = [message for message, _ in sorted(timestamps_by_message, key=lambda item: item[1])]
+            timestamps = [timestamp for _, timestamp in timestamps_by_message]
             if len(timestamps) != len(set(timestamps)):
                 return "ambiguous"
             if not ordered:
                 return "clear"
-            last_researcher = max((message for message in ordered if message["sender_id"] == self.scope.researcher_id), key=lambda message: _dt(message["created_at"]), default=None)
+            last_researcher = max((message for message in ordered if message["sender_id"] == self.scope.researcher_id), key=lambda message: _message_timestamp(message), default=None)
             if last_researcher is None:
                 return "participant_reply"
-            last_outgoing_time = _dt(last_researcher["created_at"])
+            last_outgoing_time = _message_timestamp(last_researcher)
             for message in ordered:
-                if message["sender_id"] == participant_id and _dt(message["created_at"]) > last_outgoing_time:
+                if message["sender_id"] == participant_id and _message_timestamp(message) > last_outgoing_time:
                     return "participant_reply"
             for message in ordered:
                 if message["sender_id"] == self.scope.researcher_id:
