@@ -145,3 +145,7 @@ Standards final801458a PASS: all9reported IOcalls and entirechangedPython textIO
 ## f018997/1028718 runbook smoke rejected as insufficient
 
 Root normalrunexit0/receiverpreview passes; Spec faultinjection schedulerexit7 stillsmokeexit0 /tmp/ticket08-f018997-smoke-scheduler-failure.json. Schedulercycle notasserted/restartstatus notactualrestart/hardcodedport/finallychildcleanup missing. Docs1028718updated butscriptunchanged; original resumed ticket-08-smoke-failure.* to proveactualcycle/restart/noeffects and detectfailedscheduler. No human gate yet.
+
+## Final technical acceptance — 3a89d70
+
+Standards5a63637 PASS; finalSpec3a89d70 PASS (subsequentdiffdocs-only). Root127fulltestsPASS. Independentsmoke normal0 cycles1to2 actualrestart/noPOST, faultinjectedexit7=>smoke1 verified. Final2doccommands corrected. No outstanding technicalfinding. Requiredhuman/live gates remain; ticket-08-technical-human-review.md records exactversion/evidence/recovery. Ticket8 unmerged, production untouched.
