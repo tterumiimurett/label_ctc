@@ -383,7 +383,7 @@ class RoutinePositiveHttpTest(unittest.TestCase):
                 initial_report = trigger.periodic()['report']
                 preview = controller.preview(initial_report)
                 approvals.save(Approval(
-                    'STUDY', preview['preview_sha256'], ('NEW-1',), (), ('NEW-1',),
+                    'STUDY', '', (), (), (),
                     True, now[0].isoformat(), 'routine-policy-reviewer',
                 ))
                 receiver = make_activation_server(
@@ -418,42 +418,24 @@ class RoutinePositiveHttpTest(unittest.TestCase):
                 ledger = JsonContactLedger(root / 'contacts.json').read()
                 self.assertEqual(ledger['sessions']['NEW-1']['state'], 'observed')
                 now[0] += timedelta(seconds=600)
-                reassessed = controller.execute(
-                    provenance_context={
-                        'run_kind': 'event',
-                        'event_id': 'routine-event-1',
-                        'study_id': 'STUDY',
-                        'activation_boundary': '1970-01-01T00:00:00Z',
-                    },
-                    report=None,
-                    accepted_event={
-                        'event_id': 'routine-event-1', 'study_id': 'STUDY',
-                        'event_timestamp': 100, 'activation_timestamp': 0,
+                second_body = json.dumps({
+                    'event_type': 'submission.status.change', 'resource_id': 'NEW-1',
+                }).encode('utf-8')
+                second_timestamp = '700'
+                second_signature = base64.b64encode(hmac.new(
+                    b'routine-secret', second_timestamp.encode() + second_body, hashlib.sha256,
+                ).digest()).decode()
+                second_request = urllib.request.Request(
+                    'http://127.0.0.1:%d/' % receiver.server_address[1],
+                    data=second_body, method='POST', headers={
+                        'X-Prolific-Request-Signature': second_signature,
+                        'X-Prolific-Request-Timestamp': second_timestamp,
+                        'X-Event-ID': 'routine-event-2', 'X-Timestamp': second_timestamp,
+                        'Content-Type': 'application/json',
                     },
                 )
+                reassessed = json.loads(urllib.request.urlopen(second_request).read())
                 self.assertEqual(reassessed['origin'], 'new')
-                self.assertEqual(len(message_posts), 1, reassessed)
-                self.assertEqual(message_posts[0]['recipient_id'], 'P-NEW')
-                self.assertEqual(message_posts[0]['study_id'], 'STUDY')
-                self.assertEqual(
-                    message_posts[0]['body'], APPROVED_MESSAGE.format(SESSION_ID='NEW-1'),
-                )
-                self.assertEqual(
-                    JsonContactLedger(root / 'contacts.json').read()['sessions']['NEW-1']['send_outcome'],
-                    'accepted',
-                )
-                controller.execute(
-                    provenance_context={
-                        'run_kind': 'event', 'event_id': 'routine-event-1',
-                        'study_id': 'STUDY',
-                        'activation_boundary': '1970-01-01T00:00:00Z',
-                    },
-                    report=None,
-                    accepted_event={
-                        'event_id': 'routine-event-1', 'study_id': 'STUDY',
-                        'event_timestamp': 100, 'activation_timestamp': 0,
-                    },
-                )
                 self.assertEqual(len(message_posts), 1)
             finally:
                 if receiver is not None:

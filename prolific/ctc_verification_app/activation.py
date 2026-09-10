@@ -151,6 +151,8 @@ class ActivationController:
         if event_record.get('stage') != 'completed' or not accepted['resource_id']:
             return {'status': 'pending', 'reason': 'accepted_event_not_durable'}
         context_value = json.loads(context.read_text(encoding='utf-8')) if isinstance(context, Path) else dict(context)
+        context_value['event_id'] = accepted['event_id']
+        context_value['study_id'] = report.get('study_id')
         context_value['activation_boundary'] = self.activation_boundary
         return self.execute(provenance_context=context_value, report=report, accepted_event=accepted)
     def _activation_epoch(self) -> int:
