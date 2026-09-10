@@ -5,7 +5,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
+
 from .reconciliation import reconcile_current_state
 from .contact_candidates import ProlificFreshReconciliation, VerifiedMessageScope
 
@@ -17,9 +18,9 @@ class ActionJournal:
     """Process-shared journal. Every effect has an fsynced intent first."""
     def __init__(self, path: Path):
         self.path=path; self.lock_path=path.with_suffix(path.suffix+'.lock'); self.disable_path=path.with_suffix(path.suffix+'.disabled'); self._thread=threading.RLock()
-    def _locked(self):
+    def _locked(self) -> Any:
         self.path.parent.mkdir(parents=True, exist_ok=True); h=self.lock_path.open('a+'); fcntl.flock(h,fcntl.LOCK_EX); return h
-    def _append(self, value):
+    def _append(self, value: dict[str, Any]) -> None:
         with self.path.open('a',encoding='utf-8') as h: h.write(json.dumps(value,sort_keys=True,ensure_ascii=False)+'\n'); h.flush(); os.fsync(h.fileno())
     @property
     def disabled(self): return self.disable_path.exists()
@@ -28,16 +29,16 @@ class ActionJournal:
         with self._thread:
             h=self._locked()
             try:
-                tmp=self.disable_path.with_name(self.disable_path.name+'.tmp'); tmp.write_text(reason.strip()+'\n',encoding='utf-8'); os.replace(tmp,self.disable_path); self._append({'kind':'disabled','reason':reason.strip(),'at':utc_now()})
+                tmp=self.disable_path.with_name(self.disable_path.name+'.tmp'); tmp.write_text(reason.strip()+'\n',encoding='utf-8'); fd=os.open(tmp, os.O_RDONLY); os.fsync(fd); os.close(fd); os.replace(tmp,self.disable_path); parent_fd=os.open(self.disable_path.parent, os.O_DIRECTORY); os.fsync(parent_fd); os.close(parent_fd); self._append({'kind':'disabled','reason':reason.strip(),'at':utc_now()})
             finally: fcntl.flock(h,fcntl.LOCK_UN); h.close()
-    def begin(self, action: str, payload: dict[str,Any]) -> str|None:
+    def begin(self, action: str, payload: dict[str, Any]) -> str | None:
         with self._thread:
             h=self._locked()
             try:
                 if self.disable_path.exists(): return None
                 eid=uuid.uuid4().hex; self._append({'kind':'intent','event_id':eid,'action':action,'payload':payload,'at':utc_now()}); return eid
             finally: fcntl.flock(h,fcntl.LOCK_UN); h.close()
-    def finish(self, eid: str, outcome: str, error: str|None=None):
+    def finish(self, eid: str, outcome: str, error: str | None = None) -> None:
         with self._thread:
             h=self._locked()
             try: self._append({'kind':'outcome','event_id':eid,'outcome':outcome,'error':error,'at':utc_now()})
@@ -61,7 +62,7 @@ class ApprovalStore:
         with self._thread:
             h=self._lock()
             try:
-                tmp=self.path.with_name(self.path.name+'.'+uuid.uuid4().hex+'.tmp'); tmp.write_text(json.dumps(approval.__dict__,sort_keys=True)+'\n',encoding='utf-8'); os.replace(tmp,self.path)
+                tmp=self.path.with_name(self.path.name+'.'+uuid.uuid4().hex+'.tmp'); tmp.write_text(json.dumps(approval.__dict__,sort_keys=True)+'\n',encoding='utf-8'); fd=os.open(tmp, os.O_RDONLY); os.fsync(fd); os.close(fd); os.replace(tmp,self.path); parent_fd=os.open(self.path.parent, os.O_DIRECTORY); os.fsync(parent_fd); os.close(parent_fd)
             finally: fcntl.flock(h,fcntl.LOCK_UN); h.close()
     def load(self):
         with self._thread:
@@ -79,18 +80,39 @@ class RealApiAdapter:
     def inspect_messages(self, **kwargs): return self.fresh.inspect_messages(**kwargs)
     def send_message(self, **kwargs): return self.fresh.send_message(**kwargs)
 
+class GuardedOutboundAdapter:
+    """Adds per-recipient intent/kill checks around the reviewed outbound adapter."""
+    def __init__(self, adapter: Any, journal: ActionJournal):
+        self.adapter = adapter
+        self.journal = journal
+    def reconcile(self) -> dict[str, Any]:
+        return self.adapter.reconcile()
+    def inspect_messages(self, **kwargs: Any) -> str:
+        return self.adapter.inspect_messages(**kwargs)
+    def send_message(self, *, recipient_id: str, body: str, study_id: str) -> dict[str, Any]:
+        event_id = self.journal.begin("recipient_message", {"recipient_id": recipient_id, "study_id": study_id})
+        if event_id is None:
+            raise PermissionError("future actions disabled")
+        try:
+            response = self.adapter.send_message(recipient_id=recipient_id, body=body, study_id=study_id)
+        except Exception as error:
+            self.journal.finish(event_id, "delivery_unknown", type(error).__name__)
+            raise
+        self.journal.finish(event_id, "accepted")
+        return response
+
 class ActivationController:
     def __init__(self, *, trigger, store, ledger, adapter, journal:ActionJournal, study_id:str, approvals:ApprovalStore|None=None, production_enabled=False):
         self.trigger=trigger; self.store=store; self.ledger=ledger; self.adapter=adapter; self.journal=journal; self.study_id=study_id; self.approvals=approvals; self.production_enabled=production_enabled
     @staticmethod
-    def derive_candidate_origin(context:Path|dict[str,Any], *, accepted_event:dict[str,Any]|None=None):
-        value=json.loads(context.read_text()) if isinstance(context,Path) else context
+    def derive_candidate_origin(context: Path | dict[str, Any], *, accepted_event: dict[str, Any] | None = None) -> str:
+        value=json.loads(context.read_text(encoding='utf-8')) if isinstance(context,Path) else context
         if not isinstance(value,dict): return 'unknown'
         if value.get('run_kind')=='event' and accepted_event and value.get('event_id')==accepted_event.get('event_id') and value.get('study_id')==accepted_event.get('study_id') and value.get('activation_boundary'):
             return 'new'
         if value.get('run_kind')=='backfill' and value.get('historical_snapshot') is True: return 'historical'
         return 'unknown'
-    def _rows(self,report):
+    def _rows(self, report: dict[str, Any]) -> list[dict[str, Any]]:
         rows=[]
         for row in report.get('submissions',[]):
             if not isinstance(row,dict): continue
@@ -98,7 +120,7 @@ class ActivationController:
             mapping={'release_claim_proposal':'release_claim','review_returned_with_result':'archive_returned_result','review_timeout_with_result':'archive_timed_out_result','review_missing_result':'contact_candidate'}
             rows.append({'session_id':row.get('session_id'),'study_id':row.get('study_id'),'participant_id':row.get('participant_id'),'action':mapping.get(action,action),'evidence':row.get('evidence',[]),'status':row.get('status')})
         return rows
-    def preview(self, report):
+    def preview(self, report: dict[str, Any]) -> dict[str, Any]:
         rows=self._rows(report); digest=hashlib.sha256(json.dumps(rows,sort_keys=True).encode()).hexdigest(); result={'status':'preview','study_id':self.study_id,'preview_sha256':digest,'actions':rows,'historical_sessions':[r['session_id'] for r in rows if r['action']=='contact_candidate'],'writes_performed':False}
         eid=self.journal.begin('preview',{'study_id':self.study_id,'preview_sha256':digest});
         if eid: self.journal.finish(eid,'recorded')
@@ -112,7 +134,7 @@ class ActivationController:
     def handle_signed_event(self, body, headers, secret, context):
         result=self.trigger.handle(body,headers,secret)
         if result.status not in {'reconciled'}: return result
-        payload=json.loads(body); report=result.report or {}; context_value=json.loads(context.read_text()) if isinstance(context,Path) else context
+        payload=json.loads(body); report=result.report or {}; context_value=json.loads(context.read_text(encoding='utf-8')) if isinstance(context,Path) else context
         context_value={**context_value,'event_id':headers.get('X-Event-ID') or headers.get('x-event-id'),'study_id':self.study_id}
         return self.execute(provenance_context=context_value, report=report, accepted_event=context_value)
     def execute(self, *, provenance_context, report=None, accepted_event=None):
@@ -132,7 +154,7 @@ class ActivationController:
             fresh=self.adapter.reconcile()
             current=next((x for x in fresh.get('submissions',[]) if x.get('session_id')==sid),None)
             if fresh.get('status')!='ok' or not current or current.get('participant_id')!=row['participant_id']: continue
-            current_status=str(current.get('status','')).upper().replace('_','-')
+            current_status=str(current.get('status','')).upper().replace('_','-').replace(' ', '-')
             if row['action']=='archive_returned_result' and current_status != 'RETURNED': continue
             if row['action']=='archive_timed_out_result' and current_status != 'TIMED-OUT': continue
             if row['action']=='release_claim' and current_status not in {'RETURNED','TIMED-OUT'}: continue
@@ -145,7 +167,7 @@ class ActivationController:
                     if current_status == 'RETURNED': outcome=self.store.reconcile_returned({'id':sid,'study_id':self.study_id,'participant':{'id':row['participant_id']},'status':'RETURNED'})
                     else: outcome=self.store.reconcile_timed_out({'id':sid,'study_id':self.study_id,'participant':{'id':row['participant_id']},'status':'TIMED-OUT'})
                 else: outcome={'status':'manual_review','reason':'contact handled after candidate phase'}
-                result={'session_id':sid,'action':action,'outcome':outcome}; self.journal.finish(eid,'completed' if outcome.get('status') in {'processed','already_processed','manual_review'} else 'failed'); results.append(result)
+                result={'session_id':sid,'action':action,'outcome':outcome}; self.journal.finish(eid, 'manual_review' if outcome.get('status') == 'manual_review' else ('completed' if outcome.get('status') in {'processed','already_processed'} else 'failed'), outcome.get('reason')); results.append(result)
             except Exception as error: self.journal.finish(eid,'failed',type(error).__name__); results.append({'session_id':sid,'action':action,'status':'failed'})
         from .contact_candidates import build_contact_candidates
         from .outbound import send_approved_return_requests
@@ -153,7 +175,7 @@ class ActivationController:
         if fresh.get('status')!='ok': return {'status':'pending','origin':origin,'results':results,'report':fresh}
         candidate_report=build_contact_candidates(fresh,self.ledger,self.adapter,candidate_origin=origin)
         historical=set(approval.historical_sessions) if approval else set()
-        outbound=send_approved_return_requests(candidate_report,self.ledger,self.adapter,approved_sessions=set(approval.routine_sessions) if approval else set(),historical_sessions=historical,enabled=self.production_enabled)
+        outbound=send_approved_return_requests(candidate_report,self.ledger,GuardedOutboundAdapter(self.adapter,self.journal),approved_sessions=set(approval.routine_sessions) if approval else set(),historical_sessions=historical,enabled=self.production_enabled)
         return {'status':'ok','origin':origin,'results':results,'preview':preview,'candidates':candidate_report,'outbound':outbound}
 
 
