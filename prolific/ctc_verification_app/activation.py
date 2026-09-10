@@ -158,10 +158,12 @@ class ActivationController:
     def _activation_epoch(self) -> int:
         if not self.activation_boundary: return 0
         return int(datetime.fromisoformat(self.activation_boundary.replace('Z', '+00:00')).timestamp())
-    def execute(self, *, provenance_context, report=None, accepted_event=None):
+    def execute(self, *, provenance_context, report=None, accepted_event=None, session_id: str | None = None):
         if self.production_enabled and self.approvals is None: raise PermissionError('persisted approval store is required')
         if report is None: report=self.current_reconcile().get('report',{})
         if report.get('status')!='ok': return {'status':'pending','report':report}
+        if session_id is not None:
+            report = {**report, 'submissions': [row for row in report.get('submissions', []) if row.get('session_id') == session_id]}
         preview=self.preview(report); approval=self.approvals.load() if self.approvals else None
         if self.production_enabled:
             if not approval or approval.study_id != self.study_id or not approval.routine_enabled: return {'status':'blocked','reason':'routine_policy_approval_missing'}
@@ -198,6 +200,39 @@ class ActivationController:
         historical=set(approval.historical_sessions) if approval else set()
         outbound=send_approved_return_requests(candidate_report,self.ledger,GuardedOutboundAdapter(self.adapter,self.journal),approved_sessions={item['session_id'] for item in candidate_report.get('decisions', []) if item.get('decision') == 'candidate'} if approval and approval.routine_enabled and origin == 'new' else set(approval.routine_sessions) if approval else set(),historical_sessions=historical,enabled=self.production_enabled)
         return {'status':'ok','origin':origin,'results':results,'preview':preview,'candidates':candidate_report,'outbound':outbound}
+
+    def scheduled_reassessment(self) -> dict[str, Any]:
+        """Reassess durable accepted events without requiring a new webhook."""
+        periodic = self.current_reconcile()
+        report = periodic.get('report', {})
+        if report.get('status') != 'ok':
+            return {'status': 'pending', 'report': report, 'sessions': []}
+        state = self.trigger.store._read() if hasattr(self.trigger.store, '_read') else {}
+        sessions: list[dict[str, Any]] = []
+        for event_id, event in state.get('events', {}).items():
+            if event.get('stage') != 'completed':
+                continue
+            payload = event.get('payload', {})
+            resource_id = payload.get('resource_id')
+            row = next((item for item in report.get('submissions', []) if item.get('session_id') == resource_id), None)
+            if not isinstance(row, dict):
+                continue
+            accepted = {
+                'event_id': event_id, 'resource_id': resource_id,
+                'study_id': row.get('study_id'),
+                'event_timestamp': event.get('timestamp', 0),
+                'activation_timestamp': self._activation_epoch(),
+            }
+            context = {
+                'run_kind': 'event', 'event_id': event_id,
+                'study_id': row.get('study_id'),
+                'activation_boundary': self.activation_boundary,
+            }
+            sessions.append(self.execute(
+                provenance_context=context, report=report,
+                accepted_event=accepted, session_id=resource_id,
+            ))
+        return {'status': 'ok', 'report': report, 'sessions': sessions}
 
 
 def make_activation_server(controller: ActivationController, secret: str, context: dict[str, Any], host: str='127.0.0.1', port: int=0):

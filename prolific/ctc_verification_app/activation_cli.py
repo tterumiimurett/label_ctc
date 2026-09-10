@@ -94,7 +94,10 @@ def main() -> int:
         print(json.dumps({'status': 'listening', 'address': server.server_address}))
         server.serve_forever()
         return 0
-    run_periodic(controller.trigger, args.interval, __import__('threading').Event())
+    stop = __import__('threading').Event()
+    while not stop.is_set():
+        controller.scheduled_reassessment()
+        stop.wait(args.interval)
     return 0
 
 

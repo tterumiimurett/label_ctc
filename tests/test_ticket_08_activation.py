@@ -418,24 +418,9 @@ class RoutinePositiveHttpTest(unittest.TestCase):
                 ledger = JsonContactLedger(root / 'contacts.json').read()
                 self.assertEqual(ledger['sessions']['NEW-1']['state'], 'observed')
                 now[0] += timedelta(seconds=600)
-                second_body = json.dumps({
-                    'event_type': 'submission.status.change', 'resource_id': 'NEW-1',
-                }).encode('utf-8')
-                second_timestamp = '700'
-                second_signature = base64.b64encode(hmac.new(
-                    b'routine-secret', second_timestamp.encode() + second_body, hashlib.sha256,
-                ).digest()).decode()
-                second_request = urllib.request.Request(
-                    'http://127.0.0.1:%d/' % receiver.server_address[1],
-                    data=second_body, method='POST', headers={
-                        'X-Prolific-Request-Signature': second_signature,
-                        'X-Prolific-Request-Timestamp': second_timestamp,
-                        'X-Event-ID': 'routine-event-2', 'X-Timestamp': second_timestamp,
-                        'Content-Type': 'application/json',
-                    },
-                )
-                reassessed = json.loads(urllib.request.urlopen(second_request).read())
-                self.assertEqual(reassessed['origin'], 'new')
+                reassessed = controller.scheduled_reassessment()
+                self.assertEqual(reassessed['status'], 'ok')
+                self.assertEqual(reassessed['sessions'][0]['origin'], 'new')
                 self.assertEqual(len(message_posts), 1)
             finally:
                 if receiver is not None:
