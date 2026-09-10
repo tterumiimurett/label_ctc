@@ -70,8 +70,7 @@ class ContactCandidateTest(unittest.TestCase):
             now = "2026-09-09T00:10:00Z"
             build_contact_candidates(report(missing(evidence=["other_session_result"])), ledger, Fresh(), candidate_origin="new", now="2026-09-09T00:00:00Z")
             result = build_contact_candidates(report(missing(evidence=["other_session_result"])), ledger, Fresh(), candidate_origin="new", now=now)
-            self.assertEqual(result["decisions"][0]["reason"], "uncertain_local_evidence")
-            self.assertEqual(result["decisions"][0]["decision"], "manual_review")
+            self.assertEqual(result["decisions"], [])
 
             ledger = JsonContactLedger(Path(directory) / "history.json")
             build_contact_candidates(report(missing()), ledger, Fresh(), candidate_origin="new", now="2026-09-09T00:00:00Z")

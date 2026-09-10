@@ -153,6 +153,8 @@ def _run(report: dict[str, Any], ledger: ContactLedger, fresh: FreshReconciliati
         evidence = {str(item) for item in row.get("evidence", []) if isinstance(item, str)}
         evidence.update(f"local_error:{item}" for item in row.get("errors", []) if isinstance(item, str) and item)
         entry = sessions.setdefault(sid, {"state": "observed"})
+        if entry.get("state") == "manual_review":
+            continue
         if outbound_attempted(entry):
             if entry.get("state") == "sent" or entry.get("send_outcome") == "accepted" or entry.get("message_id"):
                 entry["state"] = "sent"
@@ -164,7 +166,11 @@ def _run(report: dict[str, Any], ledger: ContactLedger, fresh: FreshReconciliati
         if manual_reason:
             decisions.append(_manual(entry, sid, study, pid, evidence, manual_reason)); continue
         if row.get("classification") != "awaiting_without_final_result":
-            entry["state"] = "resolved"; continue
+            if entry.get("first_missing_at"):
+                decisions.append(queue_manual_review(entry, sid, study, pid, evidence, "answer_or_status_arrived_after_missing_detection"))
+            else:
+                entry["state"] = "resolved"
+            continue
         if not isinstance(pid, str) or not pid:
             decisions.append(_manual(entry, sid, study, pid, evidence, "missing_participant_identity")); continue
         if bool(row.get("return_requested")):
