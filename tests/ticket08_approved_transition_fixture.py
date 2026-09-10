@@ -139,14 +139,22 @@ try:
             followup_ledger = rebuilt_ledger.read()
         else:
             second = c2.scheduled_reassessment()
-            assert ledger2.read()['sessions']['S1']['state'] in {'resolved', 'manual_review', 'delivery_unknown'}
+            if mode == 'positive':
+                assert ledger2.read()['sessions']['S1']['state'] == 'sent', 'Positive approved candidate did not record accepted send'
+            elif mode == 'approved':
+                assert ledger2.read()['sessions']['S1']['state'] == 'manual_review', 'Approved status did not remain manual'
+            else:
+                assert ledger2.read()['sessions']['S1']['state'] == 'resolved', 'Complete answer did not resolve before reconstructed follow-up'
             rebuilt_controller, rebuilt_ledger = build_reconstructed_stack()
             followup = rebuilt_controller.scheduled_reassessment()
             followup_ledger = rebuilt_ledger.read()
         print(json.dumps({'mode': mode, 'first': first, 'outer_report': outer_report, 'elapsed_minutes': 5 if mode == 'answer5' else 10, 'after_reassessment': second, 'followup': followup, 'ledger': followup_ledger if 'followup_ledger' in locals() else ledger.read(), 'message_GETs': [p for p in gets if '/messages/' in p], 'POSTs': posts}, indent=2))
         assert len(posts) == (1 if mode == 'positive' else 0), 'Unexpected POST count'
+        if mode == 'positive':
+            assert followup_ledger['sessions']['S1']['state'] == 'manual_review', 'Accepted send follow-up did not require manual confirmation'
+            assert followup_ledger['sessions']['S1']['send_attempt_count'] == 1, 'Positive follow-up changed attempt count'
         if mode == 'approved':
-            assert ledger.read()['sessions']['S1']['state'] == 'manual_review', 'Missing durable manual disposition'
+            assert followup_ledger['sessions']['S1']['state'] == 'manual_review', 'Missing durable manual disposition'
         if mode in {'answer', 'answer5', 'initial_answer', 'fresh_only'}:
             assert followup_ledger['sessions']['S1']['state'] == 'resolved', 'Complete answer did not resolve waiting case'
         if mode == 'fresh_only':
