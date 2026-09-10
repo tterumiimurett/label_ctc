@@ -33,3 +33,9 @@
 - 归档：用户明确回复“符合预期，可以通过。”已通过 RETURNED/TIMED-OUT 有答案完整归档、无答案仅释放的四项隔离案例。证据：archive-human-verification-evidence.json。此决定仅为归档技术核验，不授权线上归档，不代表其他项目通过。
 - 缺失结果复查：已向用户展示首次发现、9分59秒等待、十分钟后复查、期间收到答案或变为APPROVED的结果；证据 missing-recheck-human-evidence.json。等待用户明确通过或修改意见，自动续跑不算批准。
 - 防重复发送、异常转人工、停用机制：尚待逐项展示与核验。
+
+## 完成码专项复核（2026-09-10）
+
+真实研究GET返回1个COMPLETED类型完成码；未显示或提交其值。再次读取六个缺失session详情，身份全部匹配，状态全部AWAITING REVIEW。与研究配置匹配结果：5个NOCODE、1个normal（正常完成码），不是Unknown Code。再次刷新本地快照：六个仍无最终结果，零读取错误、零身份冲突。因此AW无本地结果不能仅依赖异常完成码筛选，必须全量按session对账。上述早先unavailable是未传有效码集合的分类限制，现已针对六人解决。
+
+汇总 completion-code-followup-summary.json。私有名单 /tmp/prolific-ticket08-missing-six.csv，详情 /tmp/prolific-ticket08-missing-six-private.json，均未提交Git。未发送消息或执行归档。本轮只证明观察关联，不能证明结果为何未保存或参与者是否按过提交。研究当前状态为PAUSED；未修改平台配置。

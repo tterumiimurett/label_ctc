@@ -1,0 +1,16 @@
+{
+  "configured_completion_codes": 1,
+  "checked": 6,
+  "all_identity_ok": true,
+  "fresh_status_counts": {
+    "AWAITING REVIEW": 6
+  },
+  "completion_code_counts": {
+    "nocode": 5,
+    "normal": 1
+  },
+  "writes_performed": false,
+  "fresh_local_missing_count": 6,
+  "fresh_local_error_count": 0,
+  "fresh_local_identity_conflicts": 0
+}
