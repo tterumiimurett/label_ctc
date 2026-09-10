@@ -1,0 +1,107 @@
+{
+  "scope": "isolated temporary data; actual signed HTTP receiver and controlled API; observer wrappers only",
+  "tests_run": 4,
+  "tests_passed": true,
+  "cases": [
+    {
+      "session": "S1",
+      "platform_status": "RETURNED",
+      "before": {
+        "active_result_exists": true,
+        "active_result_count": 1,
+        "claim_exists": true,
+        "result_sha256": "72ae298d39175e8e8058956e4bbce2cabcf6ba57a2a9e00cf77fa2f9c2c2bbf7"
+      },
+      "after": {
+        "active_result_exists": false,
+        "active_result_count": 0,
+        "claim_exists": false,
+        "result_sha256": null
+      },
+      "outcome": {
+        "status": "processed",
+        "session_id": "S1",
+        "action": "archived_result"
+      },
+      "archive_files": [
+        "excluded_submissions/2026-09-10/prolific_returned/S1.json"
+      ],
+      "archive_exact_bytes": true,
+      "archive_sha256": "72ae298d39175e8e8058956e4bbce2cabcf6ba57a2a9e00cf77fa2f9c2c2bbf7"
+    },
+    {
+      "session": "S1",
+      "platform_status": "RETURNED",
+      "before": {
+        "active_result_exists": false,
+        "active_result_count": 0,
+        "claim_exists": true,
+        "result_sha256": null
+      },
+      "after": {
+        "active_result_exists": false,
+        "active_result_count": 0,
+        "claim_exists": false,
+        "result_sha256": null
+      },
+      "outcome": {
+        "status": "processed",
+        "session_id": "S1",
+        "action": "released_claim"
+      },
+      "archive_files": [],
+      "archive_exact_bytes": false,
+      "archive_sha256": null
+    },
+    {
+      "session": "TIMEOUT-1",
+      "platform_status": "TIMED-OUT",
+      "before": {
+        "active_result_exists": true,
+        "active_result_count": 1,
+        "claim_exists": true,
+        "result_sha256": "0b2a17cb0297095e0a1434b0e179be7c8ddda57d1091cc5e18971dad3b1047f6"
+      },
+      "after": {
+        "active_result_exists": false,
+        "active_result_count": 0,
+        "claim_exists": false,
+        "result_sha256": null
+      },
+      "outcome": {
+        "status": "processed",
+        "session_id": "TIMEOUT-1",
+        "action": "archived_result"
+      },
+      "archive_files": [
+        "excluded_submissions/2026-09-10/prolific_timed_out/TIMEOUT-1.json"
+      ],
+      "archive_exact_bytes": true,
+      "archive_sha256": "0b2a17cb0297095e0a1434b0e179be7c8ddda57d1091cc5e18971dad3b1047f6"
+    },
+    {
+      "session": "TIMEOUT-1",
+      "platform_status": "TIMED-OUT",
+      "before": {
+        "active_result_exists": false,
+        "active_result_count": 0,
+        "claim_exists": true,
+        "result_sha256": null
+      },
+      "after": {
+        "active_result_exists": false,
+        "active_result_count": 0,
+        "claim_exists": false,
+        "result_sha256": null
+      },
+      "outcome": {
+        "status": "processed",
+        "session_id": "TIMEOUT-1",
+        "action": "released_claim"
+      },
+      "archive_files": [],
+      "archive_exact_bytes": false,
+      "archive_sha256": null
+    }
+  ]
+}

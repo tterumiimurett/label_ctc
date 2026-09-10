@@ -18,8 +18,16 @@
 
 ## 仍缺少的线上证据
 
-当前真实 Prolific 只读动作报告及权限/身份完整性验证尚未取得；当前环境未提供已确认可用的账户凭据和 workspace/webhook 配置清单。需要用户指出凭据在服务器上的安全配置位置及配置资料位置，不要把 token 发到聊天或提交进 Git。获取只读报告后，历史动作/联系名单须另行核验；生产迁移、消息发送和启用服务仍需明确批准。
+用户已提供 `source ~/.prolific_profile`，凭据可用且已完成只读列表请求。当前完整报告被分页完整性校验拦截：30 页共返回 2952 行，`meta.count=2952`，但去重后仅 1424 个 submission ID；原因尚未确定，不能据此认定真实研究提交总数。错误为 `unique submission count does not match meta.count`，未执行任何归档、释放或消息动作。数量证据保存在 `/tmp/prolific-ticket08-pagination-summary.json`，报告在 `/tmp/prolific-ticket08-live-reconciliation.json`。
+
+下一步先只读排查分页重叠及统计含义，取得完整、身份一致的线上报告后，再核验历史动作/联系名单。生产迁移、消息发送和启用服务仍需明确批准。workspace/webhook 配置清单仍待核实。
 
 ## 恢复步骤
 
 收到用户决定后，读取具体意见与对应版本，按 human-review-protocol.md 处理。未通过需要的人工核验前不合并 Ticket 8；未取得线上只读验收证据前不声称项目已完全完成。已完成的 Tickets 1–7 不重复实施。
+
+## 逐项人工核验记录
+
+- 归档：用户明确回复“符合预期，可以通过。”已通过 RETURNED/TIMED-OUT 有答案完整归档、无答案仅释放的四项隔离案例。证据：archive-human-verification-evidence.json。此决定仅为归档技术核验，不授权线上归档，不代表其他项目通过。
+- 缺失结果复查：已向用户展示首次发现、9分59秒等待、十分钟后复查、期间收到答案或变为APPROVED的结果；证据 missing-recheck-human-evidence.json。等待用户明确通过或修改意见，自动续跑不算批准。
+- 防重复发送、异常转人工、停用机制：尚待逐项展示与核验。

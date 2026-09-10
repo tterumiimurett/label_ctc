@@ -1,0 +1,41 @@
+{
+  "scope": "temporary data and controlled localhost HTTP; time advanced by test clock",
+  "cases": [
+    {
+      "mode": "positive",
+      "initial_candidate_decisions": [],
+      "elapsed_minutes": 10,
+      "restart_before_recheck": true,
+      "message_post_count": 1,
+      "final_state": "manual_review",
+      "reason": "acknowledged_send_requires_confirmation",
+      "send_outcome": "accepted",
+      "first_missing_at": "2026-09-10T12:00:00Z",
+      "history_get_count": 2
+    },
+    {
+      "mode": "answer",
+      "initial_candidate_decisions": [],
+      "elapsed_minutes": 10,
+      "restart_before_recheck": true,
+      "message_post_count": 0,
+      "final_state": "manual_review",
+      "reason": "answer_or_status_arrived_after_missing_detection",
+      "send_outcome": null,
+      "first_missing_at": "2026-09-10T12:00:00Z",
+      "history_get_count": 0
+    },
+    {
+      "mode": "approved",
+      "initial_candidate_decisions": [],
+      "elapsed_minutes": 10,
+      "restart_before_recheck": true,
+      "message_post_count": 0,
+      "final_state": "manual_review",
+      "reason": "answer_or_status_arrived_after_missing_detection",
+      "send_outcome": null,
+      "first_missing_at": "2026-09-10T12:00:00Z",
+      "history_get_count": 0
+    }
+  ]
+}
