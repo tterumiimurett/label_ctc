@@ -104,6 +104,27 @@ class GuardedOutboundAdapter:
         self.journal.finish(event_id, "accepted")
         return response
 
+def normalized_preview_digest(report: dict[str, Any], study_id: str) -> str:
+    """Compute the approval digest from the controller's normalized action contract."""
+    mapping = {
+        "release_claim_proposal": "release_claim",
+        "review_returned_with_result": "archive_returned_result",
+        "review_timeout_with_result": "archive_timed_out_result",
+        "review_missing_result": "contact_candidate",
+    }
+    actions: list[dict[str, Any]] = []
+    for row in report.get("submissions", []):
+        if isinstance(row, dict):
+            actions.append({
+                "session_id": row.get("session_id"),
+                "study_id": row.get("study_id"),
+                "participant_id": row.get("participant_id"),
+                "action": mapping.get(row.get("proposed_action"), row.get("proposed_action")),
+                "evidence": row.get("evidence", []),
+                "status": row.get("status"),
+            })
+    return hashlib.sha256(json.dumps(actions, sort_keys=True).encode()).hexdigest()
+
 class ActivationController:
     def __init__(self, *, trigger, store, ledger, adapter, journal: ActionJournal, study_id: str, approvals: ApprovalStore | None = None, production_enabled: bool = False, clock: Any = None, activation_boundary: str | None = None):
         self.trigger=trigger; self.store=store; self.ledger=ledger; self.adapter=adapter; self.journal=journal; self.study_id=study_id; self.approvals=approvals; self.production_enabled=production_enabled; self.clock=clock; self.activation_boundary=activation_boundary

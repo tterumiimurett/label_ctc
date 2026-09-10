@@ -9,7 +9,7 @@ from typing import Any
 
 from .activation import (
     ActionJournal, ActivationController, Approval, ApprovalStore, RealApiAdapter,
-    make_activation_server,
+    make_activation_server, normalized_preview_digest,
 )
 from .app import VerificationStore
 from .contact_candidates import JsonContactLedger, VerifiedMessageScope
@@ -84,6 +84,7 @@ def main() -> int:
     approve.add_argument('--session', action='append', default=[])
     approve.add_argument('--historical-session', action='append', default=[])
     approve.add_argument('--routine-policy', action='store_true')
+    approve.add_argument('--preview-report', type=Path)
     receiver = sub.add_parser('receiver')
     receiver.add_argument('--config', type=Path, required=True)
     receiver.add_argument('--secret', required=True)
@@ -104,9 +105,14 @@ def main() -> int:
         return 0
     if args.command == 'preview':
         report = json.loads(args.report.read_text(encoding='utf-8'))
-        print(json.dumps({'status': 'preview', 'writes_performed': False, 'actions': report.get('submissions', [])}, sort_keys=True))
+        print(json.dumps({'status': 'preview', 'writes_performed': False, 'study_id': report.get('study_id'), 'preview_sha256': normalized_preview_digest(report, str(report.get('study_id', ''))), 'actions': report.get('submissions', [])}, sort_keys=True))
         return 0
     if args.command == 'approve':
+        if args.preview_report:
+            report = json.loads(args.preview_report.read_text(encoding='utf-8'))
+            digest = normalized_preview_digest(report, args.study_id)
+            if digest != args.preview_sha256:
+                raise ValueError('preview digest does not match normalized report')
         historical = set(args.historical_session)
         sessions = set(args.session) | historical
         ApprovalStore(args.approval).save(Approval(
