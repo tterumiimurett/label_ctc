@@ -12,7 +12,7 @@ python3 -m unittest tests.test_ticket_08_lifecycle_guards.NoOpLifecycleRegressio
 NODE_PATH=/tmp/ticket1-ctc/node_modules node tests/browser_ticket_01_ctc.cjs
 ```
 
-Current result: **126 tests passed**. The CLI smoke output is [`artifacts/ticket08/cli-smoke-final.json`](../../artifacts/ticket08/cli-smoke-final.json) and was generated against a temporary localhost controlled API. Browser artifact: [`artifacts/ticket08/browser-final.json`](../../artifacts/ticket08/browser-final.json). No production data or credentials are in evidence.
+Current result: **126 tests passed**. The CLI smoke output is [`artifacts/ticket08/cli-smoke-final.json`](../../artifacts/ticket08/cli-smoke-final.json) and was generated against a temporary localhost controlled API with current UTC scope dates, a candidate file, consent file, same-data-dir approval, signed receiver request, scheduler process, disable, and status-after-restart. Browser artifact: [`artifacts/ticket08/browser-final.json`](../../artifacts/ticket08/browser-final.json). No production data or credentials are in evidence.
 
 ## Decisions requiring human authorization
 
