@@ -1,0 +1,24 @@
+{
+  "study_id": "6a1bb20dfc7bbfabecc480ff",
+  "data_dir": "/home/label/label_ctc/prolific/ctc_verification_app/data_train_first100_prolific",
+  "base_url": "https://api.prolific.com/api/v1",
+  "token": null,
+  "auto_labels": [
+    "/home/label/label_ctc/tables/ctc_verification_train_balanced_first100.jsonl"
+  ],
+  "bundle_size": 1,
+  "redundancy": 3,
+  "completion_url": null,
+  "routine_policy": true,
+  "activation_boundary": null,
+  "verified_message_scope": {
+    "researcher_id": null,
+    "workspace_id": null,
+    "coverage_start": null,
+    "coverage_end": null,
+    "workspace_visibility_verified": false,
+    "verification_note": "Pending actual deployment scope verification",
+    "checked_at": null,
+    "expires_at": null
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "local_compatibility": {
+    "staging_directory": "/tmp/prolific-deployment-preflight-l3_ujo3q",
+    "source_file_count": 386,
+    "source_unchanged": true,
+    "copy_original_bytes_preserved": true,
+    "candidate_count": 100,
+    "snapshot_fatal_error": null,
+    "local_record_count": 957,
+    "local_record_error_count": 0,
+    "redundancy": 3,
+    "assignment_timeout_minutes": 240,
+    "production_mutations": false
+  },
+  "platform_refresh": {
+    "rows": 2952,
+    "unique": 2952,
+    "meta_count": 2952,
+    "status_counts": {
+      "RETURNED": 2593,
+      "AWAITING REVIEW": 299,
+      "TIMED OUT": 60
+    },
+    "new_ids": 0,
+    "missing_ids": 0,
+    "changed_status_or_identity": 0
+  }
+}
