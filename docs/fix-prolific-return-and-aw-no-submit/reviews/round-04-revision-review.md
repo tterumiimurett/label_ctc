@@ -21,3 +21,23 @@ No hard AGENTS violations. Ticket 4 has stale answered-timeout documentation and
 ## Recovery point
 
 Original tasks resumed with Implement for fixes; Standards and Spec findings handed off. Run artifacts are `/tmp/prolific-round-c-20260909/ticket-04-review-revision.*` and `ticket-06-review-revision.*`. Queued findings must be confirmed consumed, or delivered by resuming the same task only after terminal evidence. Re-review actual fixed commits on both axes before integration. Neither ticket is merged; Ticket 8 remains blocked on this round. No production actions occurred.
+
+## Final Spec report and follow-up
+
+Spec confirmed one Ticket 4 P1 (mixed-intent stale assignment recovery) and four Ticket 6 findings: P1 historical origin, P1 candidate/manual routing, P1 unknown chat sender or equal-time ordering ambiguity, and P2 interrupted delivery recovery skipped by normal iteration / mismatched prior-contact vocabulary. No new human business decision was identified; all require fixes against confirmed policy.
+
+Ticket 4 Standards-only fix `83f071f` completed; original task resumed for the remaining mixed-intent defect. Follow-up artifacts: `/tmp/prolific-round-c-20260909/ticket-04-spec-fix.*`.
+
+Ticket 6 initial fix `f4fc465` completed, addressing shared manual transitions and prior-contact vocabulary. It is not evidence that the final Spec blockers are fixed. Original task resumed for historical-origin distinction, unknown sender/order handling, and automatic no-resend delivery recovery. Follow-up artifacts: `/tmp/prolific-round-c-20260909/ticket-06-spec-fix.*`.
+
+Re-review must include all original findings and actual final commits. No integration approval inferred from either partial fix.
+
+## Ticket 4 re-review at c46ef317
+
+Standards passed; root full suite passed 85 tests. Spec still fails P1: helper-local assignment reload leaves `reconcile_timed_out` caller state stale, so pending archive A followed by a new public timeout reconciliation B can restore A. Reusable isolated repro: `/tmp/ticket04-spec-review-repro.py`; run `PYTHONPATH=. python3 /tmp/ticket04-spec-review-repro.py` from Ticket 4 worktree. Original task resumed for all-caller correction and public-entry regression in `/tmp/prolific-round-c-20260909/ticket-04-spec-fix2.*`. No new human decision needed; no merge.
+
+## Latest review checkpoint
+
+Ticket 4 code `8df6d3b`: Spec passes independently; public repro now leaves no assignments, 21 focused assignment tests pass; root full suite 86 passed. Standards code passes, but final report has obsolete behavior/gate claims and control characters. Original task is correcting report only in `ticket-04-report-fix.*`; verify final documentation commit before merge.
+
+Ticket 6 `f51c7e9`: both axes still require fixes. Initial-report answer arrival resolves silently; attempted-entry rebuilding overwrites manual status; unknown/unavailable delivery does not persist manual handling; some sender branches return manual decisions without saving them. Isolated public repro `/tmp/ticket06-spec-review-repro.py`. Original task resumed in `ticket-06-spec-fix2.*` for complete-path fixes. Explicit origin and strict sender/timestamp guards improved, but do not compensate for these remaining defects. No new human policy question.
