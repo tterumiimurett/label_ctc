@@ -45,3 +45,9 @@ Ticket 6 `f51c7e9`: both axes still require fixes. Initial-report answer arrival
 ## Ticket 4 accepted and merged
 
 Final code `33b3bcb` passed independent Standards and Spec reviews with no remaining human matters under the confirmed conditional gate. Root full suite: 87 passed before and after merge. Main merge: `b228cec`. Consent guard, both recovery repro paths, original-byte archives, identity/status isolation and old-session barriers verified. No production action. Ticket 6 still requires outbound/manual persistence fixes; Ticket 8 cannot start yet.
+
+## Ticket 6 outbound fix checkpoint
+
+At `9e0833a`, root expanded public reproduction now verifies: unknown origin manual/zero POST; historical unapproved zero POST; new one POST; answer arrival/prior request manual; clear/prior-contact/unavailable attempt recovery manual with zero POST and manual survives rebuilding; missing fresh row and acknowledged contact persist manual. Full suite: 95 passed. Independent dual-axis re-review remains pending; valid-identity repro success does not cover malformed identity branches or original identity preservation on mismatch.
+
+At `9e0833a`, both reviewers confirmed two remaining identity paths: manual routing overwrites original ledger identity with conflicting fresh identity; malformed/missing identity returns a manual decision without persisting the queue state. Repros appended to `/tmp/ticket06-spec-review-repro.py`. Original implementation task is fixing these in `ticket-06-identity-fix.*`; preserve original identity and store fresh conflicting observations separately. No new human policy decision is required. Ticket 6 remains unmerged.
