@@ -252,14 +252,39 @@ class CtcVerificationAssignmentTest(unittest.TestCase):
             self.assertEqual(late["status"], "error")
             self.assertIn("cannot be used again", late["errors"][0])
 
-    def test_timed_out_with_final_result_is_manual_review(self):
+    def test_timed_out_with_final_result_archives_exact_bytes_and_releases(self):
         with tempfile.TemporaryDirectory() as temporary_dir:
             root = Path(temporary_dir); store = self.store(root, count=1, redundancy=1)
             worker = self.worker("P1", "SESSION1"); assignment = store.assign(worker)
             self.assertEqual(store.submit(self.payload(worker, assignment))["status"], "ok")
+            source = root / "data" / "submissions" / "SESSION1.json"
+            original = source.read_bytes()
             result = store.reconcile_timed_out({"id": "SESSION1", "study_id": "S1", "participant": {"id": "P1"}, "status": "TIMED_OUT"})
-            self.assertEqual(result["status"], "manual_review")
-            self.assertTrue((root / "data" / "submissions" / "SESSION1.json").exists())
+            self.assertEqual(result["status"], "processed")
+            archive = next((root / "data" / "excluded_submissions").glob("*/prolific_timed_out/SESSION1.json"))
+            self.assertEqual(archive.read_bytes(), original)
+            self.assertFalse(source.exists())
+            self.assertEqual(store.assign(self.worker("P2", "SESSION2"))["status"], "ok")
+
+    def test_timed_out_final_archive_fault_recovers_before_new_assignment(self):
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d); store=self.store(root, count=1, redundancy=1)
+            worker=self.worker('P1','S1'); assignment=store.assign(worker); payload=self.payload(worker, assignment)
+            self.assertEqual(store.submit(payload)['status'], 'ok')
+            original=(root/'data'/'submissions'/'S1.json').read_bytes()
+            observed={'id':'S1','study_id':'S1','participant':{'id':'P1'},'status':'TIMED-OUT'}
+            app=__import__('prolific.ctc_verification_app.app', fromlist=['atomic_write_bytes','atomic_write_json'])
+            real_bytes=app.atomic_write_bytes
+            def fail_after_archive(path, data):
+                real_bytes(path, data)
+                raise OSError('crash after timeout archive')
+            with patch('prolific.ctc_verification_app.app.atomic_write_bytes', side_effect=fail_after_archive):
+                with self.assertRaises(OSError): store.reconcile_timed_out(observed)
+            recovered=self.store(root, count=1, redundancy=1)
+            self.assertEqual(recovered.assign(self.worker('P2','S2'))['status'], 'ok')
+            self.assertEqual(recovered.assign(worker)['status'], 'error')
+            archive=next((root/'data'/'excluded_submissions').glob('*/prolific_timed_out/S1.json'))
+            self.assertEqual(archive.read_bytes(), original)
 
     def test_repeated_timeout_identity_mismatch_is_manual_and_byte_unchanged(self):
         with tempfile.TemporaryDirectory() as d:
