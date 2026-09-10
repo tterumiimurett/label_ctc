@@ -1,0 +1,17 @@
+{
+  "checked_at": "2026-09-10T10:45:17.495221+00:00",
+  "implementation_tested": "45180bc (repair branch; not deployed)",
+  "decision_counts": {
+    "prior_contact": 5,
+    "clear": 1
+  },
+  "unique_real_message_timestamps_validated": 18,
+  "production_actions": 0,
+  "members_endpoint_http": 200,
+  "sole_member_matches_authenticated_user": true,
+  "preview_service_templates_syntax_verified": true,
+  "templates_installed": false,
+  "webhook_secret_created": false,
+  "webhook_subscription_created": false,
+  "study_resumed": false
+}

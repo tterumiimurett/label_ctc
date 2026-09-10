@@ -1,0 +1,18 @@
+[Unit]
+Description=Prolific synchronization PREVIEW (receiver)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/label/label_ctc
+UMask=0077
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=/home/label/label_ctc/logs/prolific-sync/receiver.env
+ExecStart=/usr/bin/python3 -m prolific.ctc_verification_app.activation_cli --journal /home/label/label_ctc/logs/prolific-sync/preview-journal.json receiver --config /home/label/label_ctc/logs/prolific-sync/preview-config.json --secret ${PROLIFIC_HOOK_SECRET} --port 8013
+Restart=on-failure
+RestartSec=10
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target
