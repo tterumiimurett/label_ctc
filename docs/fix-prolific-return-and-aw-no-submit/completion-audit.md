@@ -42,3 +42,7 @@ Production prerequisites (workspace message visibility, actual receiver/subscrip
 ## Answer-arrival amendment supersedes prior human stop
 
 User explicitly confirmed normal resolution on validanswerarrival and waived repeat humanverification for thischange. OriginalImplement task completed356078c, finalStandards/SpecPASS;135fullreported, root9focusedpass(final) and134fullpass(previoussameproductioncode). This completes the missing-resultrecheck amendment gate, superseding the previous awaitingapprovalstop. Remaininghumansteps: duplicate-send, manualexceptions,disable. MainnotmergedTicket8; currentbranchclean356078c. Do not requestthewaivedverificationagain or treatwaiverasproductionauthorization.
+
+## Latest human acceptance
+
+User explicitly passed duplicate-send acceptance at356078c. Remaining human gates: manual exceptions (shown, awaiting answer) and disable. No production authorization implied. Ticket8 remains unmerged until these gates pass.
