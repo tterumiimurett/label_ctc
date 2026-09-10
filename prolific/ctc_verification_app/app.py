@@ -376,8 +376,9 @@ class VerificationStore:
             assignments = read_json(self.assignments_path, {})
             existing = assignments.get(session_id)
             lifecycle = read_json(self.lifecycle_path, {})
-            if session_id in lifecycle and lifecycle[session_id].get("status") == "RETURNED":
-                return {"status": "error", "errors": ["This returned session cannot be assigned again."]}
+            self._recover_timed_out_intents(lifecycle, assignments)
+            if session_id in lifecycle and lifecycle[session_id].get("status") in {"RETURNED", "TIMED_OUT"}:
+                return {"status": "error", "errors": ["This platform session cannot be assigned again."]}
             if existing:
                 if any(
                     existing.get(key) != worker.get(key)
@@ -450,9 +451,14 @@ class VerificationStore:
             return {"status": "manual_review", "reason": "returned observation lacks identity"}
         with TASK_LOCK, store_lock(self.lifecycle_lock_path):
             lifecycle = read_json(self.lifecycle_path, {}); prior = lifecycle.get(session_id)
+            if prior and (prior.get("kind") == "timeout" or str(prior.get("status", "")).startswith("TIMED_OUT")):
+                if any(prior.get(key) != value for key, value in (("session_id", session_id), ("study_id", study_id), ("participant_id", participant_id))):
+                    return {"status": "manual_review", "reason": "timeout lifecycle identity mismatch"}
+                return {"status": "manual_review", "reason": "timed-out lifecycle cannot be processed as RETURNED"}
             if prior and prior.get("status") == "RETURNED": return {"status": "already_processed", "session_id": session_id}
-            if prior: return self._resume_returned(session_id, lifecycle)
-            assignments = read_json(self.assignments_path, {}); assignment = assignments.get(session_id)
+            if prior: return self._resume_exclusion_lifecycle(session_id, lifecycle)
+            assignments = read_json(self.assignments_path, {})
+            assignment = assignments.get(session_id)
             if assignment and any(assignment.get(k) != v for k, v in (("session_id", session_id), ("study_id", study_id), ("prolific_pid", participant_id))):
                 return {"status": "manual_review", "reason": "assignment identity mismatch"}
             result_path = self.submissions_dir / f"{safe_name(session_id)}.json"; result = read_json(result_path, None) if result_path.exists() else None
@@ -467,9 +473,74 @@ class VerificationStore:
                 raw = b""; action = "released_claim"; source = None; dest = None; digest = None
             intent = {"status": "PENDING", "stage": "intent", "session_id": session_id, "study_id": study_id, "participant_id": participant_id, "assignment": assignment, "source": source, "destination": dest, "sha256": digest, "reason": "platform RETURNED", "processed_at": processed_at or utc_now(), "action": action}
             lifecycle[session_id] = intent; atomic_write_json(self.lifecycle_path, lifecycle)
-            return self._resume_returned(session_id, lifecycle)
+            return self._resume_exclusion_lifecycle(session_id, lifecycle)
 
-    def _resume_returned(self, session_id: str, lifecycle: dict) -> dict:
+    def reconcile_timed_out(self, submission: dict, *, processed_at: str | None = None, consent_withdrawn: bool = False) -> dict:
+        """Process a confirmed timeout without inferring consent withdrawal."""
+        if consent_withdrawn:
+            return {"status": "manual_review", "reason": "consent withdrawal requires separate handling"}
+        if not isinstance(submission, dict) or str(submission.get("status", "")).upper().replace("_", "-") != "TIMED-OUT":
+            return {"status": "manual_review", "reason": "current platform status is not TIMED-OUT"}
+        session_id = str(submission.get("id") or "")
+        participant = submission.get("participant")
+        participant_id = participant.get("id") if isinstance(participant, dict) else participant
+        study_id = submission.get("study_id")
+        if not session_id or not participant_id or not study_id:
+            return {"status": "manual_review", "reason": "timeout observation lacks identity"}
+        with TASK_LOCK, store_lock(self.lifecycle_lock_path):
+            lifecycle = read_json(self.lifecycle_path, {})
+            assignments = read_json(self.assignments_path, {})
+            self._recover_timed_out_intents(lifecycle, assignments)
+            prior = lifecycle.get(session_id)
+            if prior and (prior.get("kind") == "timeout" or str(prior.get("status", "")).startswith("TIMED_OUT")):
+                if any(prior.get(key) != value for key, value in (("session_id", session_id), ("study_id", study_id), ("participant_id", participant_id))):
+                    return {"status": "manual_review", "reason": "timeout lifecycle identity mismatch"}
+                if prior.get("status") == "TIMED_OUT":
+                    return {"status": "already_processed", "session_id": session_id}
+                return {"status": "manual_review", "reason": "timed-out lifecycle requires manual review"}
+            if prior:
+                return {"status": "manual_review", "reason": "session has an incompatible lifecycle"}
+            assignment = assignments.get(session_id)
+            if assignment and any(assignment.get(k) != v for k, v in (("session_id", session_id), ("study_id", study_id), ("prolific_pid", participant_id))):
+                return {"status": "manual_review", "reason": "assignment identity mismatch"}
+            result_path = self.submissions_dir / f"{safe_name(session_id)}.json"
+            if result_path.exists():
+                result = read_json(result_path, None)
+                if not isinstance(result, dict):
+                    return {"status": "manual_review", "reason": "timed-out result is unreadable"}
+                worker = result.get("worker") or {}
+                if any(worker.get(k) != v for k, v in (("session_id", session_id), ("study_id", study_id), ("prolific_pid", participant_id))):
+                    return {"status": "manual_review", "reason": "timed-out result identity mismatch"}
+                raw = result_path.read_bytes()
+                destination = self.data_dir / "excluded_submissions" / datetime.now(timezone.utc).strftime("%Y-%m-%d") / "prolific_timed_out" / f"{safe_name(session_id)}.json"
+                if destination.exists() and destination.read_bytes() != raw:
+                    return {"status": "manual_review", "reason": "timed-out archive collision differs"}
+                record = {"kind": "timeout", "status": "TIMED_OUT_PENDING", "stage": "intent", "session_id": session_id,
+                          "study_id": study_id, "participant_id": participant_id, "assignment": assignment,
+                          "source": str(result_path), "destination": str(destination),
+                          "sha256": hashlib.sha256(raw).hexdigest(), "reason": "platform TIMED-OUT",
+                          "processed_at": processed_at or utc_now(), "action": "archived_result"}
+                lifecycle[session_id] = record
+                atomic_write_json(self.lifecycle_path, lifecycle)
+                return self._resume_exclusion_lifecycle(session_id, lifecycle)
+            record = {"kind": "timeout", "status": "TIMED_OUT", "stage": "claim_release", "session_id": session_id, "study_id": study_id,
+                      "participant_id": participant_id, "assignment": assignment, "reason": "platform TIMED-OUT",
+                      "processed_at": processed_at or utc_now(), "action": "released_claim"}
+            lifecycle[session_id] = record
+            atomic_write_json(self.lifecycle_path, lifecycle)
+            if assignment is not None:
+                current = read_json(self.assignments_path, {}).get(session_id)
+                if current != assignment:
+                    record["status"] = "TIMED_OUT_MANUAL"; record["stage"] = "claim_release_conflict"
+                    atomic_write_json(self.lifecycle_path, lifecycle)
+                    return {"status": "manual_review", "reason": "assignment changed during timeout"}
+                assignments.pop(session_id, None)
+                atomic_write_json(self.assignments_path, assignments)
+            record["stage"] = "complete"
+            atomic_write_json(self.lifecycle_path, lifecycle)
+            return {"status": "processed", "session_id": session_id, "action": "released_claim"}
+
+    def _resume_exclusion_lifecycle(self, session_id: str, lifecycle: dict) -> dict:
         record = lifecycle[session_id]; source = Path(record["source"]) if record.get("source") else None; destination = Path(record["destination"]) if record.get("destination") else None
         if destination:
             if destination.exists() and hashlib.sha256(destination.read_bytes()).hexdigest() != record["sha256"]: return {"status": "manual_review", "reason": "archive hash mismatch"}
@@ -483,15 +554,56 @@ class VerificationStore:
             record["stage"] = "source_removed"
         assignments = read_json(self.assignments_path, {}); expected = record.get("assignment")
         current = assignments.get(session_id)
-        if current is not None and expected is not None and current != expected: return {"status": "manual_review", "reason": "assignment changed during return"}
+        if current is not None and expected is not None and current != expected: return {"status": "manual_review", "reason": "assignment changed during exclusion lifecycle"}
         if current is not None: del assignments[session_id]; atomic_write_json(self.assignments_path, assignments)
-        record["stage"] = "assignment_removed"; record["status"] = "RETURNED"; lifecycle[session_id] = record; atomic_write_json(self.lifecycle_path, lifecycle)
+        record["stage"] = "assignment_removed"
+        record["status"] = "TIMED_OUT" if record.get("kind") == "timeout" else "RETURNED"
+        lifecycle[session_id] = record
+        atomic_write_json(self.lifecycle_path, lifecycle)
         return {"status": "processed", "session_id": session_id, "action": record["action"]}
+
+    def _recover_timed_out_intents(self, lifecycle: dict, assignments: dict) -> None:
+        """Drain timeout releases globally while holding the lifecycle lock."""
+        changed = False
+        for session_id, record in list(lifecycle.items()):
+            if record.get("kind") != "timeout":
+                continue
+            if record.get("status") == "TIMED_OUT_PENDING":
+                self._resume_exclusion_lifecycle(session_id, lifecycle)
+                refreshed = read_json(self.assignments_path, {})
+                assignments.clear()
+                assignments.update(refreshed)
+                continue
+            if record.get("status") != "TIMED_OUT" or record.get("stage") != "claim_release":
+                continue
+            result_path = self.submissions_dir / f"{safe_name(session_id)}.json"
+            if result_path.exists():
+                record["status"] = "TIMED_OUT_MANUAL"
+                record["stage"] = "final_result_conflict"
+                lifecycle[session_id] = record
+                changed = True
+                continue
+            expected = record.get("assignment")
+            current = assignments.get(session_id)
+            if current is not None and current != expected:
+                record["status"] = "TIMED_OUT_MANUAL"
+                record["stage"] = "claim_release_conflict"
+                lifecycle[session_id] = record
+                changed = True
+                continue
+            if current is not None:
+                assignments.pop(session_id, None)
+                atomic_write_json(self.assignments_path, assignments)
+            record["stage"] = "complete"
+            lifecycle[session_id] = record
+            changed = True
+        if changed:
+            atomic_write_json(self.lifecycle_path, lifecycle)
 
     def _recover_returned_intents(self) -> None:
         lifecycle = read_json(self.lifecycle_path, {})
         for session_id, record in list(lifecycle.items()):
-            if record.get("status") == "PENDING": self._resume_returned(session_id, lifecycle)
+            if record.get("status") == "PENDING": self._resume_exclusion_lifecycle(session_id, lifecycle)
 
     def _claim_counts(self, assignments: dict) -> dict[str, int]:
         counts = {
@@ -567,12 +679,15 @@ class VerificationStore:
         try:
             self._recover_returned_intents()
         except (OSError, ValueError, json.JSONDecodeError) as error:
-            return {"status": "error", "errors": [f"Returned lifecycle recovery requires manual review: {error}"]}
-        record = read_json(self.lifecycle_path, {}).get(session_id)
-        if record and record.get("status") != "RETURNED":
-            return {"status": "error", "errors": ["This session has an unresolved returned lifecycle; manual review is required."]}
-        if record and record.get("status") == "RETURNED":
-            return {"status": "error", "errors": ["This returned session cannot be used again."]}
+            return {"status": "error", "errors": [f"Exclusion lifecycle recovery requires manual review: {error}"]}
+        lifecycle = read_json(self.lifecycle_path, {})
+        assignments = read_json(self.assignments_path, {})
+        self._recover_timed_out_intents(lifecycle, assignments)
+        record = lifecycle.get(session_id)
+        if record and record.get("status") not in {"RETURNED", "TIMED_OUT"}:
+            return {"status": "error", "errors": ["This session has an unresolved exclusion lifecycle; manual review is required."]}
+        if record and record.get("status") in {"RETURNED", "TIMED_OUT"}:
+            return {"status": "error", "errors": ["This platform session cannot be used again."]}
         return None
 
     def load_draft(self, worker: dict[str, str]) -> dict:
