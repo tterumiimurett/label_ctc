@@ -109,17 +109,24 @@ def main() -> int:
         print(json.dumps({'status': 'preview', 'writes_performed': False, 'study_id': report.get('study_id'), 'preview_sha256': normalized_preview_digest(report, str(report.get('study_id', ''))), 'actions': report.get('submissions', [])}, sort_keys=True))
         return 0
     if args.command == 'approve':
+        historical_records = ()
         if args.preview_report:
             report = json.loads(args.preview_report.read_text(encoding='utf-8'))
             digest = normalized_preview_digest(report, args.study_id)
             if digest != args.preview_sha256:
                 raise ValueError('preview digest does not match normalized report')
+            historical_ids = set(args.historical_session)
+            historical_records = tuple({
+                'session_id': row.get('session_id'), 'study_id': row.get('study_id'),
+                'participant_id': row.get('participant_id'), 'action': row.get('action', row.get('proposed_action')),
+                'preview_sha256': digest,
+            } for row in report.get('submissions', []) if isinstance(row, dict) and row.get('session_id') in historical_ids)
         historical = set(args.historical_session)
         sessions = set(args.session) | historical
         ApprovalStore(args.approval).save(Approval(
             args.study_id, args.preview_sha256, tuple(sorted(sessions)),
             tuple(sorted(historical)), tuple(sorted(sessions - historical)),
-            routine_enabled=args.routine_policy, approved_at='operator-recorded', approved_by=args.approved_by,
+            routine_enabled=args.routine_policy, approved_at='operator-recorded', approved_by=args.approved_by, historical_records=historical_records,
         ))
         print(json.dumps({'status': 'approved', 'production': False}))
         return 0

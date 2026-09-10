@@ -96,8 +96,18 @@ class RealApiAdapter:
                 report['status'] = 'pending'; report['error'] = 'configured consent evidence is unavailable'; return report
             try:
                 evidence = json.loads(self.consent_evidence_path.read_text(encoding='utf-8'))
-                records = evidence.get('records', []) if isinstance(evidence, dict) else []
-                by_session = {r.get('session_id'): r for r in records if isinstance(r, dict)}
+                records = evidence.get('records') if isinstance(evidence, dict) else None
+                if not isinstance(records, list) or any(not isinstance(r, dict) for r in records):
+                    raise ValueError('records must be a list of objects')
+                by_session: dict[str, dict[str, Any]] = {}
+                for record in records:
+                    required = ('record_id', 'session_id', 'study_id', 'participant_id', 'consent_withdrawn')
+                    if any(not isinstance(record.get(key), str) for key in required[:-1]) or not isinstance(record.get('consent_withdrawn'), bool):
+                        raise ValueError('consent record schema is invalid')
+                    sid = record['session_id']
+                    if sid in by_session and by_session[sid] != record:
+                        raise ValueError('conflicting consent records')
+                    by_session[sid] = record
                 for row in report.get('submissions', []):
                     record = by_session.get(row.get('session_id'))
                     if isinstance(record, dict) and record.get('study_id') == row.get('study_id') and record.get('participant_id') == row.get('participant_id') and record.get('consent_withdrawn') is True:
@@ -273,7 +283,9 @@ class ActivationController:
             elif current.get('errors') or current.get('consent_withdrawn') is True:
                 manual_reason = 'fresh evidence contains read or consent uncertainty; lifecycle mutation withheld'
             if manual_reason:
-                results.append({'session_id':sid,'action':row['action'],'outcome':{'status':'manual_review','reason':manual_reason,'fresh_evidence':current or fresh}})
+                evidence = {'session_id': sid, 'study_id': row.get('study_id'), 'participant_id': row.get('participant_id'), 'fresh': current or fresh}
+                self.journal.manual(row['action'], evidence, manual_reason, evidence)
+                results.append({'session_id':sid,'action':row['action'],'outcome':{'status':'manual_review','reason':manual_reason,'fresh_evidence':evidence}})
                 continue
             current_status=str(current.get('status','')).upper().replace('_','-').replace(' ', '-')
             classification = str(current.get('classification', ''))
