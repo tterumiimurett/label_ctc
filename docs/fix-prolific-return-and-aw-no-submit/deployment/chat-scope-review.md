@@ -15,3 +15,15 @@
 ## 已获得的真实证据
 
 真实成员接口 `/workspaces/{id}/members/` HTTP 200，当前一位成员与 `users/me` 一致；实际 _links 为 self+related，无 next，无 meta。修复应支持这个完整响应形状。只读修复分支验证六个 session 得到五个 prior_contact、一个 clear，18 条唯一真实消息时间字段解析成功，见 live-chat-adapter-validation.json。未部署或执行任何历史动作。
+
+## b53a243 复审
+
+Standards 无硬性问题。Root 独立运行 144 个完整测试通过（13.845 秒），真实成员 API 经修复后分页方法读取成功。
+
+Spec 仍有 P1：公共 continuation 解析优先使用顶层 next，当其为 null 而 _links.next 非空时，可能忽略后者。需拒绝两种分页表示的矛盾或无效形状。原独立任务已再次恢复修复，仍不允许合并。
+
+## 最终通过并合并
+
+`ee61adf347c65803e32b7b7c91a72c872ab55b3e` 经同两路独立任务复审：Standards 无硬性问题，Spec 无剩余阻塞（独立运行 11 个 personal-scope 测试通过）。修复已合并为 `0749e8a`。主代码库完整 146 测试通过，13.803 秒，日志 `/tmp/prolific-merged-chat-full-tests.log`。
+
+此结论仅为代码修复及合并通过；预览接收器/订阅尚未配置，未执行生产归档、发信或恢复研究。
