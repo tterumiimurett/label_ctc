@@ -1,3 +1,5 @@
+> 历史核验材料：本文描述修订前的提交和规则，不是当前验收要求。2026-09-10 用户已重新确认业务规则及复核方式；以对应 issues/ 文档和 human-review-protocol.md 为准。当前修订实现仍在独立审查中。
+
 # Ticket 06 — human verification, pending
 
 Reviewed commit: `f43332472549b67ef4b58ce7d62c55634b45cb85`.
