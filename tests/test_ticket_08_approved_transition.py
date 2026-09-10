@@ -36,6 +36,8 @@ class ApprovedTransitionTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn('"state": "resolved"', result.stdout)
         self.assertIn('"POSTs": []', result.stdout)
+        self.assertIn('"classification": "awaiting_without_final_result"', result.stdout)
+        self.assertIn('"classification": "matched"', result.stdout)
         self.assertNotIn('"decision": "candidate"', result.stdout)
 
     def test_complete_answer_at_initial_observation_resolves_without_candidate(self):

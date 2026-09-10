@@ -89,15 +89,29 @@ try:
         if mode in {'answer', 'answer5'}:
             before_answer = ledger.read()
             assert before_answer['sessions']['S1'].get('first_missing_at'), 'First missing observation was not durable before answer'
+            if mode == 'answer5':
+                now[0] += timedelta(minutes=5)
             submit_answer()
         if mode == 'approved':
             state['status'] = 'APPROVED'
-        now[0] += timedelta(minutes=5 if mode == 'answer5' else 10)
+        if mode != 'answer5':
+            now[0] += timedelta(minutes=10)
         store2 = VerificationStore([], [str(candidate)], root / 'data', 1, 1, 'https://example.test/complete', False)
         trigger2 = ReconciliationTrigger(client, root / 'data', 'STUDY', JsonTriggerStore(root / 'events.json'), now=clock)
         ledger2 = JsonContactLedger(root / 'contacts.json')
         adapter2 = RealApiAdapter(client, root / 'data', 'STUDY', scope=scope, clock=clock)
         c2 = ActivationController(trigger=trigger2, store=store2, ledger=ledger2, adapter=adapter2, journal=ActionJournal(root / 'journal.jsonl'), study_id='STUDY', approvals=ApprovalStore(root / 'approval.json'), production_enabled=True, clock=clock, activation_boundary=boundary)
+
+        def build_reconstructed_stack():
+            rebuilt_store = VerificationStore([], [str(candidate)], root / 'data', 1, 1, 'https://example.test/complete', False)
+            rebuilt_client = ProlificSubmissionClient('synthetic-only', f'http://127.0.0.1:{api.server_port}/api/v1', retries=0)
+            rebuilt_trigger = ReconciliationTrigger(rebuilt_client, root / 'data', 'STUDY', JsonTriggerStore(root / 'events.json'), now=clock)
+            rebuilt_ledger = JsonContactLedger(root / 'contacts.json')
+            rebuilt_adapter = RealApiAdapter(rebuilt_client, root / 'data', 'STUDY', scope=scope, clock=clock)
+            rebuilt_controller = ActivationController(trigger=rebuilt_trigger, store=rebuilt_store, ledger=rebuilt_ledger, adapter=rebuilt_adapter, journal=ActionJournal(root / 'journal.jsonl'), study_id='STUDY', approvals=ApprovalStore(root / 'approval.json'), production_enabled=True, clock=clock, activation_boundary=boundary)
+            return rebuilt_controller, rebuilt_ledger
+
+        outer_report = None
         if mode == 'fresh_only':
             outer_report = json.loads((root / 'events.json').read_text(encoding='utf-8'))['events']['E1']['report']
             assert outer_report and outer_report.get('submissions') and outer_report['submissions'][0]['classification'] == 'awaiting_without_final_result', outer_report
@@ -119,19 +133,25 @@ try:
             barrier = FreshArrivalBarrier()
             second = build_contact_candidates(outer_report, ledger2, barrier, candidate_origin='new', now=now[0])
             assert barrier.last_report['submissions'][0]['classification'] == 'matched'
-            followup = build_contact_candidates(outer_report, ledger2, barrier, candidate_origin='new', now=now[0])
+            assert ledger2.read()['sessions']['S1']['state'] == 'resolved'
+            rebuilt_controller, rebuilt_ledger = build_reconstructed_stack()
+            followup = rebuilt_controller.scheduled_reassessment()
+            followup_ledger = rebuilt_ledger.read()
         else:
             second = c2.scheduled_reassessment()
-            followup = c2.scheduled_reassessment()
-        print(json.dumps({'mode': mode, 'first': first, 'after_ten_minutes': second, 'followup': followup, 'ledger': ledger.read(), 'message_GETs': [p for p in gets if '/messages/' in p], 'POSTs': posts}, indent=2))
+            assert ledger2.read()['sessions']['S1']['state'] in {'resolved', 'manual_review', 'delivery_unknown'}
+            rebuilt_controller, rebuilt_ledger = build_reconstructed_stack()
+            followup = rebuilt_controller.scheduled_reassessment()
+            followup_ledger = rebuilt_ledger.read()
+        print(json.dumps({'mode': mode, 'first': first, 'outer_report': outer_report, 'elapsed_minutes': 5 if mode == 'answer5' else 10, 'after_reassessment': second, 'followup': followup, 'ledger': followup_ledger if 'followup_ledger' in locals() else ledger.read(), 'message_GETs': [p for p in gets if '/messages/' in p], 'POSTs': posts}, indent=2))
         assert len(posts) == (1 if mode == 'positive' else 0), 'Unexpected POST count'
         if mode == 'approved':
             assert ledger.read()['sessions']['S1']['state'] == 'manual_review', 'Missing durable manual disposition'
         if mode in {'answer', 'answer5', 'initial_answer', 'fresh_only'}:
-            assert ledger.read()['sessions']['S1']['state'] == 'resolved', 'Complete answer did not resolve waiting case'
+            assert followup_ledger['sessions']['S1']['state'] == 'resolved', 'Complete answer did not resolve waiting case'
         if mode == 'fresh_only':
             assert not second.get('decisions'), 'Fresh answer created an unexpected candidate/manual decision'
-            assert not followup.get('decisions'), 'Repeated fresh answer reassessment created a decision'
+            assert all(not session.get('candidates', {}).get('decisions') and not session.get('outbound', {}).get('decisions') for session in followup.get('sessions', [])), 'Reconstructed fresh answer reassessment created a decision'
 finally:
     if receiver:
         receiver.shutdown()
