@@ -11,12 +11,18 @@ from prolific.ctc_verification_app.activation_cli import _verified_scope
 
 
 class PersonalReader:
-    def __init__(self, messages=None, members=None, current=None, error=None):
+    def __init__(
+        self,
+        messages: list[dict[str, Any]] | None = None,
+        members: list[dict[str, Any]] | None = None,
+        current: dict[str, Any] | None = None,
+        error: BaseException | None = None,
+    ) -> None:
         self.messages = messages if messages is not None else []
         self.members = members if members is not None else [{"id": "RESEARCHER"}]
         self.current = current if current is not None else {"id": "RESEARCHER"}
         self.error = error
-        self.calls = []
+        self.calls: list[str | dict[str, Any]] = []
 
     def get_submission(self, session_id: str) -> dict[str, Any]:
         return {"id": session_id, "study_id": "STUDY", "participant": "P1", "started_at": "2026-09-01T00:00:00Z"}
@@ -40,7 +46,7 @@ class PersonalReader:
         return {"results": self.messages, "_links": {"self": {"href": "controlled"}}}
 
 
-def personal_scope(**overrides):
+def personal_scope(**overrides: Any) -> VerifiedMessageScope:
     values = {
         "researcher_id": "RESEARCHER", "workspace_id": "WORKSPACE",
         "coverage_start": datetime(2026, 8, 15, tzinfo=timezone.utc),
@@ -57,7 +63,11 @@ def personal_scope(**overrides):
 class PersonalMessageScopeTest(unittest.TestCase):
     now = datetime(2026, 9, 10, tzinfo=timezone.utc)
 
-    def inspect(self, reader, scope=None):
+    def inspect(
+        self,
+        reader: PersonalReader,
+        scope: VerifiedMessageScope | None = None,
+    ) -> str:
         adapter = ProlificFreshReconciliation(reader, Path("/tmp/controlled"), "STUDY", scope=scope or personal_scope(), now=self.now)
         return adapter.inspect_messages(session_id="S1", participant_id="P1", study_id="STUDY")
 
