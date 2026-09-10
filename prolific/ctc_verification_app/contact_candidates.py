@@ -162,6 +162,26 @@ def outbound_attempted(entry: dict[str, Any]) -> bool:
     return bool(entry.get("send_attempted_at") or entry.get("send_attempt_count") or entry.get("send_operation"))
 
 
+def _complete_answer_arrival(entry: dict[str, Any], row: dict[str, Any], study: str, participant_id: Any) -> bool:
+    """Return true only for an identity-matched complete answer still in AW."""
+    if row.get("status") != "AWAITING REVIEW" or row.get("classification") != "matched":
+        return False
+    if row.get("study_id") != study or row.get("participant_id") != participant_id:
+        return False
+    stored_study = entry.get("study_id")
+    stored_participant = entry.get("participant_id")
+    if stored_study is not None and stored_study != study:
+        return False
+    if stored_participant is not None and stored_participant != participant_id:
+        return False
+    if not isinstance(participant_id, str) or not participant_id:
+        return False
+    if row.get("return_requested") or row.get("errors"):
+        return False
+    evidence = {item for item in row.get("evidence", []) if isinstance(item, str)}
+    return not evidence.intersection(_MANUAL_EVIDENCE | {"other_session_result", "identity_mismatch"})
+
+
 def _local_manual_reason(row: dict[str, Any], evidence: set[str], *, fresh: bool = False) -> str | None:
     classification = row.get("classification")
     if classification in {"local_read_error", "identity_mismatch"}:
@@ -186,6 +206,16 @@ def _run(report: dict[str, Any], ledger: ContactLedger, fresh: FreshReconciliati
         entry = sessions.setdefault(sid, {"state": "observed"})
         if entry.get("state") == "manual_review":
             continue
+        entry_state = entry.get("state")
+        if entry_state == "contacted":
+            decisions.append(queue_manual_review(entry, sid, study, pid, {"prior_contact"}, "prior_contact_requires_confirmation"))
+            continue
+        if entry_state == "delivery_unknown" and not outbound_attempted(entry):
+            decisions.append(ContactDecision(sid, "manual_review", ["delivery_unknown"], participant_id=pid, study_id=study, reason="outbound_attempt_requires_recovery"))
+            continue
+        if entry_state in {"sent", "sending"} and not outbound_attempted(entry):
+            decisions.append(queue_manual_review(entry, sid, study, pid, {entry_state}, "outbound_attempt_requires_recovery"))
+            continue
         if outbound_attempted(entry):
             if entry.get("state") == "sent" or entry.get("send_outcome") == "accepted" or entry.get("message_id"):
                 decisions.append(queue_manual_review(entry, sid, study, pid, {"acknowledged_send"}, "acknowledged_send_requires_confirmation"))
@@ -197,7 +227,12 @@ def _run(report: dict[str, Any], ledger: ContactLedger, fresh: FreshReconciliati
         if manual_reason:
             decisions.append(_manual(entry, sid, study, pid, evidence, manual_reason)); continue
         if row.get("classification") != "awaiting_without_final_result":
-            if entry.get("first_missing_at"):
+            if entry.get("first_missing_at") and entry.get("state") == "manual_review":
+                continue
+            if _complete_answer_arrival(entry, row, study, pid):
+                entry["state"] = "resolved"
+                entry["resolution"] = "complete_answer_arrived"
+            elif entry.get("first_missing_at"):
                 decisions.append(queue_manual_review(entry, sid, study, pid, evidence, "answer_or_status_arrived_after_missing_detection"))
             else:
                 entry["state"] = "resolved"
@@ -236,6 +271,11 @@ def _run(report: dict[str, Any], ledger: ContactLedger, fresh: FreshReconciliati
         manual_reason = _local_manual_reason(current, current_evidence, fresh=True)
         if manual_reason:
             decisions.append(_manual(entry, sid, study, pid, current_evidence, manual_reason)); continue
+        if _complete_answer_arrival(entry, current, study, pid):
+            if entry.get("state") != "manual_review":
+                entry["state"] = "resolved"
+                entry["resolution"] = "complete_answer_arrived"
+            continue
         if (current.get("status") != "AWAITING REVIEW" or current.get("classification") != "awaiting_without_final_result"):
             decisions.append(queue_manual_review(entry, sid, study, pid, current_evidence, "answer_or_status_arrived_after_missing_detection")); continue
         if bool(current.get("return_requested")):
@@ -250,6 +290,22 @@ def _run(report: dict[str, Any], ledger: ContactLedger, fresh: FreshReconciliati
             decisions.append(queue_manual_review(entry, sid, study, pid, candidate_evidence, "candidate_origin_unknown")); continue
         entry.update({"state": "candidate", "candidate_at": _ts(now), "candidate_origin": candidate_origin, "candidate_evidence": sorted(candidate_evidence), "candidate_message": APPROVED_MESSAGE.format(SESSION_ID=sid)})
         decisions.append(ContactDecision(sid, "candidate", entry["candidate_evidence"], entry["candidate_message"]))
+    observed_rows = {row.get('session_id'): row for row in report.get('submissions', []) if isinstance(row, dict)}
+    for sid, entry in sessions.items():
+        if not isinstance(entry, dict) or entry.get('state') in {'manual_review', 'sent', 'delivery_unknown'}:
+            continue
+        current = observed_rows.get(sid)
+        if not isinstance(current, dict) or current.get('status') == 'AWAITING REVIEW':
+            continue
+        if entry.get('first_missing_at'):
+            current_study = current.get('study_id', study)
+            current_pid = current.get('participant_id', entry.get('participant_id'))
+            decision = queue_manual_review(
+                entry, sid, current_study, current_pid,
+                {f"status:{current.get('status', 'unknown')}"},
+                'answer_or_status_arrived_after_missing_detection',
+            )
+            decisions.append(decision)
     ledger.write(state)
     return {"status": "ok", "study_id": study, "decisions": [d.as_dict() for d in decisions], "writes_performed": True}
 

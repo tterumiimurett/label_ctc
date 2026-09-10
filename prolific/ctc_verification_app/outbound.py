@@ -125,6 +125,9 @@ def send_approved_return_requests(
             ledger.write(state)
             try:
                 response = fresh.send_message(recipient_id=participant_id, body=body, study_id=study_id)
+            except PermissionError as error:
+                entry.update({"state": "manual_review", "send_outcome": "prevented", "reason": "actions_disabled", "error": str(error)})
+                decisions.append(_decision(session_id, "manual_review", "actions_disabled")); continue
             except Exception as error:
                 entry.update({"state": "delivery_unknown", "send_outcome": "unknown", "error": str(error)})
                 decisions.append(_decision(session_id, "delivery_unknown", "reconciliation_required")); continue

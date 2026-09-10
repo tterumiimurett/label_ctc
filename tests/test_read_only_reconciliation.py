@@ -23,8 +23,8 @@ class PagedPlatform:
                                             "status": item.get("status", "AWAITING_REVIEW"),
                                             "entered_code": item.get("entered_code")}
 
-    def list_submissions(self, *, study, page=1, page_size=100):
-        self.calls.append((study, page, page_size))
+    def list_submissions(self, *, study, page=1, page_size=100, ordering="started_at"):
+        self.calls.append((study, page, page_size, ordering))
         return self.pages[page - 1]
 
     def get_submission(self, submission_id):
@@ -46,7 +46,7 @@ class ReadOnlyReconciliationTest(unittest.TestCase):
                 {"results": [{"id": "S2", "participant_id": "P2", "study_code": "CODE"}], "next": None},
             ])
             report = reconcile_current_state(platform, root, "STUDY", {"REAL"}, now=datetime(2026, 9, 9, 1, tzinfo=timezone.utc))
-            self.assertEqual(platform.calls, [("STUDY", 1, 100), ("STUDY", 2, 100)])
+            self.assertEqual(platform.calls, [("STUDY", 1, 100, "started_at"), ("STUDY", 2, 100, "started_at")])
             self.assertEqual(report["counts"], {"platform_submissions": 2, "local_final_results": 1, "temporary_claims": 1})
             self.assertEqual(report["submissions"][0]["classification"], "matched")
 
@@ -84,6 +84,8 @@ class ReadOnlyReconciliationTest(unittest.TestCase):
         detail_calls = [url for url in calls if "/submissions/" in url and "?" not in url]
         self.assertEqual(len(list_calls), 2)
         self.assertIn("page=2", list_calls[1])
+        self.assertIn("ordering=started_at", list_calls[0])
+        self.assertIn("ordering=started_at", list_calls[1])
         self.assertEqual(len(detail_calls), 2)
 
     def test_duplicate_pages_that_do_not_satisfy_meta_count_fail_closed(self):
@@ -172,7 +174,7 @@ class ReadOnlyReconciliationTest(unittest.TestCase):
                 client = ProlificSubmissionClient("synthetic", "https://api.test/v1", retries=1)
                 result = client.list_submissions(study="STUDY", page=3, page_size=7)
         self.assertEqual(result["results"], [])
-        self.assertIn("study=STUDY", calls[0][1]); self.assertIn("page=3", calls[0][1]); self.assertNotIn("cursor", calls[0][1])
+        self.assertIn("study=STUDY", calls[0][1]); self.assertIn("page=3", calls[0][1]); self.assertIn("ordering=started_at", calls[0][1]); self.assertNotIn("cursor", calls[0][1])
         self.assertTrue(all(call[0] == "GET" and call[2] == "Token synthetic" for call in calls))
 
     def test_missing_or_non_directory_data_root_is_storage_failure(self):

@@ -147,3 +147,8 @@ Official evidence and the timeline remain in the companion evidence document. Ke
 - https://docs.prolific.com/api-reference/submissions/request-submission-return
 
 Publication target: not configured. A GitHub remote exists, but no explicit project issue tracker/triage configuration was found. Requested triage label: ready-for-agent. Run /setup-matt-pocock-skills to provide tracker configuration; publishing has not occurred.
+
+
+## Confirmed answer-arrival amendment (2026-09-10)
+
+During the missing-result wait, an identity-matched, complete, valid final answer for the same session resolves normally: no participant message and no new manual-review item. This applies to initial observation, ten-minute fresh reassessment, and reconstructed durable state. Platform status changes, prior contact, uncertain delivery, identity mismatch, drafts, errors, and other-session results remain manual. Existing outbound attempts, `delivery_unknown`, and established manual records are never cleared by a later answer. See `answer-arrival-amendment.md`.
