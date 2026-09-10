@@ -148,14 +148,14 @@ class ActivationController:
         resource_id = payload.get('resource_id')
         event_record = self.trigger.store.accepted_event(event_id, resource_id) if hasattr(self.trigger.store, 'accepted_event') else None
         payload_event = event_record.get('payload', {})
-        accepted = {'event_id': event_id, 'resource_id': payload_event.get('resource_id'), 'study_id': self.study_id, 'event_timestamp': event_record.get('timestamp', 0), 'activation_timestamp': self._activation_epoch()}
+        accepted = {'event_id': event_id, 'resource_id': payload_event.get('resource_id'), 'study_id': self.study_id, 'event_timestamp': event_record.get('event_timestamp', 0), 'activation_timestamp': self._activation_epoch()}
         if event_record.get('stage') != 'completed' or not accepted['resource_id']:
             return {'status': 'pending', 'reason': 'accepted_event_not_durable'}
         context_value = json.loads(context.read_text(encoding='utf-8')) if isinstance(context, Path) else dict(context)
         context_value['event_id'] = accepted['event_id']
         context_value['study_id'] = report.get('study_id')
         context_value['activation_boundary'] = self.activation_boundary
-        return self.execute(provenance_context=context_value, report=report, accepted_event=accepted)
+        return self.execute(provenance_context=context_value, report=report, accepted_event=accepted, session_id=accepted['resource_id'])
     def _activation_epoch(self) -> int:
         if not self.activation_boundary: return 0
         return int(datetime.fromisoformat(self.activation_boundary.replace('Z', '+00:00')).timestamp())
