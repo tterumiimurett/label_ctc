@@ -94,3 +94,175 @@ class FullHttpMatrixTest(unittest.TestCase):
         from prolific.ctc_verification_app.activation import ActionJournal
         with tempfile.TemporaryDirectory() as d:
             journal=ActionJournal(Path(d)/'actions.jsonl'); first=journal.begin('recipient_message',{'session_id':'S1'}); self.assertIsNotNone(first); journal.finish(first,'unknown_delivery'); journal.disable('operator stop'); self.assertIsNone(journal.begin('recipient_message',{'session_id':'S2'})); self.assertTrue(journal.disabled)
+
+
+    def _run_real_timeout(self, with_result: bool):
+        import base64
+        import hashlib
+        import hmac
+        import json
+        import threading
+        import urllib.request
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+        from prolific.ctc_verification_app.app import VerificationStore
+        from prolific.ctc_verification_app.activation import (
+            ActionJournal, ActivationController, ApprovalStore, RealApiAdapter,
+            make_activation_server,
+        )
+        from prolific.ctc_verification_app.contact_candidates import JsonContactLedger
+        from prolific.ctc_verification_app.reconciliation import ProlificSubmissionClient
+        from prolific.ctc_verification_app.triggers import JsonTriggerStore, ReconciliationTrigger
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            candidate_path = root / 'candidates.jsonl'
+            candidate_path.write_text(
+                json.dumps({
+                    'candidate_key': 'timeout-k',
+                    'pred_is_ctc': True,
+                    'audio_verify': {'verify_is_ctc': True},
+                    'tos_audio': {'outer_url': 'https://controlled.test/a.wav'},
+                }) + '\n',
+                encoding='utf-8',
+            )
+            store = VerificationStore(
+                [], [str(candidate_path)], root / 'data', 1, 1,
+                'https://controlled.test/complete', False,
+            )
+            assignment = store.assign({
+                'prolific_pid': 'P-TIMEOUT',
+                'study_id': 'STUDY',
+                'session_id': 'TIMEOUT-1',
+            })
+            self.assertEqual(assignment['status'], 'ok')
+            raw_result = None
+            if with_result:
+                task = assignment['tasks'][0]
+                payload = {
+                    'schema_version': 'ctc-verification-v1',
+                    'worker': {
+                        'prolific_pid': 'P-TIMEOUT',
+                        'study_id': 'STUDY',
+                        'session_id': 'TIMEOUT-1',
+                    },
+                    'assignment': assignment['assignment'],
+                    'tasks': [{
+                        'candidate_id': task['candidate_id'],
+                        'task_id': task.get('task_id') or task.get('id') or task['candidate_id'],
+                        'relevant_interruption': False,
+                    }],
+                }
+                self.assertEqual(store.submit(payload)['status'], 'ok')
+                raw_result = (root / 'data' / 'submissions' / 'TIMEOUT-1.json').read_bytes()
+
+            platform_state = {
+                'id': 'TIMEOUT-1',
+                'study_id': 'STUDY',
+                'participant': 'P-TIMEOUT',
+                'status': 'TIMED OUT',
+            }
+
+            class ControlledApi(BaseHTTPRequestHandler):
+                def do_GET(self):
+                    if '?' in self.path:
+                        value = {
+                            'results': [platform_state],
+                            'meta': {'count': 1},
+                            '_links': {'self': {'href': self.path}},
+                        }
+                    else:
+                        value = platform_state
+                    encoded = json.dumps(value).encode('utf-8')
+                    self.send_response(200)
+                    self.send_header('Content-Type', 'application/json')
+                    self.send_header('Content-Length', str(len(encoded)))
+                    self.end_headers()
+                    self.wfile.write(encoded)
+
+                def log_message(self, *_args):
+                    pass
+
+            api = ThreadingHTTPServer(('127.0.0.1', 0), ControlledApi)
+            api_thread = threading.Thread(target=api.serve_forever)
+            api_thread.start()
+            receiver = None
+            receiver_thread = None
+            try:
+                base_url = 'http://127.0.0.1:%d/api/v1' % api.server_address[1]
+                client = ProlificSubmissionClient('isolated-token', base_url, retries=0)
+                trigger = ReconciliationTrigger(
+                    client, root / 'data', 'STUDY',
+                    JsonTriggerStore(root / 'events.json'),
+                )
+                controller = ActivationController(
+                    trigger=trigger,
+                    store=store,
+                    ledger=JsonContactLedger(root / 'contacts.json'),
+                    adapter=RealApiAdapter(client, root / 'data', 'STUDY'),
+                    journal=ActionJournal(root / 'actions.jsonl'),
+                    study_id='STUDY',
+                    approvals=ApprovalStore(root / 'approval.json'),
+                )
+                receiver = make_activation_server(
+                    controller,
+                    'controlled-secret',
+                    {
+                        'run_kind': 'event',
+                        'activation_boundary': '2026-01-01T00:00:00Z',
+                        'study_id': 'STUDY',
+                    },
+                )
+                receiver_thread = threading.Thread(target=receiver.serve_forever)
+                receiver_thread.start()
+                body = json.dumps({
+                    'event_type': 'submission.status.change',
+                    'resource_id': 'TIMEOUT-1',
+                }).encode('utf-8')
+                timestamp = '200'
+                signature = base64.b64encode(hmac.new(
+                    b'controlled-secret', timestamp.encode() + body, hashlib.sha256,
+                ).digest()).decode()
+                request = urllib.request.Request(
+                    'http://127.0.0.1:%d/' % receiver.server_address[1],
+                    data=body,
+                    method='POST',
+                    headers={
+                        'X-Prolific-Request-Signature': signature,
+                        'X-Prolific-Request-Timestamp': timestamp,
+                        'X-Event-ID': 'timeout-event-1',
+                        'X-Timestamp': timestamp,
+                        'Content-Type': 'application/json',
+                    },
+                )
+                response = json.loads(urllib.request.urlopen(request).read())
+                self.assertEqual(response['status'], 'ok')
+                lifecycle = json.loads((root / 'data' / 'returned-lifecycle.json').read_text(encoding='utf-8'))
+                self.assertEqual(lifecycle['TIMEOUT-1']['status'], 'TIMED_OUT')
+                self.assertNotIn('TIMEOUT-1', json.loads((root / 'data' / 'assignments.json').read_text(encoding='utf-8')))
+                self.assertEqual(store.assign({'prolific_pid': 'P-NEW', 'study_id': 'STUDY', 'session_id': 'NEW'})['status'], 'ok')
+                if with_result:
+                    archive = next((root / 'data' / 'excluded_submissions').glob('*/prolific_timed_out/TIMEOUT-1.json'))
+                    self.assertEqual(archive.read_bytes(), raw_result)
+                    self.assertEqual(hashlib.sha256(archive.read_bytes()).hexdigest(), hashlib.sha256(raw_result).hexdigest())
+                    self.assertFalse((root / 'data' / 'submissions' / 'TIMEOUT-1.json').exists())
+                else:
+                    self.assertEqual(list((root / 'data' / 'excluded_submissions').glob('*/prolific_timed_out/TIMEOUT-1.json')), [])
+                    self.assertFalse((root / 'data' / 'submissions' / 'TIMEOUT-1.json').exists())
+                duplicate = urllib.request.urlopen(request).read()
+                self.assertIn(b'completed', duplicate)
+                self.assertEqual(store.assign({'prolific_pid': 'P-TIMEOUT', 'study_id': 'STUDY', 'session_id': 'TIMEOUT-1'})['status'], 'error')
+            finally:
+                if receiver is not None:
+                    receiver.shutdown()
+                    receiver.server_close()
+                if receiver_thread is not None:
+                    receiver_thread.join()
+                api.shutdown()
+                api.server_close()
+                api_thread.join()
+
+    def test_real_http_timed_out_with_final_archives_exact_bytes(self):
+        self._run_real_timeout(with_result=True)
+
+    def test_real_http_timed_out_without_final_releases_only(self):
+        self._run_real_timeout(with_result=False)
