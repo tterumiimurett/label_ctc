@@ -25,8 +25,10 @@ Do not mark goal complete while required evidence, code review, human verificati
 
 ## Latest technical checkpoint (2026-09-10)
 
-- Root independently ran 126 tests at 2e05b21; all passed.
-- Spec reviewed code passes at 2e05b21; controlled HTTP proofs cover normal and cross-session contact, delayed recheck, actual restart, uncertain delivery without resend, concurrent disable, returned/timeout archive and release, and late answers. Detailed scope and artifacts: reviews/ticket-08-review.md.
-- Standards passes at 801458a; fixture duplication is non-blocking.
-- Operator instructions still require a reproducible isolated setup and actual CLI receiver/scheduler smoke proof. Same independent task is executing ticket-08-runnable-runbook.*.
-- Ticket 8 remains unmerged. Its final human verification and current live read-only report/access prerequisites remain unmet. Neither the technical checks nor isolated browser evidence authorize production actions.
+- Ticket8 current HEAD cc98597. Previous core/CLI/browser acceptance: 5a63637 (127 full tests) plus docs3a89d70. Artifacts browser-final.json and cli-smoke-final.json exist and remain isolated/synthetic evidence, not production proof.
+- Incremental pagination fix3a89d70...cc98597 passed independent Standards and Spec review. Root independently ran12 reconciliation tests; original Implement task reports127 full tests. Existing failclosed completeness checks retained.
+- Root completed real sorted pagination:2952uniqueIDs across30pages, exactset equality with study-scopedendpoint. Evidence sorted-pagination-evidence.json. The actual repaired CLI is still running its full identity/local-answer reconciliation (session30751, private temporaryreport); complete action list is not yet proven.
+- CLI receiver/scheduler smoke and fault proof are complete at5a63637, with reproducible runbook corrected3a89d70. The earlier statement that the runbook task remains running is superseded.
+- Latest authentic-recovery and concurrent-disable isolated checks passed atcc98597. Evidence remaining-human-verification-evidence.md. This does not itself satisfy human gates.
+- User accepted archive isolated cases only. Missing-result recheck awaits explicit user decision; duplicate sending, manual exceptions and disable await individual human acceptance. No automatic continuation counts as approval.
+- Ticket8 remains unmerged. Current live report, remaining human gates and integration are incomplete. Production activation, messages, historical migration and subscription changes remain separately authorized, not implied by acceptance.
