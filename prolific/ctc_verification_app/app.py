@@ -475,8 +475,10 @@ class VerificationStore:
             lifecycle[session_id] = intent; atomic_write_json(self.lifecycle_path, lifecycle)
             return self._resume_exclusion_lifecycle(session_id, lifecycle)
 
-    def reconcile_timed_out(self, submission: dict, *, processed_at: str | None = None) -> dict:
-        """Release an answerless timed-out claim; final-answer sessions are archived in the timeout-specific exclusion category."""
+    def reconcile_timed_out(self, submission: dict, *, processed_at: str | None = None, consent_withdrawn: bool = False) -> dict:
+        """Process a confirmed timeout without inferring consent withdrawal."""
+        if consent_withdrawn:
+            return {"status": "manual_review", "reason": "consent withdrawal requires separate handling"}
         if not isinstance(submission, dict) or str(submission.get("status", "")).upper().replace("_", "-") != "TIMED-OUT":
             return {"status": "manual_review", "reason": "current platform status is not TIMED-OUT"}
         session_id = str(submission.get("id") or "")

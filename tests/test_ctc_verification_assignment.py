@@ -240,6 +240,23 @@ class CtcVerificationAssignmentTest(unittest.TestCase):
             self.assertEqual(store.assign(worker)["status"], "error")
             self.assertEqual(store.submit(self.payload(worker, assignment))["status"], "error")
 
+    def test_timeout_consent_withdrawal_is_manual_without_any_mutation(self):
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d); store=self.store(root, count=1, redundancy=1)
+            worker=self.worker('P1','S1'); assignment=store.assign(worker)
+            lifecycle=root/'data'/'returned-lifecycle.json'; assignments=root/'data'/'assignments.json'
+            before_lifecycle=lifecycle.read_bytes() if lifecycle.exists() else None
+            before_assignments=assignments.read_bytes()
+            observed={'id':'S1','study_id':'S1','participant':{'id':'P1'},'status':'TIMED-OUT'}
+            result=store.reconcile_timed_out(observed, consent_withdrawn=True)
+            self.assertEqual(result['status'], 'manual_review')
+            self.assertEqual(assignments.read_bytes(), before_assignments)
+            self.assertEqual(lifecycle.exists(), before_lifecycle is not None)
+            self.assertFalse((root/'data'/'excluded_submissions').exists())
+            recovered=store.reconcile_timed_out(observed, consent_withdrawn=True)
+            self.assertEqual(recovered['status'], 'manual_review')
+            self.assertEqual(assignments.read_bytes(), before_assignments)
+
     def test_timed_out_without_result_releases_and_blocks_late_submit(self):
         with tempfile.TemporaryDirectory() as temporary_dir:
             root = Path(temporary_dir); store = self.store(root, count=1, redundancy=1)
