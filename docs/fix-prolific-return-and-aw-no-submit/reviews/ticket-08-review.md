@@ -157,3 +157,13 @@ Pinned incremental diff: 3a89d70...cc98597. Independent Standards reviewer /root
 Actual cc98597 read-only reconciliation is running under exec session30751, output /tmp/prolific-ticket08-sorted-live-reconciliation.json. Do not infer completion or start duplicate. Pending validation of full platform identities/local answers. No deployment, messages, lifecycle data changes or Ticket8 merge.
 
 Live reconciliation session30751 completed exit0 atcc98597: statusok,2952uniqueplatformsessions,295localfinalresults,0temporaryclaims;299AW=293matched+6missing;1Returnedwithresult and1TimedOutwithresult. No writes. Summary live-reconciliation-summary.json. This supersedes earlier running-state note. Completion-code mapping remains partial (no validcode configured); human gates remain.
+
+## Answer-arrival amendment review: cc98597...962b0b0
+
+User confirmed answer-arrival-amendment.md and explicitly waived repeat human verification for this amendment after Implement/tests/independent reviews. This does not waive other Ticket8 gates or authorize production.
+
+Standards:0hardviolations,2nonblocking observations (misleading duplicate fixture sequencing and redundantmanual guards). Spec:FAIL,3findings: P1originalledgeridentitycheck bypassed byresolve; P1knowncontacted/deliveryunknownstates withoutattemptfields can beoverwrittenresolved; P2answer/initial_answerbothsubmitbeforeE1, so realwaitarrival/fresh-only/restartclaimunproven. Root reproducedidentity/contacted withtempJsonLedger. Original task resumed to repair allfindings; no newuserdecisionneeded because these are deviations from confirmedrules. Do not accept962b0b0 ormerge.
+
+## Answer-arrival repair review: cc98597...90866ac
+
+StandardsPASS,0hardviolations,optionalredundantmanualguards remain. Spec confirms originalidentity andknowncontact/unknownstate clearingfixed;6focusedtests passed. Spec notyetPASS: newfresh-onlydue-reconciliation branch unexercised, and5minutearrivalnotproven. Rootsentexacttestrequirements originaltask (PID1874473), no newbusinessquestion; repeatmanualwaiverremains. KeepTicket8unmerged untilfinalevidence/review.
