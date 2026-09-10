@@ -41,3 +41,7 @@ Standards passed; root full suite passed 85 tests. Spec still fails P1: helper-l
 Ticket 4 code `8df6d3b`: Spec passes independently; public repro now leaves no assignments, 21 focused assignment tests pass; root full suite 86 passed. Standards code passes, but final report has obsolete behavior/gate claims and control characters. Original task is correcting report only in `ticket-04-report-fix.*`; verify final documentation commit before merge.
 
 Ticket 6 `f51c7e9`: both axes still require fixes. Initial-report answer arrival resolves silently; attempted-entry rebuilding overwrites manual status; unknown/unavailable delivery does not persist manual handling; some sender branches return manual decisions without saving them. Isolated public repro `/tmp/ticket06-spec-review-repro.py`. Original task resumed in `ticket-06-spec-fix2.*` for complete-path fixes. Explicit origin and strict sender/timestamp guards improved, but do not compensate for these remaining defects. No new human policy question.
+
+## Ticket 4 accepted and merged
+
+Final code `33b3bcb` passed independent Standards and Spec reviews with no remaining human matters under the confirmed conditional gate. Root full suite: 87 passed before and after merge. Main merge: `b228cec`. Consent guard, both recovery repro paths, original-byte archives, identity/status isolation and old-session barriers verified. No production action. Ticket 6 still requires outbound/manual persistence fixes; Ticket 8 cannot start yet.

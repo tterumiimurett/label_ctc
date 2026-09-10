@@ -1,6 +1,6 @@
 # 04: 超时结果独立归档并释放名额
 
-**Status:** Revised after human review 2026-09-10 — implementation/re-review required
+**Status:** Implemented, independently reviewed and merged (b228cec); production not activated
 
 **Publication label:** ready-for-agent
 
