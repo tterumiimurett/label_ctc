@@ -6,12 +6,13 @@ Agent-executed evidence is complete for isolated controlled components; this pac
 
 ```sh
 python3 -m unittest discover -s tests -v
+python3 tests/ticket08_cli_smoke.py > artifacts/ticket08/cli-smoke-final.json
 python3 -m unittest tests.test_ticket_08_authentic_recovery tests.test_ticket_08_concurrent_disable tests.test_ticket_08_crossresource tests.test_ticket_08_lifecycle_guards -v
 python3 -m unittest tests.test_ticket_08_lifecycle_guards.NoOpLifecycleRegressionTest tests.test_ticket_08_concurrent_disable.ConcurrentDisableIntegrationTest -v
 NODE_PATH=/tmp/ticket1-ctc/node_modules node tests/browser_ticket_01_ctc.cjs
 ```
 
-Current result: **126 tests passed**. Browser artifact: [`artifacts/ticket08/browser-final.json`](../../artifacts/ticket08/browser-final.json). No production data or credentials are in evidence.
+Current result: **126 tests passed**. The CLI smoke output is [`artifacts/ticket08/cli-smoke-final.json`](../../artifacts/ticket08/cli-smoke-final.json) and was generated against a temporary localhost controlled API. Browser artifact: [`artifacts/ticket08/browser-final.json`](../../artifacts/ticket08/browser-final.json). No production data or credentials are in evidence.
 
 ## Decisions requiring human authorization
 

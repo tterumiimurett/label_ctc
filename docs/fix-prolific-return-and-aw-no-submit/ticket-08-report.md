@@ -8,6 +8,7 @@ Run from the repository root:
 
 ```sh
 python3 -m unittest discover -s tests -v
+python3 tests/ticket08_cli_smoke.py > artifacts/ticket08/cli-smoke-final.json
 python3 -m unittest tests.test_ticket_08_authentic_recovery tests.test_ticket_08_concurrent_disable tests.test_ticket_08_crossresource tests.test_ticket_08_lifecycle_guards -v
 python3 -m unittest tests.test_ticket_08_lifecycle_guards.NoOpLifecycleRegressionTest tests.test_ticket_08_concurrent_disable.ConcurrentDisableIntegrationTest -v
 NODE_PATH=/tmp/ticket1-ctc/node_modules node tests/browser_ticket_01_ctc.cjs
@@ -18,6 +19,8 @@ Current full-suite evidence: **126 tests passed**. Browser evidence is at [`arti
 Controlled integration evidence covers signed receiver/archive and timeout paths, routine NEW ten-minute message delivery, reconstructed scheduler state, cross-resource isolation, disconnected POST restart recovery, concurrent disable, durable lifecycle manual outcomes, consent-source validation, historical approval records, and missed-event surfacing. These are isolated localhost/temp-store tests only.
 
 ## CLI controlled configuration
+
+The actual executable setup is `python3 tests/ticket08_cli_smoke.py`; it creates and removes its own temporary localhost fixture and produced [`artifacts/ticket08/cli-smoke-final.json`](../../artifacts/ticket08/cli-smoke-final.json).
 
 Sanitized fixture configuration:
 
@@ -44,7 +47,7 @@ Sanitized fixture configuration:
 }
 ```
 
-The executable operator sequence is:
+The smoke harness actually tested the following operator sequence:
 
 ```sh
 python3 -m prolific.ctc_verification_app.activation_cli --journal /tmp/ticket08-controlled/journal.jsonl preview --report /tmp/ticket08-controlled/report.json
