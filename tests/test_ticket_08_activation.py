@@ -266,3 +266,201 @@ class FullHttpMatrixTest(unittest.TestCase):
 
     def test_real_http_timed_out_without_final_releases_only(self):
         self._run_real_timeout(with_result=False)
+
+class RoutinePositiveHttpTest(unittest.TestCase):
+    def test_approved_routine_new_missing_result_waits_then_posts_once(self):
+        import base64
+        import hashlib
+        import hmac
+        import json
+        import threading
+        import urllib.request
+        from datetime import datetime, timezone, timedelta
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+        from prolific.ctc_verification_app.activation import (
+            ActionJournal, ActivationController, Approval, ApprovalStore,
+            RealApiAdapter, make_activation_server,
+        )
+        from prolific.ctc_verification_app.app import VerificationStore
+        from prolific.ctc_verification_app.contact_candidates import (
+            JsonContactLedger, VerifiedMessageScope, APPROVED_MESSAGE,
+        )
+        from prolific.ctc_verification_app.reconciliation import ProlificSubmissionClient
+        from prolific.ctc_verification_app.triggers import JsonTriggerStore, ReconciliationTrigger
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            candidate_path = root / 'candidates.jsonl'
+            candidate_path.write_text(
+                json.dumps({
+                    'candidate_key': 'routine-k',
+                    'pred_is_ctc': True,
+                    'audio_verify': {'verify_is_ctc': True},
+                    'tos_audio': {'outer_url': 'https://controlled.test/a.wav'},
+                }) + '\n',
+                encoding='utf-8',
+            )
+            store = VerificationStore(
+                [], [str(candidate_path)], root / 'data', 1, 1,
+                'https://controlled.test/complete', False,
+            )
+            assignment = store.assign({
+                'prolific_pid': 'P-NEW', 'study_id': 'STUDY', 'session_id': 'NEW-1',
+            })
+            self.assertEqual(assignment['status'], 'ok')
+            now = [datetime(2026, 1, 1, tzinfo=timezone.utc)]
+            message_posts = []
+            platform_state = {
+                'id': 'NEW-1', 'study_id': 'STUDY', 'participant': 'P-NEW',
+                'status': 'AWAITING REVIEW', 'started_at': '2026-01-01T00:00:00Z',
+            }
+
+            class ControlledApi(BaseHTTPRequestHandler):
+                def do_GET(self):
+                    if self.path.startswith('/api/v1/messages/'):
+                        value = {'results': [], '_links': {'self': {'href': self.path}}}
+                    elif '?' in self.path:
+                        value = {
+                            'results': [platform_state], 'meta': {'count': 1},
+                            '_links': {'self': {'href': self.path}},
+                        }
+                    else:
+                        value = platform_state
+                    encoded = json.dumps(value).encode('utf-8')
+                    self.send_response(200)
+                    self.send_header('Content-Type', 'application/json')
+                    self.send_header('Content-Length', str(len(encoded)))
+                    self.end_headers()
+                    self.wfile.write(encoded)
+
+                def do_POST(self):
+                    length = int(self.headers.get('Content-Length', '0'))
+                    message_posts.append(json.loads(self.rfile.read(length).decode('utf-8')))
+                    encoded = json.dumps({'id': 'MESSAGE-1'}).encode('utf-8')
+                    self.send_response(200)
+                    self.send_header('Content-Type', 'application/json')
+                    self.send_header('Content-Length', str(len(encoded)))
+                    self.end_headers()
+                    self.wfile.write(encoded)
+
+                def log_message(self, *_args):
+                    pass
+
+            api = ThreadingHTTPServer(('127.0.0.1', 0), ControlledApi)
+            api_thread = threading.Thread(target=api.serve_forever)
+            api_thread.start()
+            receiver = None
+            receiver_thread = None
+            try:
+                client = ProlificSubmissionClient(
+                    'controlled-token',
+                    'http://127.0.0.1:%d/api/v1' % api.server_address[1],
+                    retries=0,
+                )
+                scope = VerifiedMessageScope(
+                    'RESEARCHER', 'WORKSPACE',
+                    datetime(2025, 12, 3, tzinfo=timezone.utc),
+                    datetime(2026, 1, 2, tzinfo=timezone.utc),
+                    True, 'controlled full message visibility',
+                    now[0], now[0] + timedelta(hours=1),
+                )
+                trigger = ReconciliationTrigger(
+                    client, root / 'data', 'STUDY',
+                    JsonTriggerStore(root / 'events.json'), now=lambda: now[0],
+                )
+                adapter = RealApiAdapter(
+                    client, root / 'data', 'STUDY', scope=scope, clock=lambda: now[0],
+                )
+                approvals = ApprovalStore(root / 'approval.json')
+                controller = ActivationController(
+                    trigger=trigger, store=store,
+                    ledger=JsonContactLedger(root / 'contacts.json'),
+                    adapter=adapter, journal=ActionJournal(root / 'actions.jsonl'),
+                    study_id='STUDY', approvals=approvals,
+                    production_enabled=True, clock=lambda: now[0],
+                    activation_boundary='1970-01-01T00:00:00Z',
+                )
+                initial_report = trigger.periodic()['report']
+                preview = controller.preview(initial_report)
+                approvals.save(Approval(
+                    'STUDY', preview['preview_sha256'], ('NEW-1',), (), ('NEW-1',),
+                    True, now[0].isoformat(), 'routine-policy-reviewer',
+                ))
+                receiver = make_activation_server(
+                    controller, 'routine-secret', {
+                        'run_kind': 'event',
+                        'activation_boundary': '1970-01-01T00:00:00Z',
+                        'study_id': 'STUDY',
+                    },
+                )
+                receiver_thread = threading.Thread(target=receiver.serve_forever)
+                receiver_thread.start()
+                body = json.dumps({
+                    'event_type': 'submission.status.change', 'resource_id': 'NEW-1',
+                }).encode('utf-8')
+                timestamp = '100'
+                signature = base64.b64encode(hmac.new(
+                    b'routine-secret', timestamp.encode() + body, hashlib.sha256,
+                ).digest()).decode()
+                request_headers = {
+                    'X-Prolific-Request-Signature': signature,
+                    'X-Prolific-Request-Timestamp': timestamp,
+                    'X-Event-ID': 'routine-event-1', 'X-Timestamp': timestamp,
+                    'Content-Type': 'application/json',
+                }
+                request = urllib.request.Request(
+                    'http://127.0.0.1:%d/' % receiver.server_address[1],
+                    data=body, method='POST', headers=request_headers,
+                )
+                first = json.loads(urllib.request.urlopen(request).read())
+                self.assertEqual(first['status'], 'ok')
+                self.assertEqual(first['candidates']['decisions'], [])
+                ledger = JsonContactLedger(root / 'contacts.json').read()
+                self.assertEqual(ledger['sessions']['NEW-1']['state'], 'observed')
+                now[0] += timedelta(seconds=600)
+                reassessed = controller.execute(
+                    provenance_context={
+                        'run_kind': 'event',
+                        'event_id': 'routine-event-1',
+                        'study_id': 'STUDY',
+                        'activation_boundary': '1970-01-01T00:00:00Z',
+                    },
+                    report=None,
+                    accepted_event={
+                        'event_id': 'routine-event-1', 'study_id': 'STUDY',
+                        'event_timestamp': 100, 'activation_timestamp': 0,
+                    },
+                )
+                self.assertEqual(reassessed['origin'], 'new')
+                self.assertEqual(len(message_posts), 1, reassessed)
+                self.assertEqual(message_posts[0]['recipient_id'], 'P-NEW')
+                self.assertEqual(message_posts[0]['study_id'], 'STUDY')
+                self.assertEqual(
+                    message_posts[0]['body'], APPROVED_MESSAGE.format(SESSION_ID='NEW-1'),
+                )
+                self.assertEqual(
+                    JsonContactLedger(root / 'contacts.json').read()['sessions']['NEW-1']['send_outcome'],
+                    'accepted',
+                )
+                controller.execute(
+                    provenance_context={
+                        'run_kind': 'event', 'event_id': 'routine-event-1',
+                        'study_id': 'STUDY',
+                        'activation_boundary': '1970-01-01T00:00:00Z',
+                    },
+                    report=None,
+                    accepted_event={
+                        'event_id': 'routine-event-1', 'study_id': 'STUDY',
+                        'event_timestamp': 100, 'activation_timestamp': 0,
+                    },
+                )
+                self.assertEqual(len(message_posts), 1)
+            finally:
+                if receiver is not None:
+                    receiver.shutdown()
+                    receiver.server_close()
+                if receiver_thread is not None:
+                    receiver_thread.join()
+                api.shutdown()
+                api.server_close()
+                api_thread.join()
