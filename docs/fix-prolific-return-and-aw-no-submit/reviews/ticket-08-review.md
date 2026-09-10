@@ -149,3 +149,9 @@ Root normalrunexit0/receiverpreview passes; Spec faultinjection schedulerexit7 s
 ## Final technical acceptance — 3a89d70
 
 Standards5a63637 PASS; finalSpec3a89d70 PASS (subsequentdiffdocs-only). Root127fulltestsPASS. Independentsmoke normal0 cycles1to2 actualrestart/noPOST, faultinjectedexit7=>smoke1 verified. Final2doccommands corrected. No outstanding technicalfinding. Requiredhuman/live gates remain; ticket-08-technical-human-review.md records exactversion/evidence/recovery. Ticket8 unmerged, production untouched.
+
+## Pagination correction: cc98597 (2026-09-10)
+
+Pinned incremental diff: 3a89d70...cc98597. Independent Standards reviewer /root/pagination_standards: PASS, 0 documented violations; optional Speculative Generality observation: ordering parameter only accepts started_at and could instead be fixed inside transport. Not a blocker. Independent Spec reviewer /root/pagination_spec: PASS, no actionable findings. Both verified transport ordering on both pages and retained completeness guards. Root independently ran 12 reconciliation tests: pass; original Implement task reports full127pass. No new manual question from the correction; existing archive-only approval and remaining human gates remain unchanged.
+
+Actual cc98597 read-only reconciliation is running under exec session30751, output /tmp/prolific-ticket08-sorted-live-reconciliation.json. Do not infer completion or start duplicate. Pending validation of full platform identities/local answers. No deployment, messages, lifecycle data changes or Ticket8 merge.
