@@ -7,7 +7,7 @@ from urllib.request import Request, urlopen
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from prolific.ctc_verification_app.activation import ActivationController, ActionJournal, Approval, ApprovalStore, RealApiAdapter, make_activation_server
 from prolific.ctc_verification_app.app import VerificationStore
-from prolific.ctc_verification_app.contact_candidates import JsonContactLedger, VerifiedMessageScope
+from prolific.ctc_verification_app.contact_candidates import JsonContactLedger, VerifiedMessageScope, build_contact_candidates
 from prolific.ctc_verification_app.reconciliation import ProlificSubmissionClient
 from prolific.ctc_verification_app.triggers import JsonTriggerStore, ReconciliationTrigger
 now = [datetime(2026, 9, 10, 12, 0, tzinfo=timezone.utc)]
@@ -77,34 +77,61 @@ try:
             with urlopen(request) as response:
                 return json.loads(response.read())
         mode = sys.argv[1] if len(sys.argv) > 1 else 'positive'
-        def submit_answer():
+        def submit_answer(target_store=store):
             worker = {'prolific_pid': 'P1', 'study_id': 'STUDY', 'session_id': 'S1'}
-            assignment = store.assign(worker)
+            assignment = target_store.assign(worker)
             payload = {'schema_version': 'ctc-verification-v1', 'worker': worker, 'assignment': assignment['assignment'], 'tasks': [{'candidate_id': t['candidate_id'], 'task_id': t['task_id'], 'relevant_interruption': False} for t in assignment['tasks']]}
-            submit_result = store.submit(payload)
+            submit_result = target_store.submit(payload)
             assert submit_result['status'] == 'ok', submit_result
         if mode == 'initial_answer':
             submit_answer()
         first = event('E1')
-        if mode == 'answer':
+        if mode in {'answer', 'answer5'}:
             before_answer = ledger.read()
             assert before_answer['sessions']['S1'].get('first_missing_at'), 'First missing observation was not durable before answer'
             submit_answer()
         if mode == 'approved':
             state['status'] = 'APPROVED'
-        now[0] += timedelta(minutes=10)
+        now[0] += timedelta(minutes=5 if mode == 'answer5' else 10)
         store2 = VerificationStore([], [str(candidate)], root / 'data', 1, 1, 'https://example.test/complete', False)
         trigger2 = ReconciliationTrigger(client, root / 'data', 'STUDY', JsonTriggerStore(root / 'events.json'), now=clock)
         ledger2 = JsonContactLedger(root / 'contacts.json')
-        c2 = ActivationController(trigger=trigger2, store=store2, ledger=ledger2, adapter=RealApiAdapter(client, root / 'data', 'STUDY', scope=scope, clock=clock), journal=ActionJournal(root / 'journal.jsonl'), study_id='STUDY', approvals=ApprovalStore(root / 'approval.json'), production_enabled=True, clock=clock, activation_boundary=boundary)
-        second = c2.scheduled_reassessment()
-        followup = c2.scheduled_reassessment()
+        adapter2 = RealApiAdapter(client, root / 'data', 'STUDY', scope=scope, clock=clock)
+        c2 = ActivationController(trigger=trigger2, store=store2, ledger=ledger2, adapter=adapter2, journal=ActionJournal(root / 'journal.jsonl'), study_id='STUDY', approvals=ApprovalStore(root / 'approval.json'), production_enabled=True, clock=clock, activation_boundary=boundary)
+        if mode == 'fresh_only':
+            outer_report = json.loads((root / 'events.json').read_text(encoding='utf-8'))['events']['E1']['report']
+            assert outer_report and outer_report.get('submissions') and outer_report['submissions'][0]['classification'] == 'awaiting_without_final_result', outer_report
+            class FreshArrivalBarrier:
+                def __init__(self):
+                    self.submitted = False
+                    self.last_report = None
+
+                def reconcile(self):
+                    if not self.submitted:
+                        submit_answer(store2)
+                        self.submitted = True
+                    self.last_report = adapter2.reconcile()
+                    return self.last_report
+
+                def inspect_messages(self, **kwargs):
+                    return adapter2.inspect_messages(**kwargs)
+
+            barrier = FreshArrivalBarrier()
+            second = build_contact_candidates(outer_report, ledger2, barrier, candidate_origin='new', now=now[0])
+            assert barrier.last_report['submissions'][0]['classification'] == 'matched'
+            followup = build_contact_candidates(outer_report, ledger2, barrier, candidate_origin='new', now=now[0])
+        else:
+            second = c2.scheduled_reassessment()
+            followup = c2.scheduled_reassessment()
         print(json.dumps({'mode': mode, 'first': first, 'after_ten_minutes': second, 'followup': followup, 'ledger': ledger.read(), 'message_GETs': [p for p in gets if '/messages/' in p], 'POSTs': posts}, indent=2))
         assert len(posts) == (1 if mode == 'positive' else 0), 'Unexpected POST count'
         if mode == 'approved':
             assert ledger.read()['sessions']['S1']['state'] == 'manual_review', 'Missing durable manual disposition'
-        if mode in {'answer', 'initial_answer'}:
+        if mode in {'answer', 'answer5', 'initial_answer', 'fresh_only'}:
             assert ledger.read()['sessions']['S1']['state'] == 'resolved', 'Complete answer did not resolve waiting case'
+        if mode == 'fresh_only':
+            assert not second.get('decisions'), 'Fresh answer created an unexpected candidate/manual decision'
+            assert not followup.get('decisions'), 'Repeated fresh answer reassessment created a decision'
 finally:
     if receiver:
         receiver.shutdown()

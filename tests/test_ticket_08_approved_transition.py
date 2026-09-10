@@ -23,6 +23,21 @@ class ApprovedTransitionTest(unittest.TestCase):
         self.assertNotIn('answer_or_status_arrived_after_missing_detection', result.stdout)
         self.assertIn('"POSTs": []', result.stdout)
 
+    def test_answer_arrival_after_five_minutes_resolves_and_repeats_without_post(self):
+        fixture = Path(__file__).with_name("ticket08_approved_transition_fixture.py")
+        result = subprocess.run([sys.executable, str(fixture), "answer5"], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('"state": "resolved"', result.stdout)
+        self.assertIn('"POSTs": []', result.stdout)
+
+    def test_due_outer_missing_then_fresh_reconciliation_sees_answer(self):
+        fixture = Path(__file__).with_name("ticket08_approved_transition_fixture.py")
+        result = subprocess.run([sys.executable, str(fixture), "fresh_only"], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('"state": "resolved"', result.stdout)
+        self.assertIn('"POSTs": []', result.stdout)
+        self.assertNotIn('"decision": "candidate"', result.stdout)
+
     def test_complete_answer_at_initial_observation_resolves_without_candidate(self):
         fixture = Path(__file__).with_name("ticket08_approved_transition_fixture.py")
         result = subprocess.run([sys.executable, str(fixture), "initial_answer"], capture_output=True, text=True)
