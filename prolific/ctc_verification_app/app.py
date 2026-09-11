@@ -475,7 +475,7 @@ class VerificationStore:
             lifecycle[session_id] = intent; atomic_write_json(self.lifecycle_path, lifecycle)
             return self._resume_exclusion_lifecycle(session_id, lifecycle)
 
-    def reconcile_timed_out(self, submission: dict, *, processed_at: str | None = None, consent_withdrawn: bool = False) -> dict:
+    def reconcile_timed_out(self, submission: dict, *, processed_at: str | None = None, consent_withdrawn: bool = False, recover_pending: bool = True) -> dict:
         """Process a confirmed timeout without inferring consent withdrawal."""
         if consent_withdrawn:
             return {"status": "manual_review", "reason": "consent withdrawal requires separate handling"}
@@ -490,7 +490,8 @@ class VerificationStore:
         with TASK_LOCK, store_lock(self.lifecycle_lock_path):
             lifecycle = read_json(self.lifecycle_path, {})
             assignments = read_json(self.assignments_path, {})
-            self._recover_timed_out_intents(lifecycle, assignments)
+            if recover_pending:
+                self._recover_timed_out_intents(lifecycle, assignments)
             prior = lifecycle.get(session_id)
             if prior and (prior.get("kind") == "timeout" or str(prior.get("status", "")).startswith("TIMED_OUT")):
                 if any(prior.get(key) != value for key, value in (("session_id", session_id), ("study_id", study_id), ("participant_id", participant_id))):
