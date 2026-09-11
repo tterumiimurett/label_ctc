@@ -1,3 +1,5 @@
+> 2026-09-11 状态更新：receiver 和 scheduler 已安装并运行，均保持预览模式。另已新增仅归档的独立定时服务，部署证据与操作开关见 [archive-only-deployment.md](archive-only-deployment.md)。下文为原准备阶段记录，不能据此判断当前服务尚未安装。
+
 # 预览常驻服务模板
 
 两份 `.service.example` 为准备文件，尚未安装或启动。仅使用已审查的 activation_cli；不传 --execute，不创建 approval.json。它们仍可写入预览 journal 和事件账本，因此启动前需记录原数据基线。

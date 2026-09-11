@@ -1,0 +1,10 @@
+[Unit]
+Description=Periodically archive confirmed Prolific Returned and timeout results
+
+[Timer]
+OnBootSec=2min
+OnUnitInactiveSec=5min
+Unit=prolific-archive.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,13 @@
+[Unit]
+Description=Prolific automatic Returned and timeout result archive
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/label/label_ctc
+UMask=0077
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 -m prolific.ctc_verification_app.archive_cli --config /home/label/label_ctc/logs/prolific-sync/preview-config.json --report /home/label/label_ctc/logs/prolific-sync/archive-status.json --execute
+NoNewPrivileges=true
+TimeoutStartSec=30min

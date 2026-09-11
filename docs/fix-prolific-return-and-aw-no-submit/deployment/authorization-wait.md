@@ -14,3 +14,19 @@
 4. 按批准执行历史动作、启用同步，再恢复研究并监测首批真实提交。真实生产保存链路仍缺证据。
 
 原数据仍使用既有目录、100 个 sample、bundle=1、redundancy=3、本地 timeout=240 分钟；Prolific 14 分钟设置不同。数据不覆盖，令牌/完成码/参与者记录不进 Git。
+
+## 2026-09-11 更新
+
+用户已明确允许创建签名密钥及私有保存凭据，并要求凭据不暴露在对话中。该授权阻塞已解决。重新核对研究 PAUSED、工作区无既有密钥或订阅后，已创建密钥及私有配置，权限目录 0700、文件 0600，未输出凭据。
+
+用户级预览 receiver 和 scheduler 已安装并启用，未传 --execute，未创建执行批准。receiver 仅监听 127.0.0.1:8013；无签名请求返回401。启动前记录387个原数据文件，启动receiver后原文件哈希均未改变。scheduler首次对账尚在运行，不声称完成。
+
+当前待解决：独立公网入口 `tailscale funnel --bg --https=8443 --set-path=/prolific/webhook http://127.0.0.1:8013` 被本机 Tailscale 权限拒绝；sudo -n 提示需要密码。现有443根服务仍为 tailnet only，没有公开。需要管理员执行该配置。Prolific事件订阅尚未创建，真实事件送达、历史预览和生产启用仍未验证。
+
+## 反向代理方案更正
+
+用户要求遵循交接文档。已读取 `prolific/CTC_VERIFICATION_HANDOFF.md` 第5节，指定 Nginx；现有 `/etc/nginx/sites-enabled/label_ctc` 对应端口80到127.0.0.1:8002。撤回此前请用户执行的 Tailscale Funnel 命令，不再采用该部署路径。先前 Funnel 配置均因权限失败，未成功改变公网入口。后续在现有 Nginx 方案内准备 webhook 的 HTTPS 配置；当前启用站点未发现443/TLS配置，仍需确认域名和证书。凭据不进入对话、工具输出或 Git。
+
+## 仅归档启用授权（2026-09-11）
+
+用户明确要求将自动归档部署起来，覆盖既有及未来经核对的 Returned/Timed-out 本地结果。新增独立 archive-only 定时入口，保持综合 receiver/scheduler 预览模式，不启用消息发送或恢复研究。该归档授权不再等待历史名单二次批准；实际部署和校验见 [archive-only-deployment.md](archive-only-deployment.md)。Webhook 公网入口与联系功能仍是独立未完成事项。
