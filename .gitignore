@@ -36,3 +36,12 @@ expert_agree2_remaining61*.tar.gz
 
 prolific/ctc_verification_app/data_expert_complement35_20260912/
 expert_complement35*.tar.gz
+
+# Internal expert annotations and analysis
+prolific/ctc_verification_app/data_internal_train_100/
+
+# Prolific researcher reference annotations
+prolific/ctc_verification_app/data_train_first100_prolific/researcher/
+
+# Original-UI researcher disagreement review runtime data
+prolific/ctc_verification_app/data_researcher_disagreement_*/
