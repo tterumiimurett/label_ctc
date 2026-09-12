@@ -1,6 +1,31 @@
 # First100 独立人工审核
 
-## 当前入口：排除已审核候选后的 61 条（2026-09-10）
+## 补齐全部 100 条：剩余 35 条（2026-09-12）
+
+已完成 65 条审核后，使用这个独立入口补齐其余 35 条：
+
+```bash
+git pull origin main
+bash prolific/run_ctc_verification_expert_complement35.sh
+```
+
+打开脚本打印的完整地址，默认端口 8005。需要 Python 3.10+ 以及远程音频的网络访问；判断题不预填，不显示众包答案。沿用现有问题、草稿保存与恢复机制，一次领取 35 条，可分多次完成。保持同一完整链接和数据目录即可恢复。
+
+任务文件 `tables/ctc_verification_expert_complement35_20260912.jsonl` 是原 first100 减去已上传审核所对应的 65 条快照，二者无重叠，合计恰好 100 个唯一 candidate_id。不按目前可能新增的众包票数重新筛选。
+
+本次按要求保留完整 35 条，包括历史 researcher submissions 中已看过的 3 条，可在之后比较重复审核的一致性。页面 Candidate 1–35 为本次序号，合并通过 candidate_id 完成。
+
+结果独立保存到 `prolific/ctc_verification_app/data_expert_complement35_20260912/`，不覆盖旧审核。最终提交文件为 `submissions/expert_complement35_20260912_v1.json`。全部提交后关闭服务，在仓库根目录打包并上传：
+
+```bash
+tar -czf expert_complement35.tar.gz -C prolific/ctc_verification_app data_expert_complement35_20260912
+```
+
+回传后，用已上传的 65 条与本次 35 条组成完整 100 条审核，重新计算每位标注者的 CTC 一致率、误收、漏标和有效比较数。历史 7 条作为独立版本保留；重复记录不重复计数，变更的判断单独列出供核对。运行结果不随 Git 发布。
+
+以下是此前审核入口与历史说明。
+
+## 历史入口：排除已审核候选后的 61 条（2026-09-10）
 
 ```bash
 bash prolific/run_ctc_verification_expert_agree2_first100.sh
