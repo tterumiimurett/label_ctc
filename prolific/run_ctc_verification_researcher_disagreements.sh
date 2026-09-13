@@ -10,7 +10,8 @@ REVIEW_SET="${REVIEW_SET:-all}"
 case "$REVIEW_SET" in
   all) BUNDLE_SIZE=65 ;;
   unanimous) BUNDLE_SIZE=4 ;;
-  *) echo "REVIEW_SET must be all or unanimous." >&2; exit 1 ;;
+  majority_remaining) BUNDLE_SIZE=16 ;;
+  *) echo "REVIEW_SET must be all, unanimous, or majority_remaining." >&2; exit 1 ;;
 esac
 STUDY="researcher_disagreement_${REVIEW_SET}_v1"
 DATA_DIR="${DATA_DIR:-prolific/ctc_verification_app/data_researcher_disagreement_${REVIEW_SET}_v1}"

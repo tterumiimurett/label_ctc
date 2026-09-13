@@ -30,3 +30,13 @@ REVIEW_SET=unanimous bash prolific/run_ctc_verification_researcher_disagreements
 ## Confidence 待确认范围
 
 复用原表单，在 CTC 判断附近增加必填单选：Confident、Somewhat Confident、Not Confident，不预选。对 Yes 和 No 都必填，仅表示对 CTC 判断的信心。新增字段 `ctc_confidence`，前端草稿、恢复、导出和最终 submission 均保存；后端校验三个枚举值。历史记录缺失值保留为未知，不补默认答案。建议以显式启用选项控制新必填规则，避免让已在进行的旧任务突然无法提交；是否启用以及正式发布另行确认。
+
+## 至少 2/3 认可，排除已看过的 4 条
+
+```bash
+REVIEW_SET=majority_remaining bash prolific/run_ctc_verification_researcher_disagreements.sh
+```
+
+共 16 条：有完整三名有效标注者，至少两人判 CTC，researcher 判非 CTC，并排除 unanimous 模式的 4 条。当前均为恰好 2/3 认可。不包含不足三票的候选，也不因后续招募黑名单而改写本轮已有票数。使用原页面，独立 study/session 和结果目录，原审核不覆盖。打开终端打印的新完整地址，不使用旧模式的链接。
+
+最终结果：`prolific/ctc_verification_app/data_researcher_disagreement_majority_remaining_v1/submissions/researcher_disagreement_majority_remaining_v1.json`。
