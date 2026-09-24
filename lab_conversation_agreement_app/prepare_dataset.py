@@ -25,6 +25,7 @@ MODEL_QUOTAS = {
     "salmonn_omni_before_sft": 12,
 }
 VARIANTS = ("with_system_prompt", "no_system_prompt")
+CLOSED_MODELS = {"doubao_s2s", "gpt_realtime"}
 
 
 def rows(path: Path):
@@ -127,6 +128,7 @@ def transcript(prediction: dict) -> str:
 
 def select_clarification(root: Path, model: str, quota: int, rng: random.Random, output: Path) -> list[dict]:
     pool = []
+    seen = set()
     source_records = dataset_records(str(root / "dataset/clarification.json"))
     for variant in VARIANTS:
         pred_path = prediction_path(root, model, "clarification", variant)
@@ -138,6 +140,10 @@ def select_clarification(root: Path, model: str, quota: int, rng: random.Random,
         for prediction in rows(pred_path):
             if prediction.get("status") != "ok" or prediction["id"] not in hard_ids:
                 continue
+            source_key = (variant, prediction["id"])
+            if source_key in seen:
+                continue
+            seen.add(source_key)
             try:
                 user, rate, question_end = input_audio(root, prediction)
                 model_audio = read_mono(model_audio_path(pred_path, prediction), rate)
@@ -172,7 +178,115 @@ def select_clarification(root: Path, model: str, quota: int, rng: random.Random,
     return chosen
 
 
-def select_backchannel(root: Path, model: str, quota: int, rng: random.Random, output: Path) -> list[dict]:
+def user_context_for_window(root: Path, prediction: dict, start_s: float, end_s: float) -> str:
+    record = dataset_records(str(root / "dataset/backchannel.json"))[prediction["id"]]
+    payload = record.get("payload", {})
+    window_start = float(payload.get("window", {}).get("start_s", 0))
+    context = []
+    for turn in payload.get("user", []):
+        dialacts = turn.get("dialacts") or [turn]
+        for item in dialacts:
+            item_start = float(item.get("start", turn.get("start", window_start))) - window_start
+            item_end = float(item.get("end", turn.get("end", window_start))) - window_start
+            if item_end >= start_s and item_start <= end_s:
+                text = str(item.get("transcript", item.get("text", ""))).strip()
+                if text:
+                    context.append(text)
+    return " ".join(context)
+
+
+def select_closed_backchannel(
+    root: Path, model: str, quota: int, rng: random.Random, output: Path, aligned_path: Path,
+) -> list[dict]:
+    predictions = {}
+    for variant in VARIANTS:
+        pred_path = prediction_path(root, model, "backchannel", variant)
+        for prediction in rows(pred_path):
+            if prediction.get("status") == "ok":
+                predictions[(variant, prediction["id"])] = prediction
+
+    # Use at most one real ASR segment per model output. This keeps the sample
+    # diverse while ensuring every candidate has audible, force-aligned speech.
+    pool = {variant: [] for variant in VARIANTS}
+    for aligned in rows(aligned_path):
+        if aligned.get("model") != model:
+            continue
+        variant = aligned.get("variant")
+        prediction = predictions.get((variant, aligned.get("id")))
+        segments = aligned.get("asr_segments") or []
+        if not prediction or variant not in pool or not segments:
+            continue
+        segment = rng.choice(segments)
+        pool[variant].append((prediction, aligned, segment))
+    for values in pool.values():
+        rng.shuffle(values)
+
+    targets = {
+        VARIANTS[0]: (quota + 1) // 2,
+        VARIANTS[1]: quota // 2,
+    }
+    chosen = []
+    for variant in VARIANTS:
+        for prediction, aligned, segment in pool[variant]:
+            if sum(item["variant"] == variant for item in chosen) >= targets[variant]:
+                break
+            try:
+                user, rate, _ = input_audio(root, prediction)
+                model_audio = read_mono(Path(aligned["audio"]), rate)
+            except (FileNotFoundError, RuntimeError, ValueError):
+                continue
+            event_start = float(segment["start"])
+            event_end = min(float(segment["end"]), event_start + 12, len(model_audio) / rate)
+            event_begin_frame = max(0, int(event_start * rate))
+            event_end_frame = min(len(model_audio), int(event_end * rate))
+            event_audio = model_audio[event_begin_frame:event_end_frame]
+            if not len(event_audio) or float(np.max(np.abs(event_audio))) < 1e-4:
+                continue
+            clip_start = max(0, event_start - 8)
+            clip_end = min(len(model_audio) / rate, event_end + 1)
+            segment_index = (aligned.get("asr_segments") or []).index(segment)
+            key = hashlib.sha256(
+                f"backchannel-aligned:{model}:{variant}:{prediction['id']}:{segment_index}".encode()
+            ).hexdigest()[:16]
+            isolated_model = np.zeros_like(model_audio)
+            isolated_model[event_begin_frame:event_end_frame] = model_audio[event_begin_frame:event_end_frame]
+            write_stereo(
+                output / "audio" / f"{key}.wav", user, isolated_model, rate,
+                clip_start, clip_end, normalization_target=0.19,
+            )
+            chosen.append({
+                "key": key,
+                "task_type": "backchannel",
+                "audio": f"/audio/{key}.wav",
+                "anchor_s": round(event_start - clip_start, 3),
+                "anchor_end_s": round(event_end - clip_start, 3),
+                "anchor_label": "模型候选片段",
+                "user_transcript": user_context_for_window(root, prediction, clip_start, event_start),
+                "model_transcript": " ".join(
+                    str(word.get("word", "")).strip()
+                    for word in aligned.get("word_alignment", [])
+                    if float(word.get("end", 0)) > event_start and float(word.get("start", 0)) < event_end
+                ).strip() or str(segment.get("transcript", "")).strip(),
+                # Private build metadata is removed before tasks.json is written.
+                "source_model": model,
+                "variant": variant,
+                "source_id": prediction["id"],
+                "source_segment_index": segment_index,
+            })
+    if len(chosen) != quota:
+        raise RuntimeError(
+            f"aligned backchannel {model}: selected {len(chosen)}/{quota}; "
+            f"pools={ {variant: len(values) for variant, values in pool.items()} }"
+        )
+    return chosen
+
+
+def select_backchannel(
+    root: Path, model: str, quota: int, rng: random.Random, output: Path,
+    closed_aligned_path: Path,
+) -> list[dict]:
+    if model in CLOSED_MODELS:
+        return select_closed_backchannel(root, model, quota, rng, output, closed_aligned_path)
     pool = {True: [], False: []}
     for variant in VARIANTS:
         pred_path = prediction_path(root, model, "backchannel", variant)
@@ -251,6 +365,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--pi-bench", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--closed-backchannel-asr", type=Path, required=True)
     return parser.parse_args()
 
 
@@ -261,7 +376,20 @@ def main() -> None:
     cases = []
     for model, quota in MODEL_QUOTAS.items():
         cases.extend(select_clarification(args.pi_bench, model, quota, rng, args.output))
-        cases.extend(select_backchannel(args.pi_bench, model, quota, rng, args.output))
+        cases.extend(select_backchannel(
+            args.pi_bench, model, quota, rng, args.output, args.closed_backchannel_asr,
+        ))
+    private_fields = ("source_model", "variant", "source_id", "source_segment_index")
+    audit_rows = [
+        {"key": case["key"], **{field: case[field] for field in private_fields if field in case}}
+        for case in cases if any(field in case for field in private_fields)
+    ]
+    with (args.output / "private-source-audit.jsonl").open("w", encoding="utf-8") as handle:
+        for row in audit_rows:
+            handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+    for case in cases:
+        for field in private_fields:
+            case.pop(field, None)
     rng.shuffle(cases)
     manifest = {
         "schema_version": "conversation-agreement-v1",

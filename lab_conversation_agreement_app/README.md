@@ -5,8 +5,14 @@ This app serves one blinded 200-case batch: 100 Clarification cases and 100 Back
 Generate the private dataset:
 
 ```bash
-python lab_conversation_agreement_app/prepare_dataset.py --pi-bench /PATH/TO/pi-bench --output /PRIVATE/PATH/conversation-agreement-200
+python lab_conversation_agreement_app/prepare_dataset.py \
+  --pi-bench /PATH/TO/pi-bench \
+  --closed-backchannel-asr /PRIVATE/PATH/closed-backchannel-asr-v1/aligned-candidates.jsonl \
+  --output /PRIVATE/PATH/conversation-agreement-200
 ```
+
+The closed-model Backchannel candidates must come from GPT-4o Transcribe output
+with forced alignment. Silent outputs are excluded before this build step.
 
 Create annotator links and start the server:
 
