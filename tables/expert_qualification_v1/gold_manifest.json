@@ -1,0 +1,899 @@
+{
+  "schema_version": "ctc-expert-qualification-v1",
+  "status": "draft_pending_researcher_review",
+  "gold_authority": "unanimous labels from Terumi, Shutong, and Zhifeng",
+  "teaching": [
+    {
+      "candidate_id": "110a3a0f03d3826b",
+      "task_id": "seamless_ctc_V00_S1637_I00001129_008045_009623",
+      "category": "clear_non_ctc",
+      "gold": {
+        "relevant_interruption": false
+      },
+      "explanation": "研究者判定：完全错误的 CTC 误报"
+    },
+    {
+      "candidate_id": "e8798b5a00333287",
+      "task_id": "seamless_ctc_V00_S1660_I00000722_006436_007811",
+      "category": "clear_non_ctc",
+      "gold": {
+        "relevant_interruption": false
+      },
+      "explanation": "研究者判定：完全错误的 CTC 误报"
+    },
+    {
+      "candidate_id": "a2720d355324f0e4",
+      "task_id": "seamless_ctc_V00_S1342_I00000691_032334_033544",
+      "category": "confusing_non_ctc",
+      "gold": {
+        "relevant_interruption": false
+      },
+      "explanation": "研究者判定：容易犹豫，但不是 CTC"
+    },
+    {
+      "candidate_id": "6001a77bac141d65",
+      "task_id": "seamless_ctc_V00_S1513_I00000708_004891_006274",
+      "category": "confusing_non_ctc",
+      "gold": {
+        "relevant_interruption": false
+      },
+      "explanation": "研究者判定：容易犹豫，但不是 CTC"
+    },
+    {
+      "candidate_id": "444e6e7fed72d15d",
+      "task_id": "seamless_ctc_V03_S0488_I00000414_019582_021200",
+      "category": "poor_quality_ctc",
+      "gold": {
+        "relevant_interruption": true
+      },
+      "explanation": "研究者判定：是 CTC，但样本质量差"
+    },
+    {
+      "candidate_id": "6203b69de3fbc04d",
+      "task_id": "seamless_ctc_V00_S0054_I00000581_014804_016441",
+      "category": "expert_anchor_ctc",
+      "gold": {
+        "relevant_interruption": true
+      },
+      "explanation": "三专家一致：CTC、stuck、符合意图"
+    },
+    {
+      "candidate_id": "b358fe578f895ae5",
+      "task_id": "seamless_ctc_V00_S0130_I00000542_014134_015176",
+      "category": "expert_anchor_non_ctc",
+      "gold": {
+        "relevant_interruption": false
+      },
+      "explanation": "三专家一致：非 CTC"
+    },
+    {
+      "candidate_id": "9decb676256bd3ee",
+      "task_id": "seamless_ctc_V00_S0061_I00000126_009027_010252",
+      "category": "expert_anchor_ctc_not_stuck",
+      "gold": {
+        "relevant_interruption": true
+      },
+      "explanation": "三专家一致：CTC，但主说话人未卡壳"
+    }
+  ],
+  "qualification": [
+    {
+      "candidate_id": "de48143dda86582f",
+      "task_id": "seamless_ctc_V00_S0092_I00000126_013195_014331",
+      "category": "clear_ctc",
+      "gold": {
+        "relevant_interruption": true
+      },
+      "scorable_fields": [
+        "relevant_interruption"
+      ],
+      "expert_values": {
+        "relevant_interruption": [
+          true,
+          true,
+          true
+        ],
+        "speaker_stuck": [
+          true,
+          true,
+          true
+        ],
+        "word_phrase_fits": [
+          true,
+          true,
+          true
+        ],
+        "interruption_type": [
+          "word_phrase",
+          "word_phrase",
+          "word_phrase"
+        ]
+      }
+    },
+    {
+      "candidate_id": "cef5cdf1cd4acbeb",
+      "task_id": "seamless_ctc_V00_S0232_I00000371_010305_012273",
+      "category": "clear_ctc",
+      "gold": {
+        "relevant_interruption": true
+      },
+      "scorable_fields": [
+        "relevant_interruption"
+      ],
+      "expert_values": {
+        "relevant_interruption": [
+          true,
+          true,
+          true
+        ],
+        "speaker_stuck": [
+          true,
+          true,
+          true
+        ],
+        "word_phrase_fits": [
+          true,
+          true,
+          true
+        ],
+        "interruption_type": [
+          "word_phrase",
+          "word_phrase",
+          "word_phrase"
+        ]
+      }
+    },
+    {
+      "candidate_id": "238f08b2d02fe7af",
+      "task_id": "seamless_ctc_V00_S0298_I00000309_012225_014086",
+      "category": "clear_ctc",
+      "gold": {
+        "relevant_interruption": true
+      },
+      "scorable_fields": [
+        "relevant_interruption"
+      ],
+      "expert_values": {
+        "relevant_interruption": [
+          true,
+          true,
+          true
+        ],
+        "speaker_stuck": [
+          true,
+          true,
+          true
+        ],
+        "word_phrase_fits": [
+          true,
+          true,
+          true
+        ],
+        "interruption_type": [
+          "word_phrase",
+          "word_phrase",
+          "word_phrase"
+        ]
+      }
+    },
+    {
+      "candidate_id": "cee7f109d40931cd",
+      "task_id": "seamless_ctc_V00_S0541_I00000373_005108_006626",
+      "category": "clear_ctc",
+      "gold": {
+        "relevant_interruption": true
+      },
+      "scorable_fields": [
+        "relevant_interruption"
+      ],
+      "expert_values": {
+        "relevant_interruption": [
+          true,
+          true,
+          true
+        ],
+        "speaker_stuck": [
+          true,
+          true,
+          true
+        ],
+        "word_phrase_fits": [
+          true,
+          true,
+          true
+        ],
+        "interruption_type": [
+          "word_phrase",
+          "word_phrase",
+          "word_phrase"
+        ]
+      }
+    },
+    {
+      "candidate_id": "5bfa96d96cbbeea2",
+      "task_id": "seamless_ctc_V00_S0815_I00000373_021557_022614",
+      "category": "clear_ctc",
+      "gold": {
+        "relevant_interruption": true
+      },
+      "scorable_fields": [
+        "relevant_interruption"
+      ],
+      "expert_values": {
+        "relevant_interruption": [
+          true,
+          true,
+          true
+        ],
+        "speaker_stuck": [
+          true,
+          true,
+          true
+        ],
+        "word_phrase_fits": [
+          true,
+          true,
+          true
+        ],
+        "interruption_type": [
+          "word_phrase",
+          "word_phrase",
+          "word_phrase"
+        ]
+      }
+    },
+    {
+      "candidate_id": "dbfe35d24572b8e0",
+      "task_id": "seamless_ctc_V00_S0930_I00000504_024601_025901",
+      "category": "clear_ctc",
+      "gold": {
+        "relevant_interruption": true
+      },
+      "scorable_fields": [
+        "relevant_interruption"
+      ],
+      "expert_values": {
+        "relevant_interruption": [
+          true,
+          true,
+          true
+        ],
+        "speaker_stuck": [
+          true,
+          true,
+          true
+        ],
+        "word_phrase_fits": [
+          true,
+          true,
+          true
+        ],
+        "interruption_type": [
+          "word_phrase",
+          "word_phrase",
+          "word_phrase"
+        ]
+      }
+    },
+    {
+      "candidate_id": "0389d9e92ff2e6ed",
+      "task_id": "seamless_ctc_V00_S1597_I00000723_024239_025783",
+      "category": "clear_ctc",
+      "gold": {
+        "relevant_interruption": true
+      },
+      "scorable_fields": [
+        "relevant_interruption"
+      ],
+      "expert_values": {
+        "relevant_interruption": [
+          true,
+          true,
+          true
+        ],
+        "speaker_stuck": [
+          true,
+          true,
+          true
+        ],
+        "word_phrase_fits": [
+          true,
+          true,
+          true
+        ],
+        "interruption_type": [
+          "word_phrase",
+          "word_phrase",
+          "word_phrase"
+        ]
+      }
+    },
+    {
+      "candidate_id": "8f9f2937382c8be3",
+      "task_id": "seamless_ctc_V03_S1437_I00000495_016540_017871",
+      "category": "clear_ctc",
+      "gold": {
+        "relevant_interruption": true
+      },
+      "scorable_fields": [
+        "relevant_interruption"
+      ],
+      "expert_values": {
+        "relevant_interruption": [
+          true,
+          true,
+          true
+        ],
+        "speaker_stuck": [
+          true,
+          true,
+          true
+        ],
+        "word_phrase_fits": [
+          true,
+          true,
+          true
+        ],
+        "interruption_type": [
+          "word_phrase",
+          "word_phrase",
+          "word_phrase"
+        ]
+      }
+    },
+    {
+      "candidate_id": "83caf11a74c23e05",
+      "task_id": "seamless_ctc_V00_S0374_I00000377_007724_009913",
+      "category": "clear_non_ctc",
+      "gold": {
+        "relevant_interruption": false
+      },
+      "scorable_fields": [
+        "relevant_interruption"
+      ],
+      "expert_values": {
+        "relevant_interruption": [
+          false,
+          false,
+          false
+        ],
+        "speaker_stuck": [
+          null,
+          null,
+          null
+        ],
+        "word_phrase_fits": [
+          null,
+          null,
+          null
+        ],
+        "interruption_type": [
+          null,
+          null,
+          null
+        ]
+      }
+    },
+    {
+      "candidate_id": "5840e409df80e0bb",
+      "task_id": "seamless_ctc_V00_S0520_I00000579_015786_016948",
+      "category": "clear_non_ctc",
+      "gold": {
+        "relevant_interruption": false
+      },
+      "scorable_fields": [
+        "relevant_interruption"
+      ],
+      "expert_values": {
+        "relevant_interruption": [
+          false,
+          false,
+          false
+        ],
+        "speaker_stuck": [
+          null,
+          null,
+          null
+        ],
+        "word_phrase_fits": [
+          null,
+          null,
+          null
+        ],
+        "interruption_type": [
+          null,
+          null,
+          null
+        ]
+      }
+    },
+    {
+      "candidate_id": "6c4d503718c7f788",
+      "task_id": "seamless_ctc_V00_S0613_I00000373_002665_005651",
+      "category": "clear_non_ctc",
+      "gold": {
+        "relevant_interruption": false
+      },
+      "scorable_fields": [
+        "relevant_interruption"
+      ],
+      "expert_values": {
+        "relevant_interruption": [
+          false,
+          false,
+          false
+        ],
+        "speaker_stuck": [
+          null,
+          null,
+          null
+        ],
+        "word_phrase_fits": [
+          null,
+          null,
+          null
+        ],
+        "interruption_type": [
+          null,
+          null,
+          null
+        ]
+      }
+    },
+    {
+      "candidate_id": "719f098939c8519f",
+      "task_id": "seamless_ctc_V00_S0877_I00000536_015657_016871",
+      "category": "clear_non_ctc",
+      "gold": {
+        "relevant_interruption": false
+      },
+      "scorable_fields": [
+        "relevant_interruption"
+      ],
+      "expert_values": {
+        "relevant_interruption": [
+          false,
+          false,
+          false
+        ],
+        "speaker_stuck": [
+          null,
+          null,
+          null
+        ],
+        "word_phrase_fits": [
+          null,
+          null,
+          null
+        ],
+        "interruption_type": [
+          null,
+          null,
+          null
+        ]
+      }
+    },
+    {
+      "candidate_id": "83af130e3c349634",
+      "task_id": "seamless_ctc_V00_S1618_I00000671_024536_026187",
+      "category": "clear_non_ctc",
+      "gold": {
+        "relevant_interruption": false
+      },
+      "scorable_fields": [
+        "relevant_interruption"
+      ],
+      "expert_values": {
+        "relevant_interruption": [
+          false,
+          false,
+          false
+        ],
+        "speaker_stuck": [
+          null,
+          null,
+          null
+        ],
+        "word_phrase_fits": [
+          null,
+          null,
+          null
+        ],
+        "interruption_type": [
+          null,
+          null,
+          null
+        ]
+      }
+    },
+    {
+      "candidate_id": "f574a8deb2b1dbf9",
+      "task_id": "seamless_ctc_V00_S2087_I00001005_002572_003801",
+      "category": "clear_non_ctc",
+      "gold": {
+        "relevant_interruption": false
+      },
+      "scorable_fields": [
+        "relevant_interruption"
+      ],
+      "expert_values": {
+        "relevant_interruption": [
+          false,
+          false,
+          false
+        ],
+        "speaker_stuck": [
+          null,
+          null,
+          null
+        ],
+        "word_phrase_fits": [
+          null,
+          null,
+          null
+        ],
+        "interruption_type": [
+          null,
+          null,
+          null
+        ]
+      }
+    },
+    {
+      "candidate_id": "7c6c4dc6bc45440b",
+      "task_id": "seamless_ctc_V01_S0473_I00001138_009913_012055",
+      "category": "clear_non_ctc",
+      "gold": {
+        "relevant_interruption": false
+      },
+      "scorable_fields": [
+        "relevant_interruption"
+      ],
+      "expert_values": {
+        "relevant_interruption": [
+          false,
+          false,
+          false
+        ],
+        "speaker_stuck": [
+          null,
+          null,
+          null
+        ],
+        "word_phrase_fits": [
+          null,
+          null,
+          null
+        ],
+        "interruption_type": [
+          null,
+          null,
+          null
+        ]
+      }
+    },
+    {
+      "candidate_id": "44ba999cdcabaace",
+      "task_id": "seamless_ctc_V03_S0861_I00000373_004379_006425",
+      "category": "clear_non_ctc",
+      "gold": {
+        "relevant_interruption": false
+      },
+      "scorable_fields": [
+        "relevant_interruption"
+      ],
+      "expert_values": {
+        "relevant_interruption": [
+          false,
+          false,
+          false
+        ],
+        "speaker_stuck": [
+          null,
+          null,
+          null
+        ],
+        "word_phrase_fits": [
+          null,
+          null,
+          null
+        ],
+        "interruption_type": [
+          null,
+          null,
+          null
+        ]
+      }
+    },
+    {
+      "candidate_id": "bd6cf1c1ba52471a",
+      "task_id": "seamless_ctc_V00_S0087_I00000309_005303_006969",
+      "category": "confusing_ctc",
+      "gold": {
+        "relevant_interruption": true
+      },
+      "scorable_fields": [
+        "relevant_interruption"
+      ],
+      "expert_values": {
+        "relevant_interruption": [
+          true,
+          true,
+          true
+        ],
+        "speaker_stuck": [
+          true,
+          true,
+          false
+        ],
+        "word_phrase_fits": [
+          true,
+          true,
+          true
+        ],
+        "interruption_type": [
+          "word_phrase",
+          "word_phrase",
+          null
+        ]
+      }
+    },
+    {
+      "candidate_id": "0583931b5f679632",
+      "task_id": "seamless_ctc_V00_S0260_I00000307_014313_017103",
+      "category": "confusing_ctc",
+      "gold": {
+        "relevant_interruption": true
+      },
+      "scorable_fields": [
+        "relevant_interruption"
+      ],
+      "expert_values": {
+        "relevant_interruption": [
+          true,
+          true,
+          true
+        ],
+        "speaker_stuck": [
+          true,
+          true,
+          false
+        ],
+        "word_phrase_fits": [
+          true,
+          true,
+          true
+        ],
+        "interruption_type": [
+          "word_phrase",
+          "word_phrase",
+          null
+        ]
+      }
+    },
+    {
+      "candidate_id": "71720c0600243253",
+      "task_id": "seamless_ctc_V00_S0363_I00000502_003778_005682",
+      "category": "confusing_ctc",
+      "gold": {
+        "relevant_interruption": true
+      },
+      "scorable_fields": [
+        "relevant_interruption"
+      ],
+      "expert_values": {
+        "relevant_interruption": [
+          true,
+          true,
+          true
+        ],
+        "speaker_stuck": [
+          false,
+          true,
+          true
+        ],
+        "word_phrase_fits": [
+          true,
+          true,
+          true
+        ],
+        "interruption_type": [
+          null,
+          "word_phrase",
+          "word_phrase"
+        ]
+      }
+    },
+    {
+      "candidate_id": "38f369c9bc574017",
+      "task_id": "seamless_ctc_V00_S1985_I00000689_014226_015451",
+      "category": "confusing_ctc",
+      "gold": {
+        "relevant_interruption": true
+      },
+      "scorable_fields": [
+        "relevant_interruption"
+      ],
+      "expert_values": {
+        "relevant_interruption": [
+          true,
+          true,
+          true
+        ],
+        "speaker_stuck": [
+          true,
+          false,
+          true
+        ],
+        "word_phrase_fits": [
+          true,
+          true,
+          true
+        ],
+        "interruption_type": [
+          "word_phrase",
+          null,
+          "word_phrase"
+        ]
+      }
+    },
+    {
+      "candidate_id": "1599c74513cf67ca",
+      "task_id": "seamless_ctc_V00_S1997_I00000186_032903_034552",
+      "category": "secondary_fields",
+      "gold": {
+        "relevant_interruption": true,
+        "speaker_stuck": false,
+        "word_phrase_fits": true
+      },
+      "scorable_fields": [
+        "relevant_interruption",
+        "speaker_stuck",
+        "word_phrase_fits"
+      ],
+      "expert_values": {
+        "relevant_interruption": [
+          true,
+          true,
+          true
+        ],
+        "speaker_stuck": [
+          false,
+          false,
+          false
+        ],
+        "word_phrase_fits": [
+          true,
+          true,
+          true
+        ],
+        "interruption_type": [
+          null,
+          null,
+          null
+        ]
+      }
+    },
+    {
+      "candidate_id": "8905890adc7205dc",
+      "task_id": "seamless_ctc_V00_S0092_I00000309_000820_003061",
+      "category": "secondary_fields",
+      "gold": {
+        "relevant_interruption": true,
+        "speaker_stuck": false
+      },
+      "scorable_fields": [
+        "relevant_interruption",
+        "speaker_stuck"
+      ],
+      "expert_values": {
+        "relevant_interruption": [
+          true,
+          true,
+          true
+        ],
+        "speaker_stuck": [
+          false,
+          false,
+          false
+        ],
+        "word_phrase_fits": [
+          false,
+          false,
+          true
+        ],
+        "interruption_type": [
+          null,
+          null,
+          null
+        ]
+      }
+    },
+    {
+      "candidate_id": "8f7b5b1096a4a8df",
+      "task_id": "seamless_ctc_V00_S0263_I00000373_009358_013205",
+      "category": "secondary_fields",
+      "gold": {
+        "relevant_interruption": true,
+        "speaker_stuck": true,
+        "word_phrase_fits": true,
+        "interruption_type": "word_phrase"
+      },
+      "scorable_fields": [
+        "relevant_interruption",
+        "speaker_stuck",
+        "word_phrase_fits",
+        "interruption_type"
+      ],
+      "expert_values": {
+        "relevant_interruption": [
+          true,
+          true,
+          true
+        ],
+        "speaker_stuck": [
+          true,
+          true,
+          true
+        ],
+        "word_phrase_fits": [
+          true,
+          true,
+          true
+        ],
+        "interruption_type": [
+          "word_phrase",
+          "word_phrase",
+          "word_phrase"
+        ]
+      }
+    },
+    {
+      "candidate_id": "2b4815e83576736b",
+      "task_id": "seamless_ctc_V00_S1456_I00000718_021306_023372",
+      "category": "secondary_fields",
+      "gold": {
+        "relevant_interruption": true,
+        "speaker_stuck": true,
+        "word_phrase_fits": true,
+        "interruption_type": "word_phrase"
+      },
+      "scorable_fields": [
+        "relevant_interruption",
+        "speaker_stuck",
+        "word_phrase_fits",
+        "interruption_type"
+      ],
+      "expert_values": {
+        "relevant_interruption": [
+          true,
+          true,
+          true
+        ],
+        "speaker_stuck": [
+          true,
+          true,
+          true
+        ],
+        "word_phrase_fits": [
+          true,
+          true,
+          true
+        ],
+        "interruption_type": [
+          "word_phrase",
+          "word_phrase",
+          "word_phrase"
+        ]
+      }
+    }
+  ],
+  "proposed_pass_policy": {
+    "ctc_agreement_minimum": 0.8,
+    "clear_ctc_and_non_ctc_required": "100%",
+    "secondary_scorable_fields_required": "100%",
+    "confusing_ctc_errors": "count toward overall CTC agreement but are not single-item failures",
+    "timing": "recorded for analysis; not a qualification gate in v1"
+  },
+  "known_coverage_gap": "No unanimous expert CTC example has word_phrase_fits=false, so v1 does not test recognition of a semantically non-fitting completion."
+}
