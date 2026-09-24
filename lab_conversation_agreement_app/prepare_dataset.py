@@ -97,7 +97,7 @@ def read_mono(path: Path, target_rate: int) -> np.ndarray:
 
 def write_stereo(
     path: Path, user: np.ndarray, model: np.ndarray, rate: int,
-    start_s: float, end_s: float, *, normalize_channels: bool = False,
+    start_s: float, end_s: float, *, normalization_target: float | None = None,
 ) -> None:
     start = max(0, int(start_s * rate))
     end = max(start + 1, int(end_s * rate))
@@ -108,14 +108,14 @@ def write_stereo(
             stereo[: source_end - start, channel] = source[start:source_end]
     # Normalize channels independently so a quiet assistant or user channel is
     # still readily audible during human comparison.
-    if normalize_channels:
+    if normalization_target is not None:
         for channel in range(2):
             signal = stereo[:, channel]
             active = np.abs(signal[np.abs(signal) > 1e-4])
             if active.size:
                 reference = float(np.percentile(active, 95))
                 if reference > 0:
-                    stereo[:, channel] = np.clip(signal * (0.55 / reference), -0.98, 0.98)
+                    stereo[:, channel] = np.clip(signal * (normalization_target / reference), -0.98, 0.98)
     path.parent.mkdir(parents=True, exist_ok=True)
     sf.write(path, stereo, rate, subtype="PCM_16")
 
@@ -211,18 +211,24 @@ def select_backchannel(root: Path, model: str, quota: int, rng: random.Random, o
             continue
         # Match the context supplied to the LLM Judge, beginning at the first
         # user-context utterance used by that judgement.
-        context_starts = [item.get("start_sec") for item in utterance.get("user_context", [])]
-        context_starts = [value for value in context_starts if isinstance(value, (int, float))]
-        clip_start = max(0, min(context_starts) if context_starts else event_start)
-        clip_end = min(len(model_audio) / rate, event_end + 1)
+        clip_start = max(0, event_start - 8)
+        clip_end = min(len(model_audio) / rate, min(event_end, event_start + 12) + 1)
         key = hashlib.sha256(
             f"backchannel:{model}:{variant}:{prediction['id']}:{utterance['utterance_index']}".encode()
         ).hexdigest()[:16]
+        isolated_model = np.zeros_like(model_audio)
+        event_begin_frame = max(0, int(event_start * rate))
+        event_end_frame = min(len(model_audio), int(event_end * rate))
+        isolated_model[event_begin_frame:event_end_frame] = model_audio[event_begin_frame:event_end_frame]
         write_stereo(
-            output / "audio" / f"{key}.wav", user, model_audio, rate,
-            clip_start, clip_end, normalize_channels=True,
+            output / "audio" / f"{key}.wav", user, isolated_model, rate,
+            clip_start, clip_end, normalization_target=0.19,
         )
-        user_context = " ".join(item.get("text", "") for item in utterance.get("user_context", []))
+        context_items = [
+            item for item in utterance.get("user_context", [])
+            if not isinstance(item.get("end_sec"), (int, float)) or item["end_sec"] >= clip_start
+        ]
+        user_context = " ".join(item.get("text", "") for item in context_items)
         chosen.append({
             "key": key,
             "task_type": "backchannel",
