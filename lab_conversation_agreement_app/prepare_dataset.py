@@ -217,14 +217,30 @@ def aligned_response_text(aligned: dict, response: dict) -> str:
     ]
     normalize = lambda value: re.sub(r"[^\w]+", "", value.lower())
     native_normalized = normalize(native_text)
+    # A provider response can contain several sentences. Search contiguous
+    # spans so the displayed ASR text covers the whole response.
     scored = [
-        (SequenceMatcher(None, native_normalized, normalize(chunk)).ratio(), chunk)
-        for chunk in chunks if normalize(chunk)
+        (
+            SequenceMatcher(None, native_normalized, normalize(" ".join(chunks[start:end]))).ratio(),
+            " ".join(chunks[start:end]),
+        )
+        for start in range(len(chunks))
+        for end in range(start + 1, len(chunks) + 1)
+        if normalize(" ".join(chunks[start:end]))
     ]
     if scored:
         score, best = max(scored, key=lambda item: item[0])
-        if score >= 0.25:
+        if score >= 0.8:
             return best
+        single = max(
+            (
+                (SequenceMatcher(None, native_normalized, normalize(chunk)).ratio(), chunk)
+                for chunk in chunks if normalize(chunk)
+            ),
+            default=(0.0, ""),
+        )
+        if single[0] >= 0.25:
+            return single[1]
     start, end = float(response["start"]), float(response["end"])
     return " ".join(
         str(word.get("word", "")).strip()
