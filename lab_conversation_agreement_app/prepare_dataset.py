@@ -117,6 +117,7 @@ def transcript(prediction: dict) -> str:
 
 def select_clarification(root: Path, model: str, quota: int, rng: random.Random, output: Path) -> list[dict]:
     pool = []
+    source_records = dataset_records(str(root / "dataset/clarification.json"))
     for variant in VARIANTS:
         pred_path = prediction_path(root, model, "clarification", variant)
         for prediction in rows(pred_path):
@@ -135,7 +136,8 @@ def select_clarification(root: Path, model: str, quota: int, rng: random.Random,
     variant_counts = {variant: 0 for variant in VARIANTS}
     for variant, prediction, user, model_audio, rate, question_end in pool:
         key = hashlib.sha256(f"clarification:{model}:{variant}:{prediction['id']}".encode()).hexdigest()[:16]
-        start = max(0, question_end - 1.5)
+        # Human raters need the complete question before judging the reply.
+        start = 0
         end = min(len(model_audio) / rate, question_end + 20)
         write_stereo(output / "audio" / f"{key}.wav", user, model_audio, rate, start, end)
         chosen.append({
@@ -144,7 +146,7 @@ def select_clarification(root: Path, model: str, quota: int, rng: random.Random,
             "audio": f"/audio/{key}.wav",
             "anchor_s": round(question_end - start, 3),
             "anchor_label": "问题结束",
-            "user_transcript": "",
+            "user_transcript": source_records[prediction["id"]].get("payload", {}).get("question", ""),
             "model_transcript": transcript(prediction),
         })
         variant_counts[variant] += 1
@@ -184,7 +186,12 @@ def select_backchannel(root: Path, model: str, quota: int, rng: random.Random, o
         except (FileNotFoundError, RuntimeError, ValueError):
             continue
         event_start, event_end = float(utterance["start_sec"]), float(utterance["end_sec"])
-        clip_start, clip_end = max(0, event_start - 6), min(len(model_audio) / rate, event_end + 2)
+        # Match the context supplied to the LLM Judge, beginning at the first
+        # user-context utterance used by that judgement.
+        context_starts = [item.get("start_sec") for item in utterance.get("user_context", [])]
+        context_starts = [value for value in context_starts if isinstance(value, (int, float))]
+        clip_start = max(0, min(context_starts) if context_starts else event_start)
+        clip_end = min(len(model_audio) / rate, event_end + 1)
         key = hashlib.sha256(
             f"backchannel:{model}:{variant}:{prediction['id']}:{utterance['utterance_index']}".encode()
         ).hexdigest()[:16]

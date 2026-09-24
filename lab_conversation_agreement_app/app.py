@@ -48,11 +48,10 @@ class Store:
         task_type = self.task_by_key[key].get("task_type")
         if payload.get("task_type") != task_type:
             raise ValueError("invalid_task_type")
-        if payload.get("turn_completion") not in ("yes", "no", "uncertain"):
-            raise ValueError("invalid_target_behavior")
-        if payload.get("natural_completion") not in ("yes", "no", "uncertain"):
-            raise ValueError("invalid_natural")
-        if payload.get("asr_quality") not in ("match", "minor", "material", "uncertain"):
+        allowed = {"clarification", "answer", "other"} if task_type == "clarification" else {"yes", "no", "uncertain"}
+        if payload.get("behavior_label") not in allowed:
+            raise ValueError("invalid_behavior_label")
+        if payload.get("asr_quality") not in ("match", "material", "uncertain"):
             raise ValueError("invalid_asr_quality")
         for field in ("user_transcript", "model_transcript", "note"):
             if not isinstance(payload.get(field), str):
