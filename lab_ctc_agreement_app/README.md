@@ -4,7 +4,15 @@ This app serves the same blinded Turn Completion batch to multiple lab annotator
 
 ## Data contract
 
-Download the Hugging Face dataset to a local directory containing:
+Download the private held-out 80-case dataset:
+
+```bash
+hf download tterumiimurett1/ctc-turn-completion-agreement-pilot \
+  --repo-type dataset \
+  --local-dir /PATH/TO/ctc-heldout80
+```
+
+The downloaded directory contains:
 
 ```text
 tasks.json
