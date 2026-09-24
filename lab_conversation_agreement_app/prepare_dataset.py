@@ -205,19 +205,39 @@ def select_closed_backchannel(
             if prediction.get("status") == "ok":
                 predictions[(variant, prediction["id"])] = prediction
 
-    # Use at most one real ASR segment per model output. This keeps the sample
-    # diverse while ensuring every candidate has audible, force-aligned speech.
+    # Closed providers expose one interval per intended response. Keep those
+    # response boundaries instead of merging several replies into one ASR turn.
+    # GPT transcription and alignment remain the evidence that speech is
+    # actually present in the selected output audio.
     pool = {variant: [] for variant in VARIANTS}
     for aligned in rows(aligned_path):
         if aligned.get("model") != model:
             continue
         variant = aligned.get("variant")
         prediction = predictions.get((variant, aligned.get("id")))
-        segments = aligned.get("asr_segments") or []
-        if not prediction or variant not in pool or not segments:
+        if not prediction or variant not in pool:
             continue
-        segment = rng.choice(segments)
-        pool[variant].append((prediction, aligned, segment))
+        responses = prediction.get("raw_transcript") or []
+        words = aligned.get("word_alignment") or []
+        if not responses or not words:
+            continue
+        candidates = []
+        for response_index, response in enumerate(responses):
+            start = response.get("start")
+            end = response.get("end")
+            text = str(response.get("transcript", "")).strip()
+            if not isinstance(start, (int, float)) or not isinstance(end, (int, float)) or not text:
+                continue
+            overlapping_words = [
+                word for word in words
+                if float(word.get("end", 0)) > float(start)
+                and float(word.get("start", 0)) < float(end)
+            ]
+            if overlapping_words:
+                candidates.append((response_index, response))
+        if candidates:
+            response_index, response = rng.choice(candidates)
+            pool[variant].append((prediction, aligned, response_index, response))
     for values in pool.values():
         rng.shuffle(values)
 
@@ -227,7 +247,7 @@ def select_closed_backchannel(
     }
     chosen = []
     for variant in VARIANTS:
-        for prediction, aligned, segment in pool[variant]:
+        for prediction, aligned, response_index, response in pool[variant]:
             if sum(item["variant"] == variant for item in chosen) >= targets[variant]:
                 break
             try:
@@ -235,8 +255,8 @@ def select_closed_backchannel(
                 model_audio = read_mono(Path(aligned["audio"]), rate)
             except (FileNotFoundError, RuntimeError, ValueError):
                 continue
-            event_start = float(segment["start"])
-            event_end = min(float(segment["end"]), event_start + 12, len(model_audio) / rate)
+            event_start = float(response["start"])
+            event_end = min(float(response["end"]), event_start + 12, len(model_audio) / rate)
             event_begin_frame = max(0, int(event_start * rate))
             event_end_frame = min(len(model_audio), int(event_end * rate))
             event_audio = model_audio[event_begin_frame:event_end_frame]
@@ -244,9 +264,8 @@ def select_closed_backchannel(
                 continue
             clip_start = max(0, event_start - 8)
             clip_end = min(len(model_audio) / rate, event_end + 1)
-            segment_index = (aligned.get("asr_segments") or []).index(segment)
             key = hashlib.sha256(
-                f"backchannel-aligned:{model}:{variant}:{prediction['id']}:{segment_index}".encode()
+                f"backchannel-intention:{model}:{variant}:{prediction['id']}:{response_index}".encode()
             ).hexdigest()[:16]
             isolated_model = np.zeros_like(model_audio)
             isolated_model[event_begin_frame:event_end_frame] = model_audio[event_begin_frame:event_end_frame]
@@ -262,16 +281,12 @@ def select_closed_backchannel(
                 "anchor_end_s": round(event_end - clip_start, 3),
                 "anchor_label": "模型候选片段",
                 "user_transcript": user_context_for_window(root, prediction, clip_start, event_start),
-                "model_transcript": " ".join(
-                    str(word.get("word", "")).strip()
-                    for word in aligned.get("word_alignment", [])
-                    if float(word.get("end", 0)) > event_start and float(word.get("start", 0)) < event_end
-                ).strip() or str(segment.get("transcript", "")).strip(),
+                "model_transcript": str(response["transcript"]).strip(),
                 # Private build metadata is removed before tasks.json is written.
                 "source_model": model,
                 "variant": variant,
                 "source_id": prediction["id"],
-                "source_segment_index": segment_index,
+                "source_response_index": response_index,
             })
     if len(chosen) != quota:
         raise RuntimeError(
@@ -379,7 +394,7 @@ def main() -> None:
         cases.extend(select_backchannel(
             args.pi_bench, model, quota, rng, args.output, args.closed_backchannel_asr,
         ))
-    private_fields = ("source_model", "variant", "source_id", "source_segment_index")
+    private_fields = ("source_model", "variant", "source_id", "source_response_index")
     audit_rows = [
         {"key": case["key"], **{field: case[field] for field in private_fields if field in case}}
         for case in cases if any(field in case for field in private_fields)

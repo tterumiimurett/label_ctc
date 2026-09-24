@@ -12,7 +12,9 @@ python lab_conversation_agreement_app/prepare_dataset.py \
 ```
 
 The closed-model Backchannel candidates must come from GPT-4o Transcribe output
-with forced alignment. Silent outputs are excluded before this build step.
+with forced alignment. Silent outputs are excluded before this build step. Each
+candidate follows the provider-native intended-response boundary so separate
+replies are not merged into one annotation item.
 
 Create annotator links and start the server:
 
