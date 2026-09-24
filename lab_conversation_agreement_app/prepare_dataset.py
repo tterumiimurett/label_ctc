@@ -17,12 +17,19 @@ import soundfile as sf
 SEED = 20260924
 RUN_REL = Path("runs/rerun-all-task-clean")
 EVAL_REL = RUN_REL / "evaluation-canonical-final-20260805-v1/outputs"
-MODEL_QUOTAS = {
+CLARIFICATION_QUOTAS = {
     "doubao_s2s": 25,
     "gpt_realtime": 25,
     "freeze_omni": 25,
     "salmonn_omni": 13,
     "salmonn_omni_before_sft": 12,
+}
+BACKCHANNEL_QUOTAS = {
+    "doubao_s2s": 50,
+    "gpt_realtime": 50,
+    "freeze_omni": 50,
+    "salmonn_omni": 25,
+    "salmonn_omni_before_sft": 25,
 }
 VARIANTS = ("with_system_prompt", "no_system_prompt")
 CLOSED_MODELS = {"doubao_s2s", "gpt_realtime"}
@@ -235,8 +242,7 @@ def select_closed_backchannel(
             ]
             if overlapping_words:
                 candidates.append((response_index, response))
-        if candidates:
-            response_index, response = rng.choice(candidates)
+        for response_index, response in candidates:
             pool[variant].append((prediction, aligned, response_index, response))
     for values in pool.values():
         rng.shuffle(values)
@@ -319,7 +325,7 @@ def select_backchannel(
                 pool[label].append((variant, pred_path, prediction, utterance))
     for values in pool.values():
         rng.shuffle(values)
-    positive_target = (quota + 1) // 2
+    positive_target = min((quota + 1) // 2, len(pool[True]))
     candidates = pool[True] + pool[False]
     rng.shuffle(candidates)
     chosen = []
@@ -389,8 +395,9 @@ def main() -> None:
     rng = random.Random(SEED)
     args.output.mkdir(parents=True, exist_ok=True)
     cases = []
-    for model, quota in MODEL_QUOTAS.items():
+    for model, quota in CLARIFICATION_QUOTAS.items():
         cases.extend(select_clarification(args.pi_bench, model, quota, rng, args.output))
+    for model, quota in BACKCHANNEL_QUOTAS.items():
         cases.extend(select_backchannel(
             args.pi_bench, model, quota, rng, args.output, args.closed_backchannel_asr,
         ))
@@ -409,7 +416,7 @@ def main() -> None:
     manifest = {
         "schema_version": "conversation-agreement-v1",
         "seed": SEED,
-        "case_counts": {"clarification": 100, "backchannel": 100},
+        "case_counts": {"clarification": 100, "backchannel": 200},
         "cases": cases,
     }
     (args.output / "tasks.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n")

@@ -1,6 +1,6 @@
 # Lab Clarification / Backchannel agreement annotation
 
-This app serves one blinded 200-case batch: 100 Clarification cases and 100 Backchannel candidate events. It covers Doubao, GPT Realtime, Freeze-Omni, and both SALMONN-Omni checkpoint variants.
+This app serves one blinded 300-case batch: 100 Clarification cases and 200 Backchannel candidate events. It covers Doubao, GPT Realtime, Freeze-Omni, and both SALMONN-Omni checkpoint variants.
 
 Generate the private dataset:
 
