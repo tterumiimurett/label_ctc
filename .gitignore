@@ -45,3 +45,5 @@ prolific/ctc_verification_app/data_train_first100_prolific/researcher/
 
 # Original-UI researcher disagreement review runtime data
 prolific/ctc_verification_app/data_researcher_disagreement_*/
+annotators.json
+lab_ctc_agreement_data/
