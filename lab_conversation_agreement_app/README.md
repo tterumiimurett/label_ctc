@@ -2,13 +2,21 @@
 
 This app serves one blinded 300-case batch: 100 Clarification cases and 200 Backchannel candidate events. It covers Doubao, GPT Realtime, Freeze-Omni, and both SALMONN-Omni checkpoint variants.
 
-Generate the private dataset:
+Download the private, ready-to-label dataset (requires Hugging Face access):
+
+```bash
+hf download tterumiimurett1/clarification-backchannel-agreement-300 \
+  --repo-type dataset --local-dir /PRIVATE/PATH/conversation-agreement-300
+cd /PRIVATE/PATH/conversation-agreement-300 && sha256sum -c SHA256SUMS
+```
+
+To regenerate the dataset from the original pi-bench inference artifacts instead:
 
 ```bash
 python lab_conversation_agreement_app/prepare_dataset.py \
   --pi-bench /PATH/TO/pi-bench \
   --closed-backchannel-asr /PRIVATE/PATH/closed-backchannel-asr-v1/aligned-candidates.jsonl \
-  --output /PRIVATE/PATH/conversation-agreement-200
+  --output /PRIVATE/PATH/conversation-agreement-300
 ```
 
 The closed-model Backchannel candidates must come from GPT-4o Transcribe output
@@ -20,7 +28,7 @@ Create annotator links and start the server:
 
 ```bash
 python lab_conversation_agreement_app/create_annotators.py --base-url https://YOUR_HOST/annotate --output /PRIVATE/PATH/annotators.json Alice Bob Carol
-DATASET_DIR=/PRIVATE/PATH/conversation-agreement-200 ANNOTATORS=/PRIVATE/PATH/annotators.json DATA_DIR=/PRIVATE/PATH/results HOST=127.0.0.1 PORT=8765 bash lab_conversation_agreement_app/run.sh
+DATASET_DIR=/PRIVATE/PATH/conversation-agreement-300 ANNOTATORS=/PRIVATE/PATH/annotators.json DATA_DIR=/PRIVATE/PATH/results HOST=127.0.0.1 PORT=8765 bash lab_conversation_agreement_app/run.sh
 ```
 
 The browser hides model identity, prompt variant, checkpoint, and Judge labels. Labels are saved separately for each annotator.
