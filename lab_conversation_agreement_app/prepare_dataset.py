@@ -4,10 +4,12 @@
 from __future__ import annotations
 
 import argparse
+from difflib import SequenceMatcher
 import hashlib
 import json
 from pathlib import Path
 import random
+import re
 from functools import lru_cache
 
 import numpy as np
@@ -202,12 +204,46 @@ def user_context_for_window(root: Path, prediction: dict, start_s: float, end_s:
     return " ".join(context)
 
 
+def aligned_response_text(aligned: dict, response: dict) -> str:
+    """Map one native response interval to text from the saved GPT ASR result."""
+    native_text = str(response.get("transcript", "")).strip()
+    asr_text = str(aligned.get("text", "")).strip()
+    if not asr_text:
+        return ""
+    chunks = [
+        value.strip()
+        for value in re.findall(r".*?(?:[.!?。！？]+|$)", asr_text)
+        if value.strip()
+    ]
+    normalize = lambda value: re.sub(r"[^\w]+", "", value.lower())
+    native_normalized = normalize(native_text)
+    scored = [
+        (SequenceMatcher(None, native_normalized, normalize(chunk)).ratio(), chunk)
+        for chunk in chunks if normalize(chunk)
+    ]
+    if scored:
+        score, best = max(scored, key=lambda item: item[0])
+        if score >= 0.25:
+            return best
+    start, end = float(response["start"]), float(response["end"])
+    return " ".join(
+        str(word.get("word", "")).strip()
+        for word in aligned.get("word_alignment", [])
+        if float(word.get("end", 0)) > start and float(word.get("start", 0)) < end
+    ).strip()
+
+
 def select_closed_backchannel(
     root: Path, model: str, quota: int, rng: random.Random, output: Path, aligned_path: Path,
 ) -> list[dict]:
     predictions = {}
     for variant in VARIANTS:
-        pred_path = prediction_path(root, model, "backchannel", variant)
+        # The authorized closed-model ASR batch was sampled specifically from
+        # RUN_REL/models. Bind intentions to that exact inference source; the
+        # canonical-goal tree can contain a different response for the same id.
+        pred_path = root / RUN_REL / "models" / model / "backchannel" / variant / "predictions.jsonl"
+        if not pred_path.is_file():
+            raise FileNotFoundError(pred_path)
         for prediction in rows(pred_path):
             if prediction.get("status") == "ok":
                 predictions[(variant, prediction["id"])] = prediction
@@ -240,10 +276,11 @@ def select_closed_backchannel(
                 if float(word.get("end", 0)) > float(start)
                 and float(word.get("start", 0)) < float(end)
             ]
-            if overlapping_words:
-                candidates.append((response_index, response))
-        for response_index, response in candidates:
-            pool[variant].append((prediction, aligned, response_index, response))
+            mapped_text = aligned_response_text(aligned, response)
+            if overlapping_words and mapped_text:
+                candidates.append((response_index, response, mapped_text))
+        for response_index, response, mapped_text in candidates:
+            pool[variant].append((prediction, aligned, response_index, response, mapped_text))
     for values in pool.values():
         rng.shuffle(values)
 
@@ -253,7 +290,7 @@ def select_closed_backchannel(
     }
     chosen = []
     for variant in VARIANTS:
-        for prediction, aligned, response_index, response in pool[variant]:
+        for prediction, aligned, response_index, response, mapped_text in pool[variant]:
             if sum(item["variant"] == variant for item in chosen) >= targets[variant]:
                 break
             try:
@@ -287,7 +324,7 @@ def select_closed_backchannel(
                 "anchor_end_s": round(event_end - clip_start, 3),
                 "anchor_label": "模型候选片段",
                 "user_transcript": user_context_for_window(root, prediction, clip_start, event_start),
-                "model_transcript": str(response["transcript"]).strip(),
+                "model_transcript": mapped_text,
                 # Private build metadata is removed before tasks.json is written.
                 "source_model": model,
                 "variant": variant,
