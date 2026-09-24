@@ -95,7 +95,10 @@ def read_mono(path: Path, target_rate: int) -> np.ndarray:
     return audio[:, 0]
 
 
-def write_stereo(path: Path, user: np.ndarray, model: np.ndarray, rate: int, start_s: float, end_s: float) -> None:
+def write_stereo(
+    path: Path, user: np.ndarray, model: np.ndarray, rate: int,
+    start_s: float, end_s: float, *, normalize_channels: bool = False,
+) -> None:
     start = max(0, int(start_s * rate))
     end = max(start + 1, int(end_s * rate))
     stereo = np.zeros((end - start, 2), dtype=np.float32)
@@ -103,9 +106,16 @@ def write_stereo(path: Path, user: np.ndarray, model: np.ndarray, rate: int, sta
         source_end = min(len(source), end)
         if source_end > start:
             stereo[: source_end - start, channel] = source[start:source_end]
-    peak = float(np.max(np.abs(stereo)))
-    if peak > 1:
-        stereo /= peak
+    # Normalize channels independently so a quiet assistant or user channel is
+    # still readily audible during human comparison.
+    if normalize_channels:
+        for channel in range(2):
+            signal = stereo[:, channel]
+            active = np.abs(signal[np.abs(signal) > 1e-4])
+            if active.size:
+                reference = float(np.percentile(active, 95))
+                if reference > 0:
+                    stereo[:, channel] = np.clip(signal * (0.55 / reference), -0.98, 0.98)
     path.parent.mkdir(parents=True, exist_ok=True)
     sf.write(path, stereo, rate, subtype="PCM_16")
 
@@ -120,8 +130,13 @@ def select_clarification(root: Path, model: str, quota: int, rng: random.Random,
     source_records = dataset_records(str(root / "dataset/clarification.json"))
     for variant in VARIANTS:
         pred_path = prediction_path(root, model, "clarification", variant)
+        evaluation_path = root / EVAL_REL / model / "clarification" / variant / "task/evaluation-results.jsonl"
+        hard_ids = {
+            item["id"] for item in rows(evaluation_path)
+            if item.get("status") == "scored" and item.get("metadata", {}).get("level") == "hard"
+        }
         for prediction in rows(pred_path):
-            if prediction.get("status") != "ok":
+            if prediction.get("status") != "ok" or prediction["id"] not in hard_ids:
                 continue
             try:
                 user, rate, question_end = input_audio(root, prediction)
@@ -176,16 +191,24 @@ def select_backchannel(root: Path, model: str, quota: int, rng: random.Random, o
     for values in pool.values():
         rng.shuffle(values)
     positive_target = (quota + 1) // 2
-    candidates = pool[True][:positive_target] + pool[False][: quota - positive_target]
+    candidates = pool[True] + pool[False]
     rng.shuffle(candidates)
     chosen = []
+    chosen_labels = {True: 0, False: 0}
+    label_targets = {True: positive_target, False: quota - positive_target}
     for variant, pred_path, prediction, utterance in candidates:
+        label = utterance["is_backchannel"]
+        if chosen_labels[label] >= label_targets[label]:
+            continue
         try:
             user, rate, _ = input_audio(root, prediction)
             model_audio = read_mono(model_audio_path(pred_path, prediction), rate)
         except (FileNotFoundError, RuntimeError, ValueError):
             continue
         event_start, event_end = float(utterance["start_sec"]), float(utterance["end_sec"])
+        event_audio = model_audio[int(event_start * rate) : int(event_end * rate)]
+        if not len(event_audio) or float(np.max(np.abs(event_audio))) < 1e-4:
+            continue
         # Match the context supplied to the LLM Judge, beginning at the first
         # user-context utterance used by that judgement.
         context_starts = [item.get("start_sec") for item in utterance.get("user_context", [])]
@@ -195,7 +218,10 @@ def select_backchannel(root: Path, model: str, quota: int, rng: random.Random, o
         key = hashlib.sha256(
             f"backchannel:{model}:{variant}:{prediction['id']}:{utterance['utterance_index']}".encode()
         ).hexdigest()[:16]
-        write_stereo(output / "audio" / f"{key}.wav", user, model_audio, rate, clip_start, clip_end)
+        write_stereo(
+            output / "audio" / f"{key}.wav", user, model_audio, rate,
+            clip_start, clip_end, normalize_channels=True,
+        )
         user_context = " ".join(item.get("text", "") for item in utterance.get("user_context", []))
         chosen.append({
             "key": key,
@@ -207,6 +233,9 @@ def select_backchannel(root: Path, model: str, quota: int, rng: random.Random, o
             "user_transcript": user_context,
             "model_transcript": utterance.get("asr_text", ""),
         })
+        chosen_labels[label] += 1
+        if len(chosen) == quota:
+            break
     if len(chosen) != quota:
         raise RuntimeError(f"backchannel {model}: selected {len(chosen)}/{quota}; pools={ {k: len(v) for k,v in pool.items()} }")
     return chosen
