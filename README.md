@@ -86,3 +86,11 @@ python label_studio/summarize_ctc_status.py \
 python -m unittest discover -s tests -v
 python -m py_compile prolific/conversation_annotation_app/app.py
 ```
+
+## Lab Agreement Apps
+
+- [Clarification / Backchannel, 300 cases](lab_conversation_agreement_app/README.md)
+- [Turn Completion, 160 cases](lab_ctc_agreement_app/README.md)
+
+Each app uses its own private Hugging Face dataset, annotator links, listening
+port, and persistent results directory.

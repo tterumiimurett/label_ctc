@@ -49,6 +49,12 @@ class Store:
             raise ValueError("invalid_turn_completion")
         if payload.get("natural_completion") not in (None, "yes", "no", "uncertain"):
             raise ValueError("invalid_natural_completion")
+        if payload["turn_completion"] == "yes" and payload.get("natural_completion") is None:
+            raise ValueError("natural_completion_required_for_tc")
+        if payload.get("asr_quality") not in ("match", "material", "uncertain"):
+            raise ValueError("invalid_asr_quality")
+        if payload.get("candidate_boundary") not in ("correct", "incorrect", "uncertain"):
+            raise ValueError("invalid_candidate_boundary")
         for field in ("user_transcript", "model_transcript", "note"):
             if not isinstance(payload.get(field), str):
                 raise ValueError(f"invalid_{field}")
