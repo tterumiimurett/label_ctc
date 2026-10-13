@@ -10,7 +10,7 @@ Git worktree. It contains the initial 46, follow-up 34, and final 80 cases:
 ```bash
 hf download tterumiimurett1/ctc-turn-completion-agreement-160 \
   --repo-type dataset \
-  --revision 48cfa150afa47c70c5de9c844a2661c0a62750bb \
+  --revision e09004f4344674c654a06e23819144a6733da0e0 \
   --local-dir /PATH/TO/ctc-agreement-160
 
 cd /PATH/TO/ctc-agreement-160
@@ -23,6 +23,13 @@ The downloaded directory contains:
 tasks.json
 audio/<blind-case-key>.wav
 ```
+
+The 160 cases comprise 93 with written context and 67 with spoken context.
+For written context, `context_text` gives the original text shown to the model.
+For spoken context, `context_text` is empty; the WAV begins with the spoken
+context, and `question_start_s` marks the start of the user question. The
+waveform shows that boundary in purple. `filler_end_s` is relative to the
+start of the packaged WAV in both modes.
 
 The private Hub dataset excludes human labels, Judge labels, model identities,
 original sample IDs, and the private model-to-case mapping. There are 161
@@ -61,7 +68,7 @@ python lab_ctc_agreement_app/prepare_dataset.py \
    bash lab_ctc_agreement_app/run.sh
    ```
 
-4. Put an authenticated HTTPS reverse proxy in front of `127.0.0.1:8765`. Give each annotator only their own URL from `annotators.json`.
+4. Put an authenticated HTTPS reverse proxy in front of `127.0.0.1:8766`. Give each annotator only their own URL from `annotators.json`.
 
 Results are saved under `DATA_DIR/results/<token>/<case-key>.json`. Keep this
 directory and the TC service separate from the Clarification/Backchannel
